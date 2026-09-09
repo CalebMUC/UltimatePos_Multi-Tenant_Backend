@@ -6,7 +6,18 @@ using System.Threading.Tasks;
 
 namespace UltimatePos.Domain.Entities
 {
-    internal class RolePermission
+    public class RolePermission
     {
+        public Guid RoleId { get; set; }
+        public Role Role { get; set; } = null!;
+
+        public Guid PermissionId { get; set; }
+        public Permission Permission { get; set; } = null!;
+        public bool IsActive { get; set; } = true;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedBy { get; set; }
+        public DateTime LastUpdatedAt { get; set; }
+        public DateTime LastUpdatedBy { get; set; }
+
     }
 }
