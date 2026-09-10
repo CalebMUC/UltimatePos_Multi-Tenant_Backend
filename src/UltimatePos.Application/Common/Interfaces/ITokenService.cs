@@ -7,7 +7,7 @@ using UltimatePos.Domain.Entities;
 
 namespace UltimatePos.Application.Common.Interfaces
 {
-    internal interface ITokenService
+    public interface ITokenService
     {
         string GenerateToken(User user, IEnumerable<string> permissions, IEnumerable<string> roles);
 
