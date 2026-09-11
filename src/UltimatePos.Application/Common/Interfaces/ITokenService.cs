@@ -10,6 +10,5 @@ namespace UltimatePos.Application.Common.Interfaces
     public interface ITokenService
     {
         string GenerateToken(User user, IEnumerable<string> permissions, IEnumerable<string> roles);
-
     }
 }

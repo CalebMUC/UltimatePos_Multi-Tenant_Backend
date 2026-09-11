@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 
 namespace UltimatePos.Application.Common.Interfaces
 {
-    internal interface IPasswordHasher
+    public interface IPasswordHasher
     {
+        (byte[] Hash, byte[] Salt) HashPassword(string password);
+        bool VerifyPassword(string password, byte[] hash, byte[] salt);
     }
 }
