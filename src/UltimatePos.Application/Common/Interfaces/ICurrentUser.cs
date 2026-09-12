@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 
 namespace UltimatePos.Application.Common.Interfaces
 {
-    internal interface ICurrentUser
+    public interface ICurrentUser
     {
+        Guid? UserId { get; }
+        bool IsAuthenticated { get; }
     }
 }

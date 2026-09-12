@@ -11,6 +11,8 @@ using UltimatePos.Infrastructure.Auth;
 using UltimatePos.Infrastructure.Persistence;
 using UltimatePos.Infrastructure.Configuration;
 using UltimatePos.Infrastructure.Persistence.Repositories;
+using Microsoft.EntityFrameworkCore;
+
 
 
 namespace UltimatePos.Infrastructure
@@ -27,8 +29,11 @@ namespace UltimatePos.Infrastructure
             services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
 
             services.AddScoped<IAuthRepository, AuthenticationRepository>();
+
             services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
+
             services.AddScoped<ITokenService, JwtTokenService>();
+
             return services;
 
         }
