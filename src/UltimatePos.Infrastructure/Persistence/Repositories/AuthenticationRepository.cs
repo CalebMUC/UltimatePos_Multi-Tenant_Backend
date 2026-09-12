@@ -4,11 +4,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Identity;
 using UltimatePos.Domain.Entities;
 
 namespace UltimatePos.Infrastructure.Persistence.Repositories
 {
-    public class AuthenticationRepository
+    public class AuthenticationRepository : IAuthRepository
     {
         private readonly UltimatePosDbContext _context;
         public AuthenticationRepository(UltimatePosDbContext context) => _context = context;

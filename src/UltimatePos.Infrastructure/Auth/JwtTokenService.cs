@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Domain.Entities;
-using UltimatePos.Infrastructure.Persistence.Configuration;
+using UltimatePos.Infrastructure.Configuration;
 
 namespace UltimatePos.Infrastructure.Auth
 {
