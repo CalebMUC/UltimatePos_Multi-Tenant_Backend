@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Identity;
 using UltimatePos.Application.Identity.Dtos;
@@ -15,10 +16,17 @@ namespace UltimatePos.Api.Controllers
         {
             _authService = authService;
         }
-
+        [AllowAnonymous]
+        [HttpPost("Login")]
         public async Task<IActionResult> Login(LoginRequest request) { 
             var result = await _authService.LoginAsync(request);
             return Ok(ApiResponse<LoginResponseDto>.Ok(result));
+        }
+        [Authorize(Policy ="PERMISSION:Users.Create")]
+        [HttpPost("Register")]
+        public async Task<IActionResult> Register(RegisterRequest request) { 
+            var result = await _authService.RegisterAsync(request);
+            return Ok(ApiResponse<UserDto>.Ok(result));
         }
     }
 }
