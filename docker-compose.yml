@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: ultimatepos-db
+    environment:
+      POSTGRES_DB: ultimatepos_dev
+      POSTGRES_USER: ultimatepos
+      POSTGRES_PASSWORD: localdevonly
+    ports:
+      - "5432:5432"
+    volumes:
+      - ultimatepos_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ultimatepos -d ultimatepos_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ultimatepos_pgdata:

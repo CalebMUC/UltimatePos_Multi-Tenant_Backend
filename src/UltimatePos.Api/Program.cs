@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Serilog;
 using UltimatePos.Api.Auth;
 using UltimatePos.Api.Middleware;
+using UltimatePos.Api.Services;
 using UltimatePos.Application;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Infrastructure;
@@ -18,7 +19,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ICurrentUser, ICurrentUser>();
+builder.Services.AddScoped<ICurrentUser, CurrentUserService>();
 
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
 
