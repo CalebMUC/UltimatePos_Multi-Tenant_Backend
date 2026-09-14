@@ -8,8 +8,7 @@ namespace UltimatePos.Domain.Entities
 {
     public class RolePermission
     {
-        public class RolePermission
-        {
+        
             public Guid RoleId { get; set; }
             public Role Role { get; set; } = null!;
             public Guid PermissionId { get; set; }
@@ -19,7 +18,6 @@ namespace UltimatePos.Domain.Entities
             public Guid? CreatedBy { get; set; }
             public DateTime? LastUpdatedAt { get; set; }
             public Guid? LastUpdatedBy { get; set; }
-        }
 
     }
 }

@@ -16,11 +16,16 @@ namespace UltimatePos.Application.Identity
         private readonly IAuthRepository _authRepository;
         private readonly IPasswordHasher _passwordHasher;
         private readonly ITokenService _tokenService;
-        public AuthService(IAuthRepository authRepository,IPasswordHasher hasher,ITokenService tokenService)
+        private readonly ICurrentUser _currentUser;
+        public AuthService(IAuthRepository authRepository,
+            IPasswordHasher hasher,
+            ITokenService tokenService,
+            ICurrentUser currentUser)
         {
             _authRepository = authRepository;
             _passwordHasher = hasher;
             _tokenService = tokenService;
+            _currentUser = currentUser;
         }
 
         public async Task<LoginResponseDto> LoginAsync(LoginRequest request)
@@ -60,6 +65,25 @@ namespace UltimatePos.Application.Identity
             var roles = (await _authRepository.GetUserRolesAsync(createdUser.UserId)).ToList();
             var permissions = (await _authRepository.GetUserPermissionsAsync(createdUser.UserId)).ToList();
             return new UserDto(createdUser.UserId, createdUser.Email, createdUser.Username, createdUser.PhoneNumber, roles, permissions);
+        }
+
+        public async Task<IEnumerable<RoleDto>> GetRolesAsync()
+        {
+            var roles = await _authRepository.GetRolesAsync();
+            return roles.Select(r => new RoleDto(r.RoleId, r.RoleName, r.Description,r.IsActive));
+        }
+
+        public async Task<RoleDto> CreateRoleAsync(CreateRoleRequestDto request)
+        {
+            var role = new Role
+            {
+                RoleName = request.RoleName,
+                Description = request.Description,
+                CreatedBy = _currentUser.UserId,
+                IsActive = true
+            };
+            var created = await _authRepository.CreateRoleAsync(role);
+            return new RoleDto(created.RoleId, created.RoleName, created.Description);
         }
 
     }

@@ -13,5 +13,7 @@ namespace UltimatePos.Application.Identity
         Task<User> CreateUserAsync(User user, string roleName);
         Task<IEnumerable<string>> GetUserRolesAsync(Guid userId);
         Task<IEnumerable<string>> GetUserPermissionsAsync(Guid userId);
+        Task<IEnumerable<Role>> GetRolesAsync();
+        Task<Role> CreateRoleAsync(Role role);
     }
 }

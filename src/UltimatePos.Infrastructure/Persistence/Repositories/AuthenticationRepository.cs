@@ -40,14 +40,23 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 .ToListAsync();
         }
 
-        public async Task<IEnumerable<string>> GetUserPermissionsAsync(Guid userId)
+        
+
+        public async Task<IEnumerable<string>> GetUserPermissionsAsync(Guid userId) =>
+        await _context.UserRoles.AsNoTracking()
+            .Where(ur => ur.UserId == userId)
+            .SelectMany(ur => ur.Role.RolePermissions.Select(rp => rp.Permission.Name))
+            .Distinct()
+            .ToListAsync();
+
+        public async Task<IEnumerable<Role>> GetRolesAsync() =>
+       await _context.Roles.AsNoTracking().Where(r => r.IsActive).ToListAsync();
+
+        public async Task<Role> CreateRoleAsync(Role role)
         {
-            return await _context.UserRoles
-                .Where(ur => ur.UserId == userId)
-                .SelectMany(ur => ur.Role.RolePermissions)
-                .Select(rp => rp.Permission.Name)
-                .Distinct()
-                .ToListAsync();
+            _context.Roles.Add(role);
+            await _context.SaveChangesAsync();
+            return role;
         }
     }
 }
