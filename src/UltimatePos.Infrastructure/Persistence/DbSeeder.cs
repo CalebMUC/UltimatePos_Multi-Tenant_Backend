@@ -29,13 +29,21 @@ public static class DbSeeder
         context.Roles.Add(adminRole);
 
         var permissions = new[]
-        {
-            new Permission { Name = "Users.Create", Module = "Users" },
-            new Permission { Name = "Roles.View", Module = "Roles" },
-            new Permission { Name = "Roles.Create", Module = "Roles" },
-            new Permission { Name = "Products.Create", Module = "Products" },
-            new Permission { Name = "Sales.Create", Module = "Sales" }
-        };
+{
+    new Permission { Name = "Users.Create", Module = "Users" },
+    new Permission { Name = "Users.View", Module = "Users" },
+    new Permission { Name = "Users.AssignRoles", Module = "Users" },
+    new Permission { Name = "Users.Deactivate", Module = "Users" },
+    new Permission { Name = "Users.Lock", Module = "Users" },
+    new Permission { Name = "Roles.View", Module = "Roles" },
+    new Permission { Name = "Roles.Create", Module = "Roles" },
+    new Permission { Name = "Roles.Update", Module = "Roles" },
+    new Permission { Name = "Roles.Deactivate", Module = "Roles" },
+    new Permission { Name = "Roles.AssignPermissions", Module = "Roles" },
+    new Permission { Name = "Permissions.View", Module = "Permissions" },
+    new Permission { Name = "Products.Create", Module = "Products" },
+    new Permission { Name = "Sales.Create", Module = "Sales" }
+};
         context.Permissions.AddRange(permissions);
         await context.SaveChangesAsync();
 

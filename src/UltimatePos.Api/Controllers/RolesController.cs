@@ -22,7 +22,7 @@ namespace UltimatePos.Api.Controllers
         }
 
         [Authorize(Policy = "PERMISSION:Roles.Create")]
-        [HttpPost("CreateRole")]
+        [HttpPost("CreateRole")] 
         public async Task<IActionResult> CreateRole(CreateRoleRequestDto request)
         {
             var result = await _authService.CreateRoleAsync(request);

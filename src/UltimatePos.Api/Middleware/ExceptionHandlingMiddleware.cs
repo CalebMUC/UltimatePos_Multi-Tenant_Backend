@@ -30,6 +30,8 @@ public class ExceptionHandlingMiddleware
             {
                 InvalidCredentialsException => (HttpStatusCode.Unauthorized, "INVALID_CREDENTIALS", ex.Message),
                 UserAlreadyExistsException => (HttpStatusCode.Conflict, "USER_EXISTS", ex.Message),
+                NotFoundException => (HttpStatusCode.NotFound, "NOT_FOUND", ex.Message),
+                InvalidAssignmentException => (HttpStatusCode.BadRequest, "INVALID_ASSIGNMENT", ex.Message),
                 _ => (HttpStatusCode.InternalServerError, "INTERNAL_ERROR", "An unexpected error occurred.")
                 // Deliberately not ex.Message on the fallback branch — the original
                 // system leaked internal exception details to clients on Register.

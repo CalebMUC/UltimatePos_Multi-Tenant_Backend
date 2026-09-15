@@ -16,6 +16,7 @@ namespace UltimatePos.Domain.Entities
         public byte[] PasswordSalt { get; set; } = Array.Empty<byte>();
         public bool IsActive { get; set; } = true;
         public bool IsLocked { get; set; }
+        public int FailedLoginAttempts { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }
         public DateTime? LastUpdatedAt { get; set; }
