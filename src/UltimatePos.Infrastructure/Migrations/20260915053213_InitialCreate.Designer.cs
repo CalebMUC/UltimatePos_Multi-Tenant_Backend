@@ -12,8 +12,8 @@ using UltimatePos.Infrastructure.Persistence;
 namespace UltimatePos.Infrastructure.Migrations
 {
     [DbContext(typeof(UltimatePosDbContext))]
-    [Migration("20260913055526_InitialAuth")]
-    partial class InitialAuth
+    [Migration("20260915053213_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -34,17 +34,17 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("CreatedBy")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<DateTime>("LastUpdatedAt")
+                    b.Property<DateTime?>("LastUpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("LastUpdatedBy")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Module")
                         .IsRequired()
@@ -71,21 +71,20 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("CreatedBy")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Description")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<DateTime>("LastUpdatedAt")
+                    b.Property<DateTime?>("LastUpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("LastUpdatedBy")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("RoleName")
                         .IsRequired()
@@ -110,17 +109,17 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("CreatedBy")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<DateTime>("LastUpdatedAt")
+                    b.Property<DateTime?>("LastUpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("LastUpdatedBy")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid");
 
                     b.HasKey("RoleId", "PermissionId");
 
@@ -138,12 +137,15 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("CreatedBy")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int>("FailedLoginAttempts")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
@@ -151,11 +153,11 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<bool>("IsLocked")
                         .HasColumnType("boolean");
 
-                    b.Property<DateTime>("LastUpdatedAt")
+                    b.Property<DateTime?>("LastUpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("LastUpdatedBy")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid");
 
                     b.Property<byte[]>("PasswordHash")
                         .IsRequired()

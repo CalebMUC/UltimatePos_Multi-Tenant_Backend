@@ -5,7 +5,7 @@ namespace UltimatePos.Api.Auth
 {
     public class PermissionPolicyProvider : IAuthorizationPolicyProvider
     {
-        private const string prefix = "PERMISSION";
+        private const string prefix = "PERMISSION:";
 
         public DefaultAuthorizationPolicyProvider fallBackPolicyProvider { get; }
 

@@ -13,6 +13,8 @@ namespace UltimatePos.Application.Identity
 {
     public class AuthService
     {
+        private const int MaxFailedLoginAttempts = 5;
+
         private readonly IAuthRepository _authRepository;
         private readonly IPasswordHasher _passwordHasher;
         private readonly ITokenService _tokenService;
@@ -30,7 +32,7 @@ namespace UltimatePos.Application.Identity
 
         public async Task<LoginResponseDto> LoginAsync(LoginRequest request)
         {
-            var user = await _authRepository.GetUserAsync(request.Email)
+                var user = await _authRepository.GetUserAsync(request.Email)
                 ?? throw new InvalidCredentialsException();
 
             if (!user.IsActive || user.IsLocked)

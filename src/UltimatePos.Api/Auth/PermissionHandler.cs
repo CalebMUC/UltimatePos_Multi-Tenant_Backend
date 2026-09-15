@@ -6,10 +6,10 @@ namespace UltimatePos.Api.Auth
     {
         protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, PermissionRequirement requirement)
         {
-            if (context.User.HasClaim("permissions", requirement.Permission))
+            if (context.User.HasClaim("Permission", requirement.Permission))
                 context.Succeed(requirement);
 
             return Task.CompletedTask;
-        }       
+        }
     }
 }

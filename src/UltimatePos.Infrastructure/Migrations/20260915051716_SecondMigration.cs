@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace UltimatePos.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialAuth : Migration
+    public partial class SecondMigration : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -20,9 +20,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     Module = table.Column<string>(type: "text", nullable: false),
                     IsActive = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    CreatedBy = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    LastUpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    LastUpdatedBy = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    LastUpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    LastUpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -35,12 +35,12 @@ namespace UltimatePos.Infrastructure.Migrations
                 {
                     RoleId = table.Column<Guid>(type: "uuid", nullable: false),
                     RoleName = table.Column<string>(type: "text", nullable: false),
-                    Description = table.Column<string>(type: "text", nullable: false),
+                    Description = table.Column<string>(type: "text", nullable: true),
                     IsActive = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    CreatedBy = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    LastUpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    LastUpdatedBy = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    LastUpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    LastUpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -59,10 +59,11 @@ namespace UltimatePos.Infrastructure.Migrations
                     PasswordSalt = table.Column<byte[]>(type: "bytea", nullable: false),
                     IsActive = table.Column<bool>(type: "boolean", nullable: false),
                     IsLocked = table.Column<bool>(type: "boolean", nullable: false),
+                    FailedLoginAttempts = table.Column<int>(type: "integer", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    CreatedBy = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    LastUpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    LastUpdatedBy = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    LastUpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    LastUpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -77,9 +78,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     PermissionId = table.Column<Guid>(type: "uuid", nullable: false),
                     IsActive = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    CreatedBy = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    LastUpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    LastUpdatedBy = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
+                    LastUpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    LastUpdatedBy = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
