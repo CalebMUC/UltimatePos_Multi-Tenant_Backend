@@ -19,4 +19,14 @@ namespace UltimatePos.Domain.Exceptions
     {
         public UserAlreadyExistsException() : base("User already exists.") { }
     }
+
+    public class NotFoundException : Exception
+    {
+        public NotFoundException(string message) : base(message) { }
+    }
+
+    public class InvalidAssignmentException : Exception
+    {
+        public InvalidAssignmentException(string message) : base(message) { }
+    }
 }
