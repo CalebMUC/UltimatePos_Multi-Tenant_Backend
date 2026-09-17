@@ -27,6 +27,7 @@ namespace UltimatePos.Application.Identity
         Task<Role> SetRoleActiveStatusAsync(Guid roleId, bool isActive, Guid? updatedBy);
         Task AssignPermissionsToRoleAsync(Guid roleId, IEnumerable<Guid> permissionIds);
         Task<IEnumerable<PermissionModuleDto>> GetPermissionModulesAsync();
+        Task<IEnumerable<Permission>> GetPermissionsAsync();
 
     }
 }

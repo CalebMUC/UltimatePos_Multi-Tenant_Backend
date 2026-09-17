@@ -29,4 +29,9 @@ namespace UltimatePos.Domain.Exceptions
     {
         public InvalidAssignmentException(string message) : base(message) { }
     }
+
+    public class DuplicateBusinessException : Exception
+    {
+        public DuplicateBusinessException(string message) : base(message) { }
+    }
 }

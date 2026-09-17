@@ -151,6 +151,11 @@ namespace UltimatePos.Application.Identity
             return await GetRoleByIdAsync(roleId);
         }
 
+        public async Task<IEnumerable<PermissionDto>> GetPermissionsAsync()
+        {
+            var permissions = await _authRepository.GetPermissionsAsync();
+            return permissions.Select(p => new PermissionDto(p.PermissionId, p.Name, p.Module, p.IsActive));
+        }
         public Task<IEnumerable<PermissionModuleDto>> GetPermissionModulesAsync() => _authRepository.GetPermissionModulesAsync();
 
         private static UserDto ToUserDto(User user) =>

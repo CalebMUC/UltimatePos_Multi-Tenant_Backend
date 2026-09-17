@@ -16,11 +16,11 @@ namespace UltimatePos.Application.Identity.Dtos
 
         public record RoleDto(Guid RoleId, string RoleName, string? Description,bool IsActive, IEnumerable<string> Permissions);
 
-        public record CreateRoleRequestDto([property: Required] string RoleName, string? Description);
+        public record CreateRoleRequestDto(string RoleName, string? Description);
 
-        public record UpdateRoleRequestDto([property: Required] string RoleName, string? Description);
-        public record AssignRolesRequestDto([property: Required] IEnumerable<Guid> RoleIds);
-        public record AssignPermissionsRequestDto([property: Required] IEnumerable<Guid> PermissionIds);
+        public record UpdateRoleRequestDto(string RoleName, string? Description);
+        public record AssignRolesRequestDto(IEnumerable<Guid> RoleIds);
+        public record AssignPermissionsRequestDto(IEnumerable<Guid> PermissionIds);
 
         public record PermissionModuleDto(string Module, IEnumerable<string> Permissions);
 
