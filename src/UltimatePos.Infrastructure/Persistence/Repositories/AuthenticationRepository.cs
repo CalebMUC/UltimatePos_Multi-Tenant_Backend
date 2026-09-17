@@ -186,5 +186,9 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             .GroupBy(p => p.Module)
             .Select(g => new PermissionModuleDto(g.Key, g.Select(p => p.Name)))
             .ToListAsync();
+
+        public async Task<IEnumerable<Permission>> GetPermissionsAsync() =>
+            await _context.Permissions.AsNoTracking().ToListAsync();
+
     }
 }
