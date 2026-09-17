@@ -16,7 +16,10 @@ public static class DbSeeder
         ("Roles.Deactivate", "Roles"), ("Roles.AssignPermissions", "Roles"),
         ("Permissions.View", "Permissions"),
         ("Products.Create", "Products"),
-        ("Sales.Create", "Sales")
+        ("Sales.Create", "Sales"),("Businesses.Register", "Businesses"), ("Businesses.View", "Businesses"),
+        ("Businesses.Update", "Businesses"), ("Businesses.Deactivate", "Businesses"),
+        ("Customers.Register", "Customers"), ("Customers.View", "Customers"),
+        ("Customers.Update", "Customers"), ("Customers.Deactivate", "Customers"),
     };
 
     public static async Task SeedAsync(IServiceProvider services)

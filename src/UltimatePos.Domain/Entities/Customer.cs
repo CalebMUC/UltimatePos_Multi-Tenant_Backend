@@ -22,6 +22,6 @@ namespace UltimatePos.Domain.Entities
         public DateTime? LastUpdatedAt { get; set; }
         public Guid? LastUpdatedBy { get; set; }
 
-        public Business Business { get; set; } = null!;
+        public BusinessProfile BusinessProfile { get; set; } = null!;
     }
 }

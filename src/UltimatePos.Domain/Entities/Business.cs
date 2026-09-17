@@ -12,7 +12,7 @@ namespace UltimatePos.Domain.Entities
         Retailer
     }
 
-    public class Business
+    public class BusinessProfile
     {
         public Guid BusinessId { get; set; }
         public string BusinessName { get; set; } = string.Empty;

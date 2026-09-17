@@ -23,6 +23,7 @@ namespace UltimatePos.Application.Identity.Dtos
         public record AssignPermissionsRequestDto(IEnumerable<Guid> PermissionIds);
 
         public record PermissionModuleDto(string Module, IEnumerable<string> Permissions);
+        public record PermissionDto(Guid PermissionId, string Name, string Module, bool IsActive);
 
 }
 

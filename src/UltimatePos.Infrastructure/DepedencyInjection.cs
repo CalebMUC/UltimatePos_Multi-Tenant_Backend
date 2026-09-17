@@ -1,17 +1,18 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Business;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Identity;
 using UltimatePos.Infrastructure.Auth;
-using UltimatePos.Infrastructure.Persistence;
 using UltimatePos.Infrastructure.Configuration;
+using UltimatePos.Infrastructure.Persistence;
 using UltimatePos.Infrastructure.Persistence.Repositories;
-using Microsoft.EntityFrameworkCore;
 
 
 
@@ -29,6 +30,7 @@ namespace UltimatePos.Infrastructure
             services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
 
             services.AddScoped<IAuthRepository, AuthenticationRepository>();
+            services.AddScoped<IBusinessRepository, BusinessRepository>();
 
             services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
 

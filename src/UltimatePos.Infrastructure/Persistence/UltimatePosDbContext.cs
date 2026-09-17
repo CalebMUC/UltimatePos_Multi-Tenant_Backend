@@ -20,6 +20,9 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<UserRole> UserRoles => Set<UserRole>();
         public DbSet<UserSession> UserSessions => Set<UserSession>();
 
+        public DbSet<BusinessProfile> Businesses => Set<BusinessProfile>();
+        public DbSet<Customer> Customers => Set<Customer>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<UserRole>().HasKey(ur => new { ur.UserId, ur.RoleId });
@@ -28,6 +31,15 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
             modelBuilder.Entity<Role>().HasIndex(r => r.RoleName).IsUnique();
             modelBuilder.Entity<Permission>().HasIndex(p => p.Name).IsUnique();
+
+            modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.KraPin).IsUnique();
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.BusinessType).HasConversion<string>();
+
+            modelBuilder.Entity<Customer>()
+                .HasOne(c => c.BusinessProfile)
+                .WithMany(b => b.Customers)
+                .HasForeignKey(c => c.BusinessId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             base.OnModelCreating(modelBuilder);
         }
