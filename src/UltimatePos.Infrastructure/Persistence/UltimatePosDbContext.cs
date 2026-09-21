@@ -22,6 +22,12 @@ namespace UltimatePos.Infrastructure.Persistence
 
         public DbSet<BusinessProfile> Businesses => Set<BusinessProfile>();
         public DbSet<Customer> Customers => Set<Customer>();
+        public DbSet<Category> Categories => Set<Category>();
+        public DbSet<UnitOfMeasure> UnitsOfMeasure => Set<UnitOfMeasure>();
+        public DbSet<Product> Products => Set<Product>();
+        public DbSet<ProductUnitConversion> ProductUnitConversions => Set<ProductUnitConversion>();
+        public DbSet<ProductPriceTier> ProductPriceTiers => Set<ProductPriceTier>();
+        public DbSet<SkuSequence> SkuSequences => Set<SkuSequence>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -40,6 +46,46 @@ namespace UltimatePos.Infrastructure.Persistence
                 .WithMany(b => b.Customers)
                 .HasForeignKey(c => c.BusinessId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<SkuSequence>().HasKey(s => s.Prefix);
+
+            modelBuilder.Entity<Category>().HasIndex(c => c.Code).IsUnique();
+
+            modelBuilder.Entity<UnitOfMeasure>().HasIndex(u => u.Symbol).IsUnique();
+            modelBuilder.Entity<Product>().HasIndex(p => p.Sku).IsUnique();
+            modelBuilder.Entity<Product>().Property(p => p.ItemType).HasConversion<string>();
+            modelBuilder.Entity<Product>().Property(p => p.TaxClassification).HasConversion<string>();
+            modelBuilder.Entity<ProductPriceTier>().Property(t => t.PriceType).HasConversion<string>();
+
+            modelBuilder.Entity<Category>()
+           .HasOne(c => c.ParentCategory).WithMany(c => c.Subcategories)
+           .HasForeignKey(c => c.ParentCategoryId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Product>()
+                .HasOne(p => p.Category).WithMany(c => c.Products)
+                .HasForeignKey(p => p.CategoryId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Product>()
+                .HasOne(p => p.BaseUnitOfMeasure).WithMany()
+                .HasForeignKey(p => p.BaseUnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ProductUnitConversion>()
+                .HasOne(c => c.Product).WithMany(p => p.UnitConversions)
+                .HasForeignKey(c => c.ProductId).OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ProductUnitConversion>()
+                .HasOne(c => c.PackUnitOfMeasure).WithMany()
+                .HasForeignKey(c => c.PackUnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ProductPriceTier>()
+                .HasOne(t => t.Product).WithMany(p => p.PriceTiers)
+                .HasForeignKey(t => t.ProductId).OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ProductPriceTier>()
+                .HasOne(t => t.UnitOfMeasure).WithMany()
+                .HasForeignKey(t => t.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+
 
             base.OnModelCreating(modelBuilder);
         }

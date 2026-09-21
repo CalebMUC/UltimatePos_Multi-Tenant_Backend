@@ -7,10 +7,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using UltimatePos.Application.Business;
+using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Identity;
 using UltimatePos.Infrastructure.Auth;
 using UltimatePos.Infrastructure.Configuration;
+using UltimatePos.Infrastructure.Import;
 using UltimatePos.Infrastructure.Persistence;
 using UltimatePos.Infrastructure.Persistence.Repositories;
 
@@ -35,6 +37,10 @@ namespace UltimatePos.Infrastructure
             services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
 
             services.AddScoped<ITokenService, JwtTokenService>();
+
+            services.AddScoped<ICatalogRepository, CatalogRepository>();
+            services.AddScoped<ICategoryImportParser, ClosedXmlCategoryImportParser>();
+            services.AddScoped<IProductImportParser, ClosedXmlProductImportParser>();
 
             return services;
 

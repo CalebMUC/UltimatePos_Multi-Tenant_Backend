@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 
 namespace UltimatePos.Application.Catalog
 {
-    internal interface ICategoryImportParser
+    public interface ICategoryImportParser
     {
+        IEnumerable<(int RowNumber, string Name, string Code, string? ParentCode)> Parse(Stream fileStream);
+        byte[] GenerateTemplate();
     }
 }

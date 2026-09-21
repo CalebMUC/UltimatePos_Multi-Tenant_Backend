@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 
 namespace UltimatePos.Domain.Entities
 {
-    internal class SkuSequence
+    public class SkuSequence
     {
+        public string Prefix { get; set; } = string.Empty;
+        public int LastNumber { get; set; }
     }
 }
