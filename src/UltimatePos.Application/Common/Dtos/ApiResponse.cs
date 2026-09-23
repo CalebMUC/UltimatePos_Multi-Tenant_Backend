@@ -12,10 +12,13 @@ namespace UltimatePos.Application.Common.Dtos
         //public string Message { get; set; }
         public T? Data { get; set; }
         public ApiError? Error { get; init; }
-        public static ApiResponse<T> Ok(T data) => new()
+        public object? Meta { get; init; }
+
+        public static ApiResponse<T> Ok(T data, object? meta = null) => new() 
         {
             Success = true,
-            Data = data
+            Data = data,
+            Meta = meta
         };
 
         public static ApiResponse<T> Fail(string code,string message) => new()

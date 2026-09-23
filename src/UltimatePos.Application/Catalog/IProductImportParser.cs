@@ -6,7 +6,10 @@ using System.Threading.Tasks;
 
 namespace UltimatePos.Application.Catalog
 {
-    internal interface IProductImportParser
+    public interface IProductImportParser
     {
+        IEnumerable<(int RowNumber, string Name, string CategoryCode, string ItemType, string TaxClassification,
+            string UnitSymbol, decimal? ReorderLevel, decimal? WholesalePrice, decimal? RetailPrice)> Parse(Stream fileStream);
+        byte[] GenerateTemplate();
     }
 }

@@ -20,6 +20,10 @@ public static class DbSeeder
         ("Businesses.Update", "Businesses"), ("Businesses.Deactivate", "Businesses"),
         ("Customers.Register", "Customers"), ("Customers.View", "Customers"),
         ("Customers.Update", "Customers"), ("Customers.Deactivate", "Customers"),
+        ("Categories.View", "Categories"), ("Categories.Create", "Categories"), ("Categories.BulkImport", "Categories"),
+        ("Units.View", "Units"), ("Units.Create", "Units"),
+        ("Products.View", "Products"), ("Products.Create", "Products"), ("Products.Update", "Products"),
+        ("Products.ManagePricing", "Products"), ("Products.BulkImport", "Products"),
     };
 
     public static async Task SeedAsync(IServiceProvider services)
