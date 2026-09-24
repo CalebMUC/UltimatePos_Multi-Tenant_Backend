@@ -38,6 +38,8 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<Role>().HasIndex(r => r.RoleName).IsUnique();
             modelBuilder.Entity<Permission>().HasIndex(p => p.Name).IsUnique();
 
+
+            modelBuilder.Entity<BusinessProfile>().HasKey(b => b.BusinessId);
             modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.KraPin).IsUnique();
             modelBuilder.Entity<BusinessProfile>().Property(b => b.BusinessType).HasConversion<string>();
 
