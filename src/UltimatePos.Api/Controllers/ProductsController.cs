@@ -85,4 +85,20 @@ public class ProductsController : ControllerBase
         var result = await _catalogService.BulkImportProductsAsync(stream, dryRun);
         return Ok(ApiResponse<ProductBulkImportResultDto>.Ok(result));
     }
+
+    [Authorize(Policy = "PERMISSION:Products.ManageUnitConversions")]
+    [HttpGet("{id:guid}/unit-conversions")]
+    public async Task<IActionResult> GetUnitConversions(Guid id)
+    {
+        var result = await _catalogService.GetUnitConversionsAsync(id);
+        return Ok(ApiResponse<IEnumerable<ProductUnitConversionDto>>.Ok(result));
+    }
+
+    [Authorize(Policy = "PERMISSION:Products.ManageUnitConversions")]
+    [HttpPost("{id:guid}/unit-conversions")]
+    public async Task<IActionResult> AddUnitConversion(Guid id, CreateProductUnitConversionRequestDto request)
+    {
+        var result = await _catalogService.AddUnitConversionAsync(id, request);
+        return Ok(ApiResponse<ProductUnitConversionDto>.Ok(result));
+    }
 }

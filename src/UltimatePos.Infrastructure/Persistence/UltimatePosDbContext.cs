@@ -29,6 +29,12 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<ProductPriceTier> ProductPriceTiers => Set<ProductPriceTier>();
         public DbSet<SkuSequence> SkuSequences => Set<SkuSequence>();
 
+        public DbSet<Supplier> Suppliers => Set<Supplier>();
+        public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+        public DbSet<PurchaseOrderLine> PurchaseOrderLines => Set<PurchaseOrderLine>();
+        public DbSet<StockLevel> StockLevels => Set<StockLevel>();
+        public DbSet<StockMovement> StockMovements => Set<StockMovement>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<UserRole>().HasKey(ur => new { ur.UserId, ur.RoleId });
@@ -86,6 +92,40 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<ProductPriceTier>()
                 .HasOne(t => t.UnitOfMeasure).WithMany()
                 .HasForeignKey(t => t.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+
+            modelBuilder.Entity<StockLevel>().HasKey(s => s.ProductId);
+
+            modelBuilder.Entity<PurchaseOrder>().Property(o => o.Status).HasConversion<string>();
+            modelBuilder.Entity<StockMovement>().Property(m => m.MovementType).HasConversion<string>();
+
+            modelBuilder.Entity<Supplier>()
+                .HasOne(s => s.Business).WithMany()
+                .HasForeignKey(s => s.BusinessId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<PurchaseOrder>()
+                .HasOne(o => o.Supplier).WithMany(s => s.PurchaseOrders)
+                .HasForeignKey(o => o.SupplierId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<PurchaseOrderLine>()
+                .HasOne(l => l.PurchaseOrder).WithMany(o => o.Lines)
+                .HasForeignKey(l => l.PurchaseOrderId).OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<PurchaseOrderLine>()
+                .HasOne(l => l.Product).WithMany()
+                .HasForeignKey(l => l.ProductId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<PurchaseOrderLine>()
+                .HasOne(l => l.UnitOfMeasure).WithMany()
+                .HasForeignKey(l => l.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<StockLevel>()
+                .HasOne(s => s.Product).WithOne()
+                .HasForeignKey<StockLevel>(s => s.ProductId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<StockMovement>()
+                .HasOne(m => m.Product).WithMany()
+                .HasForeignKey(m => m.ProductId).OnDelete(DeleteBehavior.Restrict);
 
 
 

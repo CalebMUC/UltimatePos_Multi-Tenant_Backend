@@ -6,7 +6,24 @@ using System.Threading.Tasks;
 
 namespace UltimatePos.Domain.Entities
 {
-    internal class Supplier
+    public class Supplier
     {
+        public Guid SupplierId { get; set; }
+        public Guid BusinessId { get; set; }
+        public string SupplierName { get; set; } = string.Empty;
+        public string? KraPin { get; set; }
+        public string? ContactPerson { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? Email { get; set; }
+        public string? PhysicalAddress { get; set; }
+        public int? PaymentTermDays { get; set; }
+        public bool IsActive { get; set; } = true;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public Guid? CreatedBy { get; set; }
+        public DateTime? LastUpdatedAt { get; set; }
+        public Guid? LastUpdatedBy { get; set; }
+
+        public BusinessProfile Business { get; set; } = null!;
+        public ICollection<PurchaseOrder> PurchaseOrders { get; set; } = new List<PurchaseOrder>();
     }
 }

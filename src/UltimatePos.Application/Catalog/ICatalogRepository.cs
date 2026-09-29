@@ -31,5 +31,9 @@ namespace UltimatePos.Application.Catalog
 
         Task<IEnumerable<ProductPriceTier>> GetPriceTiersAsync(Guid productId);
         Task<ProductPriceTier> AddPriceTierAsync(ProductPriceTier tier);
+
+        Task<ProductUnitConversion> CreateUnitConversionAsync(ProductUnitConversion conversion);
+        Task<IEnumerable<ProductUnitConversion>> GetUnitConversionsAsync(Guid productId);
+        Task<decimal?> GetConversionFactorAsync(Guid productId, Guid unitOfMeasureId);
     }
 }

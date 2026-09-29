@@ -132,4 +132,25 @@ public class CatalogRepository : ICatalogRepository
         await _context.SaveChangesAsync();
         return tier;
     }
+
+    public async Task<ProductUnitConversion> CreateUnitConversionAsync(ProductUnitConversion conversion)
+    {
+        _context.ProductUnitConversions.Add(conversion);
+        await _context.SaveChangesAsync();
+        return conversion;
+    }
+
+    public async Task<IEnumerable<ProductUnitConversion>> GetUnitConversionsAsync(Guid productId) =>
+        await _context.ProductUnitConversions.AsNoTracking().Where(c => c.ProductId == productId).ToListAsync();
+
+    public async Task<decimal?> GetConversionFactorAsync(Guid productId, Guid unitOfMeasureId)
+    {
+        var product = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.ProductId == productId);
+        if (product is null) return null;
+        if (product.BaseUnitOfMeasureId == unitOfMeasureId) return 1m;
+
+        var conversion = await _context.ProductUnitConversions.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.ProductId == productId && c.PackUnitOfMeasureId == unitOfMeasureId && c.IsActive);
+        return conversion?.ConversionFactor;
+    }
 }

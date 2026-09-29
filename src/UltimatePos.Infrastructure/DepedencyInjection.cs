@@ -10,6 +10,8 @@ using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Identity;
+using UltimatePos.Application.Inventory;
+using UltimatePos.Application.Purchasing;
 using UltimatePos.Infrastructure.Auth;
 using UltimatePos.Infrastructure.Configuration;
 using UltimatePos.Infrastructure.Import;
@@ -41,6 +43,9 @@ namespace UltimatePos.Infrastructure
             services.AddScoped<ICatalogRepository, CatalogRepository>();
             services.AddScoped<ICategoryImportParser, ClosedXmlCategoryImportParser>();
             services.AddScoped<IProductImportParser, ClosedXmlProductImportParser>();
+
+            services.AddScoped<IInventoryRepository, InventoryRepository>();
+            services.AddScoped<IPurchasingRepository, PurchasingRepository>();
 
             return services;
 

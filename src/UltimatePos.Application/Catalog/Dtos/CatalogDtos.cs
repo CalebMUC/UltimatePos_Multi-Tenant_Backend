@@ -34,3 +34,5 @@ public record ProductDetailDto(
 
 public record ProductImportRowResult(int RowNumber, string Name, bool IsValid, string? Error, string? Sku);
 public record ProductBulkImportResultDto(bool Committed, int TotalRows, int ValidRows, int InvalidRows, IEnumerable<ProductImportRowResult> Rows);
+
+public record CreateProductUnitConversionRequestDto(Guid PackUnitOfMeasureId, decimal ConversionFactor);
