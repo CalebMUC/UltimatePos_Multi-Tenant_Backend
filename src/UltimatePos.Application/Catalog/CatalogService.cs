@@ -1,5 +1,4 @@
-﻿using System.Linq;
-using UltimatePos.Application.Catalog.Dtos;
+﻿using UltimatePos.Application.Catalog.Dtos;
 using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Domain.Entities;
@@ -130,6 +129,7 @@ public class CatalogService
         {
             Sku = sku,
             Name = request.Name,
+            Description = request.Description,
             CategoryId = request.CategoryId,
             ItemType = request.ItemType,
             TaxClassification = request.TaxClassification,
@@ -200,16 +200,17 @@ public class CatalogService
         var batchPairs = new HashSet<(string Name, Guid CategoryId)>();
         var results = new Dictionary<int, ProductImportRowResult>();
         var validRows = new List<(int RowNumber, string Name, Guid CategoryId, string CategoryCode, ItemType ItemType,
-            TaxClassification TaxClassification, Guid UnitId, decimal ReorderLevel, decimal? WholesalePrice, decimal? RetailPrice)>();
+            TaxClassification TaxClassification, Guid UnitId, decimal ReorderLevel, decimal? WholesalePrice, decimal? RetailPrice, string? Description)>();
 
-        foreach (var (rowNumber, name, categoryCode, itemTypeRaw, taxRaw, unitSymbol, reorderLevel, wholesalePrice, retailPrice) in rows)
+        foreach (var (rowNumber, rawName, categoryCode, itemTypeRaw, taxRaw, unitSymbol, reorderLevel, wholesalePrice, retailPrice, description) in rows)
         {
+            var name = rawName ?? string.Empty;
             string? error = null;
             var categoryFound = categoryCodes.TryGetValue(categoryCode ?? "", out var categoryId);
             var unitFound = unitSymbols.TryGetValue(unitSymbol ?? "", out var unitId);
             var itemTypeParsed = Enum.TryParse<ItemType>(itemTypeRaw, ignoreCase: true, out var itemType);
             var taxParsed = Enum.TryParse<TaxClassification>(taxRaw, ignoreCase: true, out var taxClassification);
-            var nameKey = (name ?? "").Trim().ToUpperInvariant();
+            var nameKey = name.Trim().ToUpperInvariant();
 
             if (string.IsNullOrWhiteSpace(name))
                 error = "Name is required.";
@@ -232,7 +233,7 @@ public class CatalogService
             if (isValid)
             {
                 batchPairs.Add((nameKey, categoryId));
-                validRows.Add((rowNumber, name, categoryId, categoryCode!, itemType, taxClassification, unitId, reorderLevel!.Value, wholesalePrice, retailPrice));
+                validRows.Add((rowNumber, name, categoryId, categoryCode!, itemType, taxClassification, unitId, reorderLevel!.Value, wholesalePrice, retailPrice, description));
             }
         }
 
@@ -256,6 +257,7 @@ public class CatalogService
                     ProductId = productId,
                     Sku = sku,
                     Name = r.Name,
+                    Description = r.Description,
                     CategoryId = r.CategoryId,
                     ItemType = r.ItemType,
                     TaxClassification = r.TaxClassification,
@@ -280,17 +282,45 @@ public class CatalogService
         return new ProductBulkImportResultDto(committed, ordered.Count, ordered.Count(r => r.IsValid), invalidCount, ordered);
     }
 
+    public async Task<ProductUnitConversionDto> AddUnitConversionAsync(Guid productId, CreateProductUnitConversionRequestDto request)
+    {
+        //if (await _repository.GetCategoryByIdAsync(productId) is null && await _repository.GetProductByIdAsync(productId) is null)
+        //    throw new NotFoundException($"Product '{productId}' not found.");
+
+        if (await _repository.GetProductByIdAsync(productId) is null)
+            throw new NotFoundException($"Product '{productId}' not found.");
+
+        if (request.ConversionFactor <= 0)
+            throw new InvalidAssignmentException("Conversion factor must be greater than zero.");
+
+        var conversion = new ProductUnitConversion
+        {
+            ProductId = productId,
+            PackUnitOfMeasureId = request.PackUnitOfMeasureId,
+            ConversionFactor = request.ConversionFactor,
+            CreatedBy = _currentUser.UserId
+        };
+        var created = await _repository.CreateUnitConversionAsync(conversion);
+        return ToDto(created);
+    }
+
+    public async Task<IEnumerable<ProductUnitConversionDto>> GetUnitConversionsAsync(Guid productId) =>
+        (await _repository.GetUnitConversionsAsync(productId)).Select(ToDto);
+
     // ---- Mapping ----
 
     private static UnitOfMeasureDto ToDto(UnitOfMeasure u) => new(u.UnitOfMeasureId, u.Name, u.Symbol, u.IsActive);
+
     private static ProductDto ToDto(Product p) =>
-        new(p.ProductId, p.Sku, p.Name, p.CategoryId, p.ItemType, p.TaxClassification, p.BaseUnitOfMeasureId, p.ReorderLevel, p.IsActive);
+        new(p.ProductId, p.Sku, p.Name, p.Description, p.CategoryId, p.ItemType, p.TaxClassification, p.BaseUnitOfMeasureId, p.ReorderLevel, p.IsActive);
+
     private static ProductPriceTierDto ToDto(ProductPriceTier t) =>
         new(t.ProductPriceTierId, t.UnitOfMeasureId, t.PriceType, t.Price, t.EffectiveFrom);
+
     private static ProductUnitConversionDto ToDto(ProductUnitConversion c) =>
         new(c.ProductUnitConversionId, c.PackUnitOfMeasureId, c.ConversionFactor);
 
     private static ProductDetailDto ToDetailDto(Product p) =>
-        new(p.ProductId, p.Sku, p.Name, p.CategoryId, p.ItemType, p.TaxClassification, p.BaseUnitOfMeasureId, p.ReorderLevel, p.IsActive,
+        new(p.ProductId, p.Sku, p.Name, p.Description, p.CategoryId, p.ItemType, p.TaxClassification, p.BaseUnitOfMeasureId, p.ReorderLevel, p.IsActive,
             p.UnitConversions.Select(ToDto), p.PriceTiers.Select(ToDto));
 }

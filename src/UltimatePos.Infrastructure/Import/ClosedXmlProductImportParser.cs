@@ -6,7 +6,7 @@ namespace UltimatePos.Infrastructure.Import;
 public class ClosedXmlProductImportParser : IProductImportParser
 {
     public IEnumerable<(int RowNumber, string Name, string CategoryCode, string ItemType, string TaxClassification,
-        string UnitSymbol, decimal? ReorderLevel, decimal? WholesalePrice, decimal? RetailPrice)> Parse(Stream fileStream)
+        string UnitSymbol, decimal? ReorderLevel, decimal? WholesalePrice, decimal? RetailPrice, string? Description)> Parse(Stream fileStream)
     {
         using var workbook = new XLWorkbook(fileStream);
         var worksheet = workbook.Worksheet(1);
@@ -23,8 +23,10 @@ public class ClosedXmlProductImportParser : IProductImportParser
             var reorderLevel = ParseDecimal(row.Cell(6));
             var wholesalePrice = ParseDecimal(row.Cell(7));
             var retailPrice = ParseDecimal(row.Cell(8));
+            var descriptionRaw = row.Cell(9).GetString().Trim();
+            var description = string.IsNullOrWhiteSpace(descriptionRaw) ? null : descriptionRaw;
 
-            yield return (rowNumber, name, categoryCode, itemType, taxClassification, unitSymbol, reorderLevel, wholesalePrice, retailPrice);
+            yield return (rowNumber, name, categoryCode, itemType, taxClassification, unitSymbol, reorderLevel, wholesalePrice, retailPrice,description);
         }
     }
 

@@ -18,6 +18,7 @@ namespace UltimatePos.Domain.Entities
         public TaxClassification TaxClassification { get; set; }
         public Guid BaseUnitOfMeasureId { get; set; }
         public decimal ReorderLevel { get; set; }
+        public string? Description { get; set; }
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }

@@ -99,6 +99,7 @@ public class CatalogRepository : ICatalogRepository
         product.TaxClassification = request.TaxClassification;
         product.BaseUnitOfMeasureId = request.BaseUnitOfMeasureId;
         product.ReorderLevel = request.ReorderLevel;
+        product.Description = request.Description;
         product.LastUpdatedBy = updatedBy;
         product.LastUpdatedAt = DateTime.UtcNow;
 

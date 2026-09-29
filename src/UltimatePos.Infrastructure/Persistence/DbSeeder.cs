@@ -15,7 +15,6 @@ public static class DbSeeder
         ("Roles.View", "Roles"), ("Roles.Create", "Roles"), ("Roles.Update", "Roles"),
         ("Roles.Deactivate", "Roles"), ("Roles.AssignPermissions", "Roles"),
         ("Permissions.View", "Permissions"),
-        ("Products.Create", "Products"),
         ("Sales.Create", "Sales"),("Businesses.Register", "Businesses"), ("Businesses.View", "Businesses"),
         ("Businesses.Update", "Businesses"), ("Businesses.Deactivate", "Businesses"),
         ("Customers.Register", "Customers"), ("Customers.View", "Customers"),

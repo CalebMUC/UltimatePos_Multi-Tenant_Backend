@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using UltimatePos.Application.Business.Dtos;
+using UltimatePos.Application.Common.Helpers;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Domain.Entities;
 using UltimatePos.Domain.Exceptions;
@@ -35,7 +36,7 @@ namespace UltimatePos.Application.Business
                 KraPin = request.KraPin,
                 PhysicalAddress = request.PhysicalAddress,
                 County = request.County,
-                PhoneNumber = request.PhoneNumber,
+                PhoneNumber = PhoneNumberHelper.NormalizePhoneNumber(request.PhoneNumber),
                 Email = request.Email,
                 LogoUrl = request.LogoUrl,
                 BackgroundImageUrl = request.BackgroundImageUrl,
@@ -45,7 +46,7 @@ namespace UltimatePos.Application.Business
             var created = await _repository.CreateBusinessAsync(business);
             return ToDto(created);
         }
-
+      
         public async Task<IEnumerable<BusinessDto>> GetBusinessesAsync() =>
             (await _repository.GetBusinessesAsync()).Select(ToDto);
 
@@ -73,7 +74,7 @@ namespace UltimatePos.Application.Business
                 CustomerName = request.CustomerName,
                 KraPin = request.KraPin,
                 ContactPerson = request.ContactPerson,
-                PhoneNumber = request.PhoneNumber,
+                PhoneNumber = PhoneNumberHelper.NormalizePhoneNumber(request.PhoneNumber),
                 Email = request.Email,
                 PhysicalAddress = request.PhysicalAddress,
                 CreatedBy = _currentUser.UserId
@@ -82,6 +83,7 @@ namespace UltimatePos.Application.Business
             var created = await _repository.CreateCustomerAsync(customer);
             return ToDto(created);
         }
+
 
         public async Task<IEnumerable<CustomerDto>> GetCustomersByBusinessAsync(Guid businessId) =>
             (await _repository.GetCustomersByBusinessAsync(businessId)).Select(ToDto);
