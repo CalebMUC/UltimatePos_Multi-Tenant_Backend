@@ -153,4 +153,16 @@ public class CatalogRepository : ICatalogRepository
             .FirstOrDefaultAsync(c => c.ProductId == productId && c.PackUnitOfMeasureId == unitOfMeasureId && c.IsActive);
         return conversion?.ConversionFactor;
     }
+
+    public async Task<IEnumerable<Product>> GetProductsByIdsAsync(IEnumerable<Guid> productIds)
+    {
+        var ids = productIds.Distinct().ToList();
+        return await _context.Products.AsNoTracking().Where(p => ids.Contains(p.ProductId)).ToListAsync();
+    }
+
+    public async Task<bool> UnitOfMeasureExistsAsync(Guid unitOfMeasureId) =>
+        await _context.UnitsOfMeasure.AnyAsync(u => u.UnitOfMeasureId == unitOfMeasureId);
+
+    public async Task<bool> ConversionExistsAsync(Guid productId, Guid packUnitOfMeasureId) =>
+        await _context.ProductUnitConversions.AnyAsync(c => c.ProductId == productId && c.PackUnitOfMeasureId == packUnitOfMeasureId);
 }

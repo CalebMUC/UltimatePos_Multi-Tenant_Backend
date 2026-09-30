@@ -10,4 +10,6 @@ namespace UltimatePos.Application.Inventory.Dtos
 
     public record StockMovementDto(Guid StockMovementId, Guid ProductId, string MovementType, decimal QuantityChange,
         string ReferenceType, Guid ReferenceId, Guid BatchId, string? Notes, DateTime CreatedAt);
+
+    public record CreateStockAdjustmentRequestDto(Guid ProductId, Guid UnitOfMeasureId, decimal QuantityChange, string Reason); 
 }

@@ -35,6 +35,11 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<StockLevel> StockLevels => Set<StockLevel>();
         public DbSet<StockMovement> StockMovements => Set<StockMovement>();
 
+        public DbSet<Formula> Formulas => Set<Formula>();
+        public DbSet<FormulaLine> FormulaLines => Set<FormulaLine>();
+        public DbSet<ProductionRun> ProductionRuns => Set<ProductionRun>();
+        public DbSet<ProductionRunInput> ProductionRunInputs => Set<ProductionRunInput>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<UserRole>().HasKey(ur => new { ur.UserId, ur.RoleId });
@@ -126,6 +131,52 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<StockMovement>()
                 .HasOne(m => m.Product).WithMany()
                 .HasForeignKey(m => m.ProductId).OnDelete(DeleteBehavior.Restrict);
+
+            // Conversions: one per (product, unit) — a second row would make the factor ambiguous.
+            modelBuilder.Entity<ProductUnitConversion>().HasIndex(c => new { c.ProductId, c.PackUnitOfMeasureId }).IsUnique();
+
+            // Formulas: unique version per product, and at most ONE active version per product.
+            modelBuilder.Entity<Formula>().HasIndex(f => new { f.ProductId, f.VersionNumber }).IsUnique();
+            modelBuilder.Entity<Formula>().HasIndex(f => f.ProductId).IsUnique().HasFilter("\"IsActive\" = true");
+            modelBuilder.Entity<FormulaLine>().HasIndex(l => new { l.FormulaId, l.IngredientProductId }).IsUnique();
+            modelBuilder.Entity<ProductionRun>().HasIndex(r => r.RunNumber).IsUnique();
+
+            modelBuilder.Entity<Formula>()
+                .HasOne(f => f.Product).WithMany()
+                .HasForeignKey(f => f.ProductId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<Formula>()
+                .HasOne(f => f.OutputUnitOfMeasure).WithMany()
+                .HasForeignKey(f => f.OutputUnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<FormulaLine>()
+                .HasOne(l => l.Formula).WithMany(f => f.Lines)
+                .HasForeignKey(l => l.FormulaId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<FormulaLine>()
+                .HasOne(l => l.IngredientProduct).WithMany()
+                .HasForeignKey(l => l.IngredientProductId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<FormulaLine>()
+                .HasOne(l => l.UnitOfMeasure).WithMany()
+                .HasForeignKey(l => l.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ProductionRun>()
+                .HasOne(r => r.Formula).WithMany()
+                .HasForeignKey(r => r.FormulaId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProductionRun>()
+                .HasOne(r => r.Product).WithMany()
+                .HasForeignKey(r => r.ProductId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProductionRun>()
+                .HasOne(r => r.UnitOfMeasure).WithMany()
+                .HasForeignKey(r => r.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ProductionRunInput>()
+                .HasOne(i => i.ProductionRun).WithMany(r => r.Inputs)
+                .HasForeignKey(i => i.ProductionRunId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<ProductionRunInput>()
+                .HasOne(i => i.IngredientProduct).WithMany()
+                .HasForeignKey(i => i.IngredientProductId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProductionRunInput>()
+                .HasOne(i => i.UnitOfMeasure).WithMany()
+                .HasForeignKey(i => i.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
 
 
 

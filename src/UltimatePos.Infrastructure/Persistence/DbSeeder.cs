@@ -23,6 +23,17 @@ public static class DbSeeder
         ("Units.View", "Units"), ("Units.Create", "Units"),
         ("Products.View", "Products"), ("Products.Create", "Products"), ("Products.Update", "Products"),
         ("Products.ManagePricing", "Products"), ("Products.BulkImport", "Products"),
+        ("Suppliers.Register", "Suppliers"), ("Suppliers.View", "Suppliers"), ("Suppliers.Update", "Suppliers"), ("Suppliers.Deactivate", "Suppliers"),
+        ("PurchaseOrders.Create", "PurchaseOrders"), ("PurchaseOrders.View", "PurchaseOrders"),
+        ("PurchaseOrders.Receive", "PurchaseOrders"), ("PurchaseOrders.Cancel", "PurchaseOrders"),
+        ("Stock.View", "Stock"),
+        ("Products.ManageUnitConversions", "Products"),
+        ("Suppliers.Register", "Suppliers"), ("Suppliers.View", "Suppliers"), ("Suppliers.Update", "Suppliers"), ("Suppliers.Deactivate", "Suppliers"),
+        ("PurchaseOrders.Create", "PurchaseOrders"), ("PurchaseOrders.View", "PurchaseOrders"),
+        ("PurchaseOrders.Receive", "PurchaseOrders"), ("PurchaseOrders.Cancel", "PurchaseOrders"),
+        ("Stock.View", "Stock"), ("Stock.Adjust", "Stock"),
+        ("Formulas.Create", "Formulas"), ("Formulas.View", "Formulas"), ("Formulas.Deactivate", "Formulas"),
+        ("Production.Run", "Production"), ("Production.View", "Production"),
     };
 
     public static async Task SeedAsync(IServiceProvider services)

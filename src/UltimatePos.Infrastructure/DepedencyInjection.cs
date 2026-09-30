@@ -11,6 +11,7 @@ using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Identity;
 using UltimatePos.Application.Inventory;
+using UltimatePos.Application.Production;
 using UltimatePos.Application.Purchasing;
 using UltimatePos.Infrastructure.Auth;
 using UltimatePos.Infrastructure.Configuration;
@@ -46,6 +47,9 @@ namespace UltimatePos.Infrastructure
 
             services.AddScoped<IInventoryRepository, InventoryRepository>();
             services.AddScoped<IPurchasingRepository, PurchasingRepository>();
+
+            services.AddScoped<StockLedger>();
+            services.AddScoped<IProductionRepository, ProductionRepository>();
 
             return services;
 

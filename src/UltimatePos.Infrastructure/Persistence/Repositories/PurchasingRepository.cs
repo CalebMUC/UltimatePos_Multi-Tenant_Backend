@@ -14,7 +14,13 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
     public class PurchasingRepository : IPurchasingRepository
     {
         private readonly UltimatePosDbContext _context;
-        public PurchasingRepository(UltimatePosDbContext context) => _context = context;
+        private readonly StockLedger _stockLedger;
+
+        public PurchasingRepository(UltimatePosDbContext context, StockLedger stockLedger)
+        {
+            _context = context;
+            _stockLedger = stockLedger;
+        }
 
         public async Task<int> GetNextDocumentNumberAsync(string prefix)
         {
@@ -22,7 +28,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 .SqlQuery<int>($"""
                 INSERT INTO "SkuSequences" ("Prefix", "LastNumber") VALUES ({prefix}, 1)
                 ON CONFLICT ("Prefix") DO UPDATE SET "LastNumber" = "SkuSequences"."LastNumber" + 1
-                RETURNING "LastNumber"
+                RETURNING "LastNumber" AS "Value"
                 """)
                 .ToListAsync();
             return results.Single();
@@ -118,6 +124,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             IEnumerable<(Guid ProductId, decimal QuantityInBaseUnits)> movements,
             Guid batchId, string? notes, Guid? updatedBy)
         {
+            await using var tx = await _context.Database.BeginTransactionAsync();
+
             var order = await _context.PurchaseOrders.FirstOrDefaultAsync(o => o.PurchaseOrderId == purchaseOrderId)
                 ?? throw new NotFoundException($"Purchase order '{purchaseOrderId}' not found.");
 
@@ -132,9 +140,10 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 line.QuantityReceived = newQty;
             }
 
-            foreach (var (productId, quantity) in movements)
+            // Deterministic order by product so concurrent operations lock stock rows in the same sequence (no deadlocks).
+            foreach (var (productId, quantity) in movements.OrderBy(m => m.ProductId))
             {
-                _context.StockMovements.Add(new StockMovement
+                await _stockLedger.ApplyAsync(new StockMovement
                 {
                     ProductId = productId,
                     MovementType = StockMovementType.PurchaseReceipt,
@@ -145,20 +154,10 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                     Notes = notes,
                     CreatedBy = updatedBy
                 });
-
-                var stockLevel = await _context.StockLevels.FirstOrDefaultAsync(s => s.ProductId == productId);
-                if (stockLevel is null)
-                    _context.StockLevels.Add(new StockLevel { ProductId = productId, QuantityOnHand = quantity, LastUpdatedAt = DateTime.UtcNow });
-                else
-                {
-                    stockLevel.QuantityOnHand += quantity;
-                    stockLevel.LastUpdatedAt = DateTime.UtcNow;
-                }
             }
 
-            // One SaveChangesAsync — PurchaseOrder, PurchaseOrderLines, StockMovements and StockLevels
-            // all commit together or not at all.
             await _context.SaveChangesAsync();
+            await tx.CommitAsync();
         }
     }
 }

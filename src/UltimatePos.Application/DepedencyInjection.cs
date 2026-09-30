@@ -8,6 +8,7 @@ using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Identity;
 using UltimatePos.Application.Inventory;
+using UltimatePos.Application.Production;
 using UltimatePos.Application.Purchasing;
 
 namespace UltimatePos.Application
@@ -22,6 +23,8 @@ namespace UltimatePos.Application
             services.AddScoped<CatalogService>();
             services.AddScoped<PurchasingService>();
             services.AddScoped<InventoryService>();
+            services.AddScoped<ProductionService>();
+
             return services;
         }
     }

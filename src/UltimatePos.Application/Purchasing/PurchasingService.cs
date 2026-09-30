@@ -73,6 +73,15 @@ namespace UltimatePos.Application.Purchasing
             if (lines.Any(l => l.UnitCost < 0))
                 throw new InvalidAssignmentException("Unit cost cannot be negative.");
 
+            // Fail now, not at receive time: every line's product must exist and convert in the unit ordered.
+            foreach (var line in lines)
+            {
+                if (await _catalogRepository.GetConversionFactorAsync(line.ProductId, line.UnitOfMeasureId) is null)
+                    throw new InvalidAssignmentException(
+                        $"Product '{line.ProductId}' does not exist or has no conversion for the unit ordered — " +
+                        "add one via POST /products/{id}/unit-conversions first.");
+            }
+
             var number = await _repository.GetNextDocumentNumberAsync("PO");
 
             var order = new PurchaseOrder

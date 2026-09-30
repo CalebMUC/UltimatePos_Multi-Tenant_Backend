@@ -34,4 +34,9 @@ namespace UltimatePos.Domain.Exceptions
     {
         public DuplicateBusinessException(string message) : base(message) { }
     }
+
+    public class InsufficientStockException : Exception
+    {
+        public InsufficientStockException(string message) : base(message) { }
+    }
 }

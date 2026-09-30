@@ -284,14 +284,20 @@ public class CatalogService
 
     public async Task<ProductUnitConversionDto> AddUnitConversionAsync(Guid productId, CreateProductUnitConversionRequestDto request)
     {
-        //if (await _repository.GetCategoryByIdAsync(productId) is null && await _repository.GetProductByIdAsync(productId) is null)
-        //    throw new NotFoundException($"Product '{productId}' not found.");
-
-        if (await _repository.GetProductByIdAsync(productId) is null)
-            throw new NotFoundException($"Product '{productId}' not found.");
+        var product = await _repository.GetProductByIdAsync(productId)
+            ?? throw new NotFoundException($"Product '{productId}' not found.");
 
         if (request.ConversionFactor <= 0)
             throw new InvalidAssignmentException("Conversion factor must be greater than zero.");
+
+        if (request.PackUnitOfMeasureId == product.BaseUnitOfMeasureId)
+            throw new InvalidAssignmentException("The product's base unit always converts at 1 — a conversion to it is meaningless.");
+
+        if (!await _repository.UnitOfMeasureExistsAsync(request.PackUnitOfMeasureId))
+            throw new NotFoundException($"Unit of measure '{request.PackUnitOfMeasureId}' not found.");
+
+        if (await _repository.ConversionExistsAsync(productId, request.PackUnitOfMeasureId))
+            throw new InvalidAssignmentException("A conversion for this unit already exists on this product.");
 
         var conversion = new ProductUnitConversion
         {
@@ -300,8 +306,7 @@ public class CatalogService
             ConversionFactor = request.ConversionFactor,
             CreatedBy = _currentUser.UserId
         };
-        var created = await _repository.CreateUnitConversionAsync(conversion);
-        return ToDto(created);
+        return ToDto(await _repository.CreateUnitConversionAsync(conversion));
     }
 
     public async Task<IEnumerable<ProductUnitConversionDto>> GetUnitConversionsAsync(Guid productId) =>

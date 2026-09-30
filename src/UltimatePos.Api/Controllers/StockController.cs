@@ -36,5 +36,13 @@ namespace UltimatePos.Api.Controllers
             var result = await _inventoryService.GetStockMovementsAsync(productId);
             return Ok(ApiResponse<IEnumerable<StockMovementDto>>.Ok(result));
         }
+
+        [Authorize(Policy = "PERMISSION:Stock.Adjust")]
+        [HttpPost("adjustments")]
+        public async Task<IActionResult> Adjust(CreateStockAdjustmentRequestDto request)
+        {
+            var result = await _inventoryService.AdjustStockAsync(request);
+            return Ok(ApiResponse<StockLevelDto>.Ok(result));
+        }
     }
 }
