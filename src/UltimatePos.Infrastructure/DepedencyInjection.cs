@@ -11,11 +11,14 @@ using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Identity;
 using UltimatePos.Application.Inventory;
+using UltimatePos.Application.Payments;
 using UltimatePos.Application.Production;
 using UltimatePos.Application.Purchasing;
+using UltimatePos.Application.Sales;
 using UltimatePos.Infrastructure.Auth;
 using UltimatePos.Infrastructure.Configuration;
 using UltimatePos.Infrastructure.Import;
+using UltimatePos.Infrastructure.Payments;
 using UltimatePos.Infrastructure.Persistence;
 using UltimatePos.Infrastructure.Persistence.Repositories;
 
@@ -50,6 +53,16 @@ namespace UltimatePos.Infrastructure
 
             services.AddScoped<StockLedger>();
             services.AddScoped<IProductionRepository, ProductionRepository>();
+
+            services.Configure<MpesaOptions>(configuration.GetSection("Mpesa"));
+            services.AddMemoryCache();
+            services.AddHttpClient<IMpesaClient, DarajaMpesaClient>((sp, client) =>
+            {
+                var options = sp.GetRequiredService<IOptions<MpesaOptions>>().Value;
+                client.BaseAddress = new Uri(options.BaseUrl);
+            });
+            services.AddScoped<IMpesaRepository, MpesaRepository>();
+            services.AddScoped<ISalesRepository, SalesRepository>();
 
             return services;
 

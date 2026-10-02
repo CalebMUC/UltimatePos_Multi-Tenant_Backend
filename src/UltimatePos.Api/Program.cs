@@ -9,6 +9,7 @@ using UltimatePos.Application;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Infrastructure;
 using UltimatePos.Infrastructure.Configuration;
+using UltimatePos.Infrastructure.Payments;
 using UltimatePos.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -96,6 +97,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+
+app.UseMiddleware<MpesaIpAllowlistMiddleware>();
 
 app.UseHttpsRedirection();
 
