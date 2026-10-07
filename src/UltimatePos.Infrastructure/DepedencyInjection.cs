@@ -1,11 +1,13 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Accounting;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
@@ -63,6 +65,9 @@ namespace UltimatePos.Infrastructure
             });
             services.AddScoped<IMpesaRepository, MpesaRepository>();
             services.AddScoped<ISalesRepository, SalesRepository>();
+
+            services.AddScoped<CustomerLedger>();
+            services.AddScoped<IAccountingRepository, AccountingRepository>();
 
             return services;
 

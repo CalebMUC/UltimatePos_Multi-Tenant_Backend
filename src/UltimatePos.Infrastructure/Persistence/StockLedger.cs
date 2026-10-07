@@ -19,12 +19,18 @@ namespace UltimatePos.Infrastructure.Persistence
         private readonly UltimatePosDbContext _context;
         public StockLedger(UltimatePosDbContext context) => _context = context;
 
-        public async Task ApplyAsync(StockMovement movement)
+        /// <param name="allowNegative">
+        /// false (default) hard-blocks anything that would drive stock negative — correct for Purchasing/Production,
+        /// where a short ingredient should stop the operation. true skips the guard — used by Sales, where refusing
+        /// a transaction a cashier is physically ringing up is worse than a temporarily negative count to be corrected
+        /// by an adjustment.
+        /// </param>
+        public async Task ApplyAsync(StockMovement movement, bool allowNegative = false)
         {
             if (movement.QuantityChange == 0)
                 return;
 
-            if (movement.QuantityChange > 0)
+            if (movement.QuantityChange > 0 || allowNegative)
             {
                 await _context.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO "StockLevels" ("ProductId", "QuantityOnHand", "LastUpdatedAt")
@@ -36,8 +42,6 @@ namespace UltimatePos.Infrastructure.Persistence
             }
             else
             {
-                // The WHERE clause is the guard. Concurrent decrements on one row serialize, and each re-checks against
-                // the committed balance — so two runs can never both spend the same stock.
                 var rows = await _context.Database.ExecuteSqlInterpolatedAsync($"""
                 UPDATE "StockLevels"
                 SET "QuantityOnHand" = "QuantityOnHand" + {movement.QuantityChange}, "LastUpdatedAt" = now()

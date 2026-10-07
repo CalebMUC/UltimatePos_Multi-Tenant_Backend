@@ -40,6 +40,13 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<ProductionRun> ProductionRuns => Set<ProductionRun>();
         public DbSet<ProductionRunInput> ProductionRunInputs => Set<ProductionRunInput>();
 
+        public DbSet<MpesaTransaction> MpesaTransactions => Set<MpesaTransaction>();
+
+        public DbSet<Sale> Sales => Set<Sale>();
+        public DbSet<SaleLine> SaleLines => Set<SaleLine>();
+        public DbSet<CustomerLedgerEntry> CustomerLedgerEntries => Set<CustomerLedgerEntry>();
+        public DbSet<CustomerBalance> CustomerBalances => Set<CustomerBalance>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<UserRole>().HasKey(ur => new { ur.UserId, ur.RoleId });
@@ -177,6 +184,45 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<ProductionRunInput>()
                 .HasOne(i => i.UnitOfMeasure).WithMany()
                 .HasForeignKey(i => i.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+
+            modelBuilder.Entity<MpesaTransaction>().Property(t => t.TransactionType).HasConversion<string>();
+            modelBuilder.Entity<MpesaTransaction>().Property(t => t.Status).HasConversion<string>();
+            modelBuilder.Entity<MpesaTransaction>().HasIndex(t => t.CheckoutRequestId);
+
+            modelBuilder.Entity<MpesaTransaction>()
+                .HasOne(t => t.Sale).WithMany()
+                .HasForeignKey(t => t.SaleId).OnDelete(DeleteBehavior.Restrict);
+
+
+            modelBuilder.Entity<CustomerBalance>().HasKey(b => b.CustomerId);
+
+            modelBuilder.Entity<Sale>().HasIndex(s => s.SaleNumber).IsUnique();
+            modelBuilder.Entity<Sale>().Property(s => s.PaymentMethod).HasConversion<string>();
+            modelBuilder.Entity<Sale>().Property(s => s.Status).HasConversion<string>();
+            modelBuilder.Entity<CustomerLedgerEntry>().Property(e => e.EntryType).HasConversion<string>();
+
+            modelBuilder.Entity<Sale>()
+                .HasOne(s => s.Customer).WithMany()
+                .HasForeignKey(s => s.CustomerId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<SaleLine>()
+                .HasOne(l => l.Sale).WithMany(s => s.Lines)
+                .HasForeignKey(l => l.SaleId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<SaleLine>()
+                .HasOne(l => l.Product).WithMany()
+                .HasForeignKey(l => l.ProductId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SaleLine>()
+                .HasOne(l => l.UnitOfMeasure).WithMany()
+                .HasForeignKey(l => l.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CustomerLedgerEntry>()
+                .HasOne(e => e.Customer).WithMany()
+                .HasForeignKey(e => e.CustomerId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CustomerBalance>()
+                .HasOne(b => b.Customer).WithOne()
+                .HasForeignKey<CustomerBalance>(b => b.CustomerId).OnDelete(DeleteBehavior.Restrict);
 
 
 

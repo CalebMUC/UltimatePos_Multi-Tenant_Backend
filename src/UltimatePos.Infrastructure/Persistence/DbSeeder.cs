@@ -33,7 +33,9 @@ public static class DbSeeder
         ("PurchaseOrders.Receive", "PurchaseOrders"), ("PurchaseOrders.Cancel", "PurchaseOrders"),
         ("Stock.View", "Stock"), ("Stock.Adjust", "Stock"),
         ("Formulas.Create", "Formulas"), ("Formulas.View", "Formulas"), ("Formulas.Deactivate", "Formulas"),
-        ("Production.Run", "Production"), ("Production.View", "Production"),
+        ("Production.Run", "Production"), ("Production.View", "Production"),("Mpesa.Configure", "Mpesa"), ("Mpesa.View", "Mpesa"),
+        ("Customers.ViewLedger", "Customers"), ("Customers.RecordPayment", "Customers"),("Sales.View", "Sales"), ("Sales.Void", "Sales"),
+        ("Accounting.View", "Accounting"), ("Accounting.ViewCustomerBalance", "Accounting")
     };
 
     public static async Task SeedAsync(IServiceProvider services)

@@ -19,9 +19,9 @@ namespace UltimatePos.Application.Payments
         private readonly IMpesaRepository _repository;
         private readonly IMpesaClient _client;
         private readonly SalesService _salesService;
-        private readonly ILogger<MpesaService> _logger;
+        private readonly ILogger _logger;
 
-        public MpesaService(IMpesaRepository repository, IMpesaClient client, SalesService salesService, ILogger<MpesaService> logger)
+        public MpesaService(IMpesaRepository repository, IMpesaClient client, SalesService salesService, ILogger logger)
         {
             _repository = repository;
             _client = client;
@@ -37,7 +37,7 @@ namespace UltimatePos.Application.Payments
             var transaction = await _repository.GetByCheckoutRequestIdAsync(callback.CheckoutRequestID);
             if (transaction is null)
             {
-                _logger.LogWarning("STK callback for unknown CheckoutRequestID {Id}", callback.CheckoutRequestID);
+                _logger.Warning("STK callback for unknown CheckoutRequestID {Id}", callback.CheckoutRequestID);
                 return;
             }
             if (transaction.Status != MpesaTransactionStatus.Pending || transaction.SaleId is null)

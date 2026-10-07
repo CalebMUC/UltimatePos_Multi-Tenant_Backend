@@ -8,6 +8,7 @@ using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Inventory;
+using UltimatePos.Application.Payments;
 using UltimatePos.Application.Sales.Dtos;
 using UltimatePos.Domain.Entities;
 using UltimatePos.Domain.Exceptions;

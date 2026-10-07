@@ -36,6 +36,8 @@ namespace UltimatePos.Application.Catalog
         Task<IEnumerable<ProductUnitConversion>> GetUnitConversionsAsync(Guid productId);
         Task<decimal?> GetConversionFactorAsync(Guid productId, Guid unitOfMeasureId);
 
+        Task<decimal?> GetActivePriceAsync(Guid productId, Guid unitOfMeasureId, PriceType priceType);
+
         Task<IEnumerable<Product>> GetProductsByIdsAsync(IEnumerable<Guid> productIds);
         Task<bool> UnitOfMeasureExistsAsync(Guid unitOfMeasureId);
         Task<bool> ConversionExistsAsync(Guid productId, Guid packUnitOfMeasureId);

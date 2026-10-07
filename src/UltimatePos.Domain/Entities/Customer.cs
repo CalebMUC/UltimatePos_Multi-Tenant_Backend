@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Domain.Entities
 {
@@ -16,6 +17,8 @@ namespace UltimatePos.Domain.Entities
         public string? PhoneNumber { get; set; }
         public string? Email { get; set; }
         public string? PhysicalAddress { get; set; }
+
+        public PriceType PriceType { get; set; }
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }

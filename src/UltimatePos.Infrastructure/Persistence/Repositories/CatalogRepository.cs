@@ -160,6 +160,14 @@ public class CatalogRepository : ICatalogRepository
         return await _context.Products.AsNoTracking().Where(p => ids.Contains(p.ProductId)).ToListAsync();
     }
 
+    public async Task<decimal?> GetActivePriceAsync(Guid productId, Guid unitOfMeasureId, PriceType priceType) =>
+    await _context.ProductPriceTiers.AsNoTracking()
+        .Where(t => t.ProductId == productId && t.UnitOfMeasureId == unitOfMeasureId
+                    && t.PriceType == priceType && t.IsActive && t.EffectiveFrom <= DateTime.UtcNow)
+        .OrderByDescending(t => t.EffectiveFrom)
+        .Select(t => (decimal?)t.Price)
+        .FirstOrDefaultAsync();
+
     public async Task<bool> UnitOfMeasureExistsAsync(Guid unitOfMeasureId) =>
         await _context.UnitsOfMeasure.AnyAsync(u => u.UnitOfMeasureId == unitOfMeasureId);
 
