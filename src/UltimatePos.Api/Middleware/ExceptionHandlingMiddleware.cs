@@ -34,6 +34,7 @@ public class ExceptionHandlingMiddleware
                 InvalidAssignmentException => (HttpStatusCode.BadRequest, "INVALID_ASSIGNMENT", ex.Message),
                 DuplicateBusinessException => (HttpStatusCode.Conflict, "BUSINESS_EXISTS", ex.Message),
                 InsufficientStockException => (HttpStatusCode.Conflict, "INSUFFICIENT_STOCK", ex.Message),
+                PurchaseNotAllowedException => (HttpStatusCode.UnprocessableEntity, "PURCHASE_NOT_ALLOWED", ex.Message),
                 _ => (HttpStatusCode.InternalServerError, "INTERNAL_ERROR", "An unexpected error occurred.")
                 // Deliberately not ex.Message on the fallback branch — the original
                 // system leaked internal exception details to clients on Register.

@@ -11,6 +11,7 @@ namespace UltimatePos.Application.Business.Dtos
     string BusinessName,
     string? TradingName,
     BusinessType BusinessType,
+    BusinessKind? Kind,
     string? RegistrationNumber,
     string KraPin,
     string? PhysicalAddress,
@@ -34,7 +35,7 @@ namespace UltimatePos.Application.Business.Dtos
         string? BackgroundImageUrl);
 
     public record BusinessDto(
-        Guid BusinessId, string BusinessName, string? TradingName, BusinessType BusinessType,
+        Guid BusinessId, string BusinessName, string? TradingName, BusinessType BusinessType, BusinessKind Kind,
         string? RegistrationNumber, string KraPin, string? PhysicalAddress, string? County,
         string? PhoneNumber, string? Email, string? LogoUrl, string? BackgroundImageUrl, bool IsActive);
 

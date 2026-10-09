@@ -22,6 +22,14 @@ namespace UltimatePos.Api.Controllers
             return Ok(ApiResponse<PurchaseOrderDto>.Ok(result));
         }
 
+        [Authorize(Policy = "PERMISSION:PurchaseOrders.Create")]
+        [HttpGet("purchasable-item-types")]
+        public async Task<IActionResult> GetPurchasableItemTypes([FromQuery] Guid businessId)
+        {
+            var result = await _purchasingService.GetPurchasableItemTypesAsync(businessId);
+            return Ok(ApiResponse<IEnumerable<ItemType>>.Ok(result));
+        }
+
         [Authorize(Policy = "PERMISSION:PurchaseOrders.View")]
         [HttpGet]
         public async Task<IActionResult> GetOrders(

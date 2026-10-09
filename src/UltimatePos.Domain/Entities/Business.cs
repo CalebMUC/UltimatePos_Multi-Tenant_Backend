@@ -12,12 +12,25 @@ namespace UltimatePos.Domain.Entities
         Retailer
     }
 
+    /// <summary>
+    /// How a business ACQUIRES stock — separate from BusinessType, which is who it SELLS to.
+    /// Drives what it may purchase (see PurchasePolicy). A pharmacy or supermarket is a Trader.
+    /// </summary>
+    public enum BusinessKind
+    {
+        /// <summary>Buys raw materials/packaging and produces finished goods from formulas (e.g. manufacturing agrovet).</summary>
+        Manufacturer,
+        /// <summary>Buys finished goods from suppliers and resells them (pharmacy, supermarket, retail shop).</summary>
+        Trader
+    }
+
     public class BusinessProfile
     {
         public Guid BusinessId { get; set; }
         public string BusinessName { get; set; } = string.Empty;
         public string? TradingName { get; set; }
         public BusinessType BusinessType { get; set; }
+        public BusinessKind Kind { get; set; }
         public string? RegistrationNumber { get; set; }
         public string KraPin { get; set; } = string.Empty;
         public string? PhysicalAddress { get; set; }

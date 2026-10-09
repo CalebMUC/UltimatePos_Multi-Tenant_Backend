@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Dtos;
+using UltimatePos.Application.Common.Helpers;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Purchasing.Dtos;
 using UltimatePos.Domain.Entities;
@@ -18,12 +20,14 @@ namespace UltimatePos.Application.Purchasing
         private readonly IPurchasingRepository _repository;
         private readonly ICatalogRepository _catalogRepository;
         private readonly ICurrentUser _currentUser;
-
-        public PurchasingService(IPurchasingRepository repository, ICatalogRepository catalogRepository, ICurrentUser currentUser)
+        private readonly IBusinessRepository _businessRepository;
+        public PurchasingService(IPurchasingRepository repository, ICatalogRepository catalogRepository,
+                  IBusinessRepository businessRepository,  ICurrentUser currentUser)
         {
             _repository = repository;
             _catalogRepository = catalogRepository;
             _currentUser = currentUser;
+            _businessRepository = businessRepository;
         }
 
         public async Task<SupplierDto> RegisterSupplierAsync(CreateSupplierRequestDto request)
@@ -34,7 +38,7 @@ namespace UltimatePos.Application.Purchasing
                 SupplierName = request.SupplierName,
                 KraPin = request.KraPin,
                 ContactPerson = request.ContactPerson,
-                PhoneNumber = request.PhoneNumber,
+                PhoneNumber = PhoneNumberHelper.NormalizePhoneNumber(request.PhoneNumber),
                 Email = request.Email,
                 PhysicalAddress = request.PhysicalAddress,
                 PaymentTermDays = request.PaymentTermDays,
@@ -60,10 +64,56 @@ namespace UltimatePos.Application.Purchasing
         public async Task<SupplierDto> SetSupplierActiveStatusAsync(Guid supplierId, bool isActive) =>
             ToDto(await _repository.SetSupplierActiveStatusAsync(supplierId, isActive, _currentUser.UserId));
 
+        //public async Task<PurchaseOrderDto> CreatePurchaseOrderAsync(CreatePurchaseOrderRequestDto request)
+        //{
+        //    if (await _repository.GetSupplierByIdAsync(request.SupplierId) is null)
+        //        throw new NotFoundException($"Supplier '{request.SupplierId}' not found.");
+
+        //    var lines = request.Lines.ToList();
+        //    if (lines.Count == 0)
+        //        throw new InvalidAssignmentException("A purchase order needs at least one line.");
+        //    if (lines.Any(l => l.QuantityOrdered <= 0))
+        //        throw new InvalidAssignmentException("Quantity ordered must be greater than zero on every line.");
+        //    if (lines.Any(l => l.UnitCost < 0))
+        //        throw new InvalidAssignmentException("Unit cost cannot be negative.");
+
+        //    // Fail now, not at receive time: every line's product must exist and convert in the unit ordered.
+        //    foreach (var line in lines)
+        //    {
+        //        if (await _catalogRepository.GetConversionFactorAsync(line.ProductId, line.UnitOfMeasureId) is null)
+        //            throw new InvalidAssignmentException(
+        //                $"Product '{line.ProductId}' does not exist or has no conversion for the unit ordered — " +
+        //                "add one via POST /products/{id}/unit-conversions first.");
+        //    }
+
+        //    var number = await _repository.GetNextDocumentNumberAsync("PO");
+
+        //    var order = new PurchaseOrder
+        //    {
+        //        OrderNumber = $"PO-{number:D6}",
+        //        SupplierId = request.SupplierId,
+        //        Status = PurchaseOrderStatus.Ordered,
+        //        ExpectedDeliveryDate = request.ExpectedDeliveryDate,
+        //        Notes = request.Notes,
+        //        CreatedBy = _currentUser.UserId,
+        //        Lines = lines.Select(l => new PurchaseOrderLine
+        //        {
+        //            ProductId = l.ProductId,
+        //            UnitOfMeasureId = l.UnitOfMeasureId,
+        //            QuantityOrdered = l.QuantityOrdered,
+        //            UnitCost = l.UnitCost,
+        //            CreatedBy = _currentUser.UserId
+        //        }).ToList()
+        //    };
+
+        //    return ToDto(await _repository.CreatePurchaseOrderAsync(order));
+        //}
+
+
         public async Task<PurchaseOrderDto> CreatePurchaseOrderAsync(CreatePurchaseOrderRequestDto request)
         {
-            if (await _repository.GetSupplierByIdAsync(request.SupplierId) is null)
-                throw new NotFoundException($"Supplier '{request.SupplierId}' not found.");
+            var supplier = await _repository.GetSupplierByIdAsync(request.SupplierId)
+                ?? throw new NotFoundException($"Supplier '{request.SupplierId}' not found.");
 
             var lines = request.Lines.ToList();
             if (lines.Count == 0)
@@ -72,6 +122,9 @@ namespace UltimatePos.Application.Purchasing
                 throw new InvalidAssignmentException("Quantity ordered must be greater than zero on every line.");
             if (lines.Any(l => l.UnitCost < 0))
                 throw new InvalidAssignmentException("Unit cost cannot be negative.");
+
+            // The buying business is the supplier's owner; what it may buy depends on its kind.
+            await EnsureProductsPurchasableAsync(supplier.BusinessId, lines.Select(l => l.ProductId));
 
             // Fail now, not at receive time: every line's product must exist and convert in the unit ordered.
             foreach (var line in lines)
@@ -129,6 +182,58 @@ namespace UltimatePos.Application.Purchasing
             return ToDto(await _repository.SetPurchaseOrderStatusAsync(purchaseOrderId, PurchaseOrderStatus.Cancelled, _currentUser.UserId));
         }
 
+        //public async Task<PurchaseOrderDto> ReceivePurchaseOrderAsync(Guid purchaseOrderId, ReceivePurchaseOrderRequestDto request)
+        //{
+        //    var order = await _repository.GetPurchaseOrderByIdAsync(purchaseOrderId)
+        //        ?? throw new NotFoundException($"Purchase order '{purchaseOrderId}' not found.");
+
+        //    if (order.Status is PurchaseOrderStatus.Received or PurchaseOrderStatus.Cancelled)
+        //        throw new InvalidAssignmentException($"Purchase order is already {order.Status} and cannot be received against.");
+
+        //    var receiveLines = request.Lines.ToList();
+        //    if (receiveLines.Count == 0)
+        //        throw new InvalidAssignmentException("At least one line must be specified to receive.");
+
+        //    var lineUpdates = new List<(Guid, decimal)>();
+        //    var movements = new List<(Guid, decimal)>();
+
+        //    foreach (var receiveLine in receiveLines)
+        //    {
+        //        var line = order.Lines.FirstOrDefault(l => l.PurchaseOrderLineId == receiveLine.PurchaseOrderLineId)
+        //            ?? throw new NotFoundException($"Line '{receiveLine.PurchaseOrderLineId}' not found on this order.");
+
+        //        if (receiveLine.QuantityReceived <= 0)
+        //            throw new InvalidAssignmentException("Quantity received must be greater than zero.");
+
+        //        var newTotal = line.QuantityReceived + receiveLine.QuantityReceived;
+        //        if (newTotal > line.QuantityOrdered)
+        //            throw new InvalidAssignmentException(
+        //                $"Receiving {receiveLine.QuantityReceived} on line '{line.PurchaseOrderLineId}' would exceed the ordered quantity " +
+        //                $"({line.QuantityOrdered}, already received {line.QuantityReceived}).");
+
+        //        var factor = await _catalogRepository.GetConversionFactorAsync(line.ProductId, line.UnitOfMeasureId)
+        //            ?? throw new InvalidAssignmentException(
+        //                $"No unit conversion exists for product '{line.ProductId}' in the ordered unit — add one via POST /products/{{id}}/unit-conversions first.");
+
+        //        lineUpdates.Add((line.PurchaseOrderLineId, newTotal));
+        //        movements.Add((line.ProductId, receiveLine.QuantityReceived * factor));
+        //    }
+
+        //    var finalQuantities = order.Lines.ToDictionary(l => l.PurchaseOrderLineId, l => l.QuantityReceived);
+        //    foreach (var (lineId, newQty) in lineUpdates)
+        //        finalQuantities[lineId] = newQty;
+
+        //    var allReceived = order.Lines.All(l => finalQuantities[l.PurchaseOrderLineId] >= l.QuantityOrdered);
+        //    var anyReceived = order.Lines.Any(l => finalQuantities[l.PurchaseOrderLineId] > 0);
+        //    var newStatus = allReceived ? PurchaseOrderStatus.Received : anyReceived ? PurchaseOrderStatus.PartiallyReceived : order.Status;
+
+        //    var batchId = Guid.NewGuid();
+        //    await _repository.ReceivePurchaseOrderAsync(purchaseOrderId, newStatus, lineUpdates, movements, batchId, request.Notes, _currentUser.UserId);
+
+        //    return await GetPurchaseOrderByIdAsync(purchaseOrderId);
+        //}
+
+
         public async Task<PurchaseOrderDto> ReceivePurchaseOrderAsync(Guid purchaseOrderId, ReceivePurchaseOrderRequestDto request)
         {
             var order = await _repository.GetPurchaseOrderByIdAsync(purchaseOrderId)
@@ -140,6 +245,14 @@ namespace UltimatePos.Application.Purchasing
             var receiveLines = request.Lines.ToList();
             if (receiveLines.Count == 0)
                 throw new InvalidAssignmentException("At least one line must be specified to receive.");
+
+            // Re-check at the point stock actually changes. Only the lines being received are checked, so a
+            // legitimate line on an order raised before this rule existed isn't blocked by an illegitimate one.
+            var supplier = await _repository.GetSupplierByIdAsync(order.SupplierId)
+                ?? throw new NotFoundException($"Supplier '{order.SupplierId}' not found.");
+            var receivingLineIds = receiveLines.Select(r => r.PurchaseOrderLineId).ToHashSet();
+            await EnsureProductsPurchasableAsync(supplier.BusinessId,
+                order.Lines.Where(l => receivingLineIds.Contains(l.PurchaseOrderLineId)).Select(l => l.ProductId));
 
             var lineUpdates = new List<(Guid, decimal)>();
             var movements = new List<(Guid, decimal)>();
@@ -178,6 +291,40 @@ namespace UltimatePos.Application.Purchasing
             await _repository.ReceivePurchaseOrderAsync(purchaseOrderId, newStatus, lineUpdates, movements, batchId, request.Notes, _currentUser.UserId);
 
             return await GetPurchaseOrderByIdAsync(purchaseOrderId);
+        }
+
+        /// <summary>Item types the business may purchase, so clients can filter the product picker up front.</summary>
+        public async Task<IEnumerable<ItemType>> GetPurchasableItemTypesAsync(Guid businessId)
+        {
+            var business = await _businessRepository.GetBusinessByIdAsync(businessId)
+                ?? throw new NotFoundException($"Business '{businessId}' not found.");
+            return PurchasePolicy.AllowedItemTypes(business.Kind);
+        }
+
+        private async Task EnsureProductsPurchasableAsync(Guid businessId, IEnumerable<Guid> productIds)
+        {
+            var ids = productIds.Distinct().ToList();
+            if (ids.Count == 0) return;
+
+            var business = await _businessRepository.GetBusinessByIdAsync(businessId)
+                ?? throw new NotFoundException($"Business '{businessId}' not found.");
+            var products = (await _catalogRepository.GetProductsByIdsAsync(ids)).ToDictionary(p => p.ProductId);
+
+            var rejected = new List<string>();
+            foreach (var id in ids)
+            {
+                if (!products.TryGetValue(id, out var product))
+                    throw new NotFoundException($"Product '{id}' not found.");
+                if (!PurchasePolicy.CanPurchase(business.Kind, product.ItemType))
+                    rejected.Add($"'{product.Name}' ({product.ItemType})");
+            }
+
+            if (rejected.Count > 0)
+            {
+                var allowed = string.Join(", ", PurchasePolicy.AllowedItemTypes(business.Kind));
+                throw new PurchaseNotAllowedException(
+                    $"A {business.Kind} business can only purchase {allowed}. Not allowed: {string.Join(", ", rejected)}.");
+            }
         }
 
         private static SupplierDto ToDto(Supplier s) =>

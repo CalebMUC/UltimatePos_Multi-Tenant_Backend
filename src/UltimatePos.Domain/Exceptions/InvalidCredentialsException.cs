@@ -39,4 +39,9 @@ namespace UltimatePos.Domain.Exceptions
     {
         public InsufficientStockException(string message) : base(message) { }
     }
+
+    public class PurchaseNotAllowedException : Exception
+    {
+        public PurchaseNotAllowedException(string message) : base(message) { }
+    }
 }

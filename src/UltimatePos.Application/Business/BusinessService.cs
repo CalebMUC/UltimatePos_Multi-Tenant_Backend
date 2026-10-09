@@ -24,6 +24,10 @@ namespace UltimatePos.Application.Business
 
         public async Task<BusinessDto> RegisterBusinessAsync(RegisterBusinessRequestDto request)
         {
+            // Kind decides what the business may purchase, so it must be chosen explicitly — never defaulted.
+            if (request.Kind is not { } kind || !Enum.IsDefined(kind))
+                throw new InvalidAssignmentException("Business kind is required (Manufacturer or Trader).");
+
             if (await _repository.KraPinExistsAsync(request.KraPin))
                 throw new DuplicateBusinessException($"A business with KRA PIN '{request.KraPin}' is already registered.");
 
@@ -32,6 +36,7 @@ namespace UltimatePos.Application.Business
                 BusinessName = request.BusinessName,
                 TradingName = request.TradingName,
                 BusinessType = request.BusinessType,
+                Kind = kind,
                 RegistrationNumber = request.RegistrationNumber,
                 KraPin = request.KraPin,
                 PhysicalAddress = request.PhysicalAddress,
@@ -46,7 +51,7 @@ namespace UltimatePos.Application.Business
             var created = await _repository.CreateBusinessAsync(business);
             return ToDto(created);
         }
-      
+
         public async Task<IEnumerable<BusinessDto>> GetBusinessesAsync() =>
             (await _repository.GetBusinessesAsync()).Select(ToDto);
 

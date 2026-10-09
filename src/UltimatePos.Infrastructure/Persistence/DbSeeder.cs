@@ -9,35 +9,36 @@ namespace UltimatePos.Infrastructure.Persistence;
 public static class DbSeeder
 {
     private static readonly (string Name, string Module)[] RequiredPermissions =
-    {
-        ("Users.Create", "Users"), ("Users.View", "Users"), ("Users.AssignRoles", "Users"),
-        ("Users.Deactivate", "Users"), ("Users.Lock", "Users"),
-        ("Roles.View", "Roles"), ("Roles.Create", "Roles"), ("Roles.Update", "Roles"),
-        ("Roles.Deactivate", "Roles"), ("Roles.AssignPermissions", "Roles"),
-        ("Permissions.View", "Permissions"),
-        ("Sales.Create", "Sales"),("Businesses.Register", "Businesses"), ("Businesses.View", "Businesses"),
-        ("Businesses.Update", "Businesses"), ("Businesses.Deactivate", "Businesses"),
-        ("Customers.Register", "Customers"), ("Customers.View", "Customers"),
-        ("Customers.Update", "Customers"), ("Customers.Deactivate", "Customers"),
-        ("Categories.View", "Categories"), ("Categories.Create", "Categories"), ("Categories.BulkImport", "Categories"),
-        ("Units.View", "Units"), ("Units.Create", "Units"),
-        ("Products.View", "Products"), ("Products.Create", "Products"), ("Products.Update", "Products"),
-        ("Products.ManagePricing", "Products"), ("Products.BulkImport", "Products"),
-        ("Suppliers.Register", "Suppliers"), ("Suppliers.View", "Suppliers"), ("Suppliers.Update", "Suppliers"), ("Suppliers.Deactivate", "Suppliers"),
-        ("PurchaseOrders.Create", "PurchaseOrders"), ("PurchaseOrders.View", "PurchaseOrders"),
-        ("PurchaseOrders.Receive", "PurchaseOrders"), ("PurchaseOrders.Cancel", "PurchaseOrders"),
-        ("Stock.View", "Stock"),
-        ("Products.ManageUnitConversions", "Products"),
-        ("Suppliers.Register", "Suppliers"), ("Suppliers.View", "Suppliers"), ("Suppliers.Update", "Suppliers"), ("Suppliers.Deactivate", "Suppliers"),
-        ("PurchaseOrders.Create", "PurchaseOrders"), ("PurchaseOrders.View", "PurchaseOrders"),
-        ("PurchaseOrders.Receive", "PurchaseOrders"), ("PurchaseOrders.Cancel", "PurchaseOrders"),
-        ("Stock.View", "Stock"), ("Stock.Adjust", "Stock"),
-        ("Formulas.Create", "Formulas"), ("Formulas.View", "Formulas"), ("Formulas.Deactivate", "Formulas"),
-        ("Production.Run", "Production"), ("Production.View", "Production"),("Mpesa.Configure", "Mpesa"), ("Mpesa.View", "Mpesa"),
-        ("Customers.ViewLedger", "Customers"), ("Customers.RecordPayment", "Customers"),("Sales.View", "Sales"), ("Sales.Void", "Sales"),
-        ("Accounting.View", "Accounting"), ("Accounting.ViewCustomerBalance", "Accounting")
-    };
+ {
+    ("Users.Create", "Users"), ("Users.View", "Users"), ("Users.AssignRoles", "Users"),
+    ("Users.Deactivate", "Users"), ("Users.Lock", "Users"),
+    ("Roles.View", "Roles"), ("Roles.Create", "Roles"), ("Roles.Update", "Roles"),
+    ("Roles.Deactivate", "Roles"), ("Roles.AssignPermissions", "Roles"),
+    ("Permissions.View", "Permissions"),
 
+    ("Businesses.Register", "Businesses"), ("Businesses.View", "Businesses"),
+    ("Businesses.Update", "Businesses"), ("Businesses.Deactivate", "Businesses"),
+    ("Customers.Register", "Customers"), ("Customers.View", "Customers"),
+    ("Customers.Update", "Customers"), ("Customers.Deactivate", "Customers"),
+    ("Customers.ViewLedger", "Customers"), ("Customers.RecordPayment", "Customers"),
+
+    ("Categories.View", "Categories"), ("Categories.Create", "Categories"), ("Categories.BulkImport", "Categories"),
+    ("Units.View", "Units"), ("Units.Create", "Units"),
+    ("Products.View", "Products"), ("Products.Create", "Products"), ("Products.Update", "Products"),
+    ("Products.ManagePricing", "Products"), ("Products.BulkImport", "Products"), ("Products.ManageUnitConversions", "Products"),
+
+    ("Suppliers.Register", "Suppliers"), ("Suppliers.View", "Suppliers"),
+    ("Suppliers.Update", "Suppliers"), ("Suppliers.Deactivate", "Suppliers"),
+    ("PurchaseOrders.Create", "PurchaseOrders"), ("PurchaseOrders.View", "PurchaseOrders"),
+    ("PurchaseOrders.Receive", "PurchaseOrders"), ("PurchaseOrders.Cancel", "PurchaseOrders"),
+    ("Stock.View", "Stock"), ("Stock.Adjust", "Stock"),
+
+    ("Formulas.Create", "Formulas"), ("Formulas.View", "Formulas"), ("Formulas.Deactivate", "Formulas"),
+    ("Production.Run", "Production"), ("Production.View", "Production"),
+
+    ("Sales.Create", "Sales"), ("Sales.View", "Sales"), ("Sales.Void", "Sales"),
+    ("Mpesa.Configure", "Mpesa"), ("Mpesa.View", "Mpesa")
+};
     public static async Task SeedAsync(IServiceProvider services)
     {
         var context = services.GetRequiredService<UltimatePosDbContext>();
