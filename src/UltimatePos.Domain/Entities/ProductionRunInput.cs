@@ -14,6 +14,11 @@ namespace UltimatePos.Domain.Entities
         public Guid UnitOfMeasureId { get; set; }
         public decimal QuantityConsumed { get; set; }
         public decimal QuantityConsumedInBaseUnits { get; set; }
+
+        /// <summary>Average cost per base unit at the moment this ingredient was consumed.</summary>
+        public decimal UnitCost { get; set; }
+        /// <summary>QuantityConsumedInBaseUnits x UnitCost, rounded to 2dp.</summary>
+        public decimal TotalCost { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }
 

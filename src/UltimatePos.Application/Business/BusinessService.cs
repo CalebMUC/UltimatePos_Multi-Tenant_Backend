@@ -107,7 +107,7 @@ namespace UltimatePos.Application.Business
             ToDto(await _repository.SetCustomerActiveStatusAsync(customerId, isActive, _currentUser.UserId));
 
         private static BusinessDto ToDto(BusinessProfile b) =>
-            new(b.BusinessId, b.BusinessName, b.TradingName, b.BusinessType, b.RegistrationNumber, b.KraPin,
+            new(b.BusinessId, b.BusinessName, b.TradingName, b.BusinessType, b.Kind,b.RegistrationNumber, b.KraPin,
                 b.PhysicalAddress, b.County, b.PhoneNumber, b.Email, b.LogoUrl, b.BackgroundImageUrl, b.IsActive);
 
         private static CustomerDto ToDto(Customer c) =>

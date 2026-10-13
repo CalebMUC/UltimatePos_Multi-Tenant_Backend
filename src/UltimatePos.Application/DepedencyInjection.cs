@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using UltimatePos.Application.Accounting;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
+using UltimatePos.Application.Costing;
 using UltimatePos.Application.Identity;
 using UltimatePos.Application.Inventory;
 using UltimatePos.Application.Production;
@@ -28,6 +29,7 @@ namespace UltimatePos.Application
             services.AddScoped<ProductionService>();
             services.AddScoped<SalesService>(); 
             services.AddScoped<AccountingService>();
+            services.AddScoped<CostingService>();
 
             return services;
         }

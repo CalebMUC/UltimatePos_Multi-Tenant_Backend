@@ -42,14 +42,33 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
             _context.Sales.Add(sale);
 
-            foreach (var movement in movements.OrderBy(m => m.ProductId))
+            var applied = movements.OrderBy(m => m.ProductId).ToList();
+            foreach (var movement in applied)
                 await _stockLedger.ApplyAsync(movement, allowNegative: true);
+            SnapshotLineCosts(sale.Lines, applied);
 
             if (ledgerEntry is not null)
                 await _customerLedger.ApplyAsync(ledgerEntry);
 
             await _context.SaveChangesAsync();
             await tx.CommitAsync();
+        }
+
+        /// <summary>
+        /// Copies the cost each product left stock at (stamped on its movement by the ledger) onto the matching sale lines.
+        /// Every movement of one product in this transaction saw the same average — the first removal locks the stock row until
+        /// commit — so a per-product lookup is exact even when a product appears on several lines.
+        /// </summary>
+        private static void SnapshotLineCosts(IEnumerable<SaleLine> lines, IEnumerable<StockMovement> appliedMovements)
+        {
+            var costByProduct = appliedMovements
+                .Where(m => m.UnitCost.HasValue)
+                .GroupBy(m => m.ProductId)
+                .ToDictionary(g => g.Key, g => g.First().UnitCost!.Value);
+
+            foreach (var line in lines)
+                if (costByProduct.TryGetValue(line.ProductId, out var cost))
+                    line.UnitCost = cost;
         }
 
         public async Task RecordPendingSaleAsync(Sale sale)
@@ -62,16 +81,18 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         {
             await using var tx = await _context.Database.BeginTransactionAsync();
 
-            var sale = await _context.Sales.FirstOrDefaultAsync(s => s.SaleId == saleId)
-                ?? throw new NotFoundException($"Sale '{saleId}' not found.");
+            var sale = await _context.Sales.Include(s => s.Lines).FirstOrDefaultAsync(s => s.SaleId == saleId)
+                     ?? throw new NotFoundException($"Sale '{saleId}' not found.");
 
             sale.Status = SaleStatus.Completed;
             sale.LastUpdatedAt = DateTime.UtcNow;
             if (mpesaReceiptNumber is not null)
                 sale.Notes = string.IsNullOrWhiteSpace(sale.Notes) ? $"M-Pesa receipt: {mpesaReceiptNumber}" : $"{sale.Notes} | M-Pesa receipt: {mpesaReceiptNumber}";
 
-            foreach (var movement in movements.OrderBy(m => m.ProductId))
+            var applied = movements.OrderBy(m => m.ProductId).ToList();
+            foreach (var movement in applied)
                 await _stockLedger.ApplyAsync(movement, allowNegative: true);
+            SnapshotLineCosts(sale.Lines, applied); // cost is fixed when stock actually leaves (at confirmation), not when the prompt was sent
 
             if (ledgerEntry is not null)
                 await _customerLedger.ApplyAsync(ledgerEntry);

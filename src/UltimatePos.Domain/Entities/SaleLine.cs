@@ -15,6 +15,10 @@ namespace UltimatePos.Domain.Entities
         public decimal Quantity { get; set; }
         public decimal QuantityInBaseUnits { get; set; }
         public decimal UnitPrice { get; set; }
+
+        /// <summary>Cost per BASE unit at the moment of sale (snapshot, so later cost changes never rewrite history).
+        /// Null for sales recorded before costing existed; 0 when the product had no cost recorded.</summary>
+        public decimal? UnitCost { get; set; }
         public decimal LineTotal { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }

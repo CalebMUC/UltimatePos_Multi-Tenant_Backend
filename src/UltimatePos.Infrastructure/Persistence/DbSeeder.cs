@@ -37,7 +37,9 @@ public static class DbSeeder
     ("Production.Run", "Production"), ("Production.View", "Production"),
 
     ("Sales.Create", "Sales"), ("Sales.View", "Sales"), ("Sales.Void", "Sales"),
-    ("Mpesa.Configure", "Mpesa"), ("Mpesa.View", "Mpesa")
+    ("Mpesa.Configure", "Mpesa"), ("Mpesa.View", "Mpesa"),
+
+    ("Costing.View", "Costing"), ("Costing.Revalue", "Costing")
 };
     public static async Task SeedAsync(IServiceProvider services)
     {

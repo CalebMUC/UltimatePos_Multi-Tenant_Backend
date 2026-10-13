@@ -4,9 +4,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Costing;
 using UltimatePos.Application.Production;
 using UltimatePos.Domain.Entities;
 using UltimatePos.Domain.Exceptions;
+using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Infrastructure.Persistence.Repositories
 {
@@ -102,16 +104,43 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
         public async Task RecordProductionRunAsync(ProductionRun run, IEnumerable<StockMovement> movements)
         {
+            var all = movements.ToList();
+            var consumption = all.Where(m => m.MovementType == StockMovementType.ProductionConsumption).OrderBy(m => m.ProductId).ToList();
+            var output = all.Single(m => m.MovementType == StockMovementType.ProductionOutput);
+
             await using var tx = await _context.Database.BeginTransactionAsync();
+
+            // Lock every stock row this run touches, in product order, before reading any cost. Concurrent runs then
+            // queue in the same sequence (no deadlocks) and each sees a stable average cost for its whole transaction.
+            await _stockLedger.LockAsync(all.Select(m => m.ProductId));
 
             _context.ProductionRuns.Add(run);
 
-            // Deterministic order by product so concurrent runs lock stock rows in the same sequence (no deadlocks).
-            foreach (var movement in movements.OrderBy(m => m.ProductId))
+            // 1. Consume the ingredients. The ledger stamps each movement with the average cost at that instant.
+            foreach (var movement in consumption)
                 await _stockLedger.ApplyAsync(movement);
 
-            // Run + inputs + movements commit together. If any ingredient is short, ApplyAsync throws before this line,
-            // the transaction is disposed uncommitted, and nothing — balances included — changes.
+            // 2. Price each input, then roll the run up: material + labour/other, divided by what was actually produced.
+            foreach (var input in run.Inputs)
+            {
+                var cost = consumption.Single(m => m.ProductId == input.IngredientProductId).UnitCost ?? 0m;
+                input.UnitCost = cost;
+                input.TotalCost = CostingCalculator.LineCost(input.QuantityConsumedInBaseUnits, cost);
+            }
+
+            var costing = CostingCalculator.ForProduction(
+                run.Inputs.Select(i => i.TotalCost), run.AdditionalCosts.Select(c => c.Amount), output.QuantityChange);
+            run.MaterialCost = costing.MaterialCost;
+            run.AdditionalCost = costing.AdditionalCost;
+            run.TotalCost = costing.TotalCost;
+            run.UnitCost = costing.UnitCostPerBaseUnit;
+
+            // 3. The finished good enters stock at that cost, blended into its average like any other receipt.
+            output.UnitCost = costing.UnitCostPerBaseUnit;
+            await _stockLedger.ApplyAsync(output);
+
+            // Run + inputs + cost lines + movements commit together. If any ingredient is short, ApplyAsync throws before
+            // this line, the transaction is disposed uncommitted, and nothing — balances included — changes.
             await _context.SaveChangesAsync();
             await tx.CommitAsync();
         }

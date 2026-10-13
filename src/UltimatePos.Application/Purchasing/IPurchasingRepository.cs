@@ -29,7 +29,7 @@ namespace UltimatePos.Application.Purchasing
         Task ReceivePurchaseOrderAsync(
             Guid purchaseOrderId, PurchaseOrderStatus newStatus,
             IEnumerable<(Guid PurchaseOrderLineId, decimal NewQuantityReceived)> lineUpdates,
-            IEnumerable<(Guid ProductId, decimal QuantityInBaseUnits)> movements,
+            IEnumerable<(Guid ProductId, decimal QuantityInBaseUnits, decimal? UnitCostPerBaseUnit)> movements,
             Guid batchId, string? notes, Guid? updatedBy);
     }
 }

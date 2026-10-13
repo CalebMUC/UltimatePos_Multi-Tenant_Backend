@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
+using UltimatePos.Application.Costing;
 using UltimatePos.Application.Inventory.Dtos;
 using UltimatePos.Domain.Exceptions;
 
@@ -54,9 +55,31 @@ namespace UltimatePos.Application.Inventory
 
             var changeInBaseUnits = Math.Round(request.QuantityChange * factor, 4, MidpointRounding.AwayFromZero);
             if (changeInBaseUnits == 0)
-                throw new InvalidAssignmentException("Quantity is too small — it rounds to zero in the product's base unit.");
+               throw new InvalidAssignmentException("Quantity is too small — it rounds to zero in the product's base unit.");
 
-            await _repository.AdjustStockAsync(request.ProductId, changeInBaseUnits, request.Reason.Trim(), _currentUser.UserId);
+            //await _repository.AdjustStockAsync(request.ProductId, changeInBaseUnits, request.Reason.Trim(), _currentUser.UserId);
+            decimal? unitCostPerBase = null;
+            if (request.UnitCost.HasValue)
+            {
+                if (changeInBaseUnits < 0)
+                    throw new InvalidAssignmentException("A unit cost only applies when adding stock — removals are valued at the current average cost.");
+                if (request.UnitCost.Value <= 0)
+                    throw new InvalidAssignmentException("Unit cost must be greater than zero.");
+
+                unitCostPerBase = CostingCalculator.ToUnitCostPerBaseUnit(request.UnitCost.Value, factor);
+                if (unitCostPerBase <= 0)
+                    throw new InvalidAssignmentException("Unit cost is too small — it rounds to zero per base unit.");
+            }
+            else if (changeInBaseUnits > 0)
+            {
+                // Adding stock with no cost anywhere would value it at nothing and quietly corrupt every margin downstream.
+                var level = await _repository.GetStockLevelAsync(request.ProductId);
+                if (level is null || level.AverageUnitCost <= 0)
+                    throw new InvalidAssignmentException(
+                        "This product has no cost yet — provide a unit cost (the cost of one unit of the unit given) with this adjustment.");
+            }
+
+            await _repository.AdjustStockAsync(request.ProductId, changeInBaseUnits, request.Reason.Trim(), _currentUser.UserId, unitCostPerBase);
             return await GetStockLevelAsync(request.ProductId);
         }
     }

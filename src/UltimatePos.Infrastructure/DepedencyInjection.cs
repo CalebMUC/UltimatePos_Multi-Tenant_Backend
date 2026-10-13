@@ -11,6 +11,7 @@ using UltimatePos.Application.Accounting;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
+using UltimatePos.Application.Costing;
 using UltimatePos.Application.Identity;
 using UltimatePos.Application.Inventory;
 using UltimatePos.Application.Payments;
@@ -68,6 +69,8 @@ namespace UltimatePos.Infrastructure
 
             services.AddScoped<CustomerLedger>();
             services.AddScoped<IAccountingRepository, AccountingRepository>();
+
+            services.AddScoped<ICostingRepository, CostingRepository>();
 
             return services;
 

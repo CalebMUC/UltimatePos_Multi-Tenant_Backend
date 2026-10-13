@@ -121,7 +121,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         public async Task ReceivePurchaseOrderAsync(
             Guid purchaseOrderId, PurchaseOrderStatus newStatus,
             IEnumerable<(Guid PurchaseOrderLineId, decimal NewQuantityReceived)> lineUpdates,
-            IEnumerable<(Guid ProductId, decimal QuantityInBaseUnits)> movements,
+            IEnumerable<(Guid ProductId, decimal QuantityInBaseUnits, decimal? UnitCostPerBaseUnit)> movements,
+
             Guid batchId, string? notes, Guid? updatedBy)
         {
             await using var tx = await _context.Database.BeginTransactionAsync();
@@ -141,13 +142,15 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             }
 
             // Deterministic order by product so concurrent operations lock stock rows in the same sequence (no deadlocks).
-            foreach (var (productId, quantity) in movements.OrderBy(m => m.ProductId))
+            foreach (var (productId, quantity, unitCost) in movements.OrderBy(m => m.ProductId))
+
             {
                 await _stockLedger.ApplyAsync(new StockMovement
                 {
                     ProductId = productId,
                     MovementType = StockMovementType.PurchaseReceipt,
                     QuantityChange = quantity,
+                    UnitCost = unitCost,
                     ReferenceType = "PurchaseOrder",
                     ReferenceId = purchaseOrderId,
                     BatchId = batchId,

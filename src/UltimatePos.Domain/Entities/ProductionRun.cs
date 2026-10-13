@@ -16,6 +16,15 @@ namespace UltimatePos.Domain.Entities
         public Guid UnitOfMeasureId { get; set; }
         public decimal QuantityPlanned { get; set; }
         public decimal QuantityProduced { get; set; }
+
+        /// <summary>Cost of all stock items consumed (ingredients and tracked packaging).</summary>
+        public decimal MaterialCost { get; set; }
+        /// <summary>Sum of the non-inventory cost lines (labour, utilities, ...).</summary>
+        public decimal AdditionalCost { get; set; }
+        public decimal TotalCost { get; set; }
+
+        /// <summary>TotalCost divided by the output in BASE units — the cost the finished good enters stock at.</summary>
+        public decimal UnitCost { get; set; }
         public string? Notes { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }
@@ -24,5 +33,6 @@ namespace UltimatePos.Domain.Entities
         public Product Product { get; set; } = null!;
         public UnitOfMeasure UnitOfMeasure { get; set; } = null!;
         public ICollection<ProductionRunInput> Inputs { get; set; } = new List<ProductionRunInput>();
+        public ICollection<ProductionRunCost> AdditionalCosts { get; set; } = new List<ProductionRunCost>();
     }
 }

@@ -40,6 +40,8 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<ProductionRun> ProductionRuns => Set<ProductionRun>();
         public DbSet<ProductionRunInput> ProductionRunInputs => Set<ProductionRunInput>();
 
+        public DbSet<ProductionRunCost> ProductionRunCosts => Set<ProductionRunCost>();
+
         public DbSet<MpesaTransaction> MpesaTransactions => Set<MpesaTransaction>();
 
         public DbSet<Sale> Sales => Set<Sale>();
@@ -60,6 +62,8 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<BusinessProfile>().HasKey(b => b.BusinessId);
             modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.KraPin).IsUnique();
             modelBuilder.Entity<BusinessProfile>().Property(b => b.BusinessType).HasConversion<string>();
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.Kind).HasConversion<string>();
+
 
             modelBuilder.Entity<Customer>()
                 .HasOne(c => c.BusinessProfile)
@@ -184,6 +188,11 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<ProductionRunInput>()
                 .HasOne(i => i.UnitOfMeasure).WithMany()
                 .HasForeignKey(i => i.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ProductionRunCost>().Property(c => c.CostType).HasConversion<string>();
+            modelBuilder.Entity<ProductionRunCost>()
+                .HasOne(c => c.ProductionRun).WithMany(r => r.AdditionalCosts)
+                .HasForeignKey(c => c.ProductionRunId).OnDelete(DeleteBehavior.Cascade);
 
 
             modelBuilder.Entity<MpesaTransaction>().Property(t => t.TransactionType).HasConversion<string>();

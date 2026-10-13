@@ -120,6 +120,7 @@ namespace UltimatePos.Application.Sales
                 ProductId = l.ProductId,
                 MovementType = StockMovementType.SaleVoid,
                 QuantityChange = l.QuantityInBaseUnits,
+                UnitCost = l.UnitCost > 0 ? l.UnitCost : null, // back in at the cost it left at; unknown cost leaves the average alone
                 ReferenceType = "Sale",
                 ReferenceId = saleId,
                 BatchId = saleId,

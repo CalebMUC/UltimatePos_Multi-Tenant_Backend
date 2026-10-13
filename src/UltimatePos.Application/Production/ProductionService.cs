@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Common.Interfaces;
+using UltimatePos.Application.Costing;
 using UltimatePos.Application.Inventory;
 using UltimatePos.Application.Production.Dtos;
 using UltimatePos.Domain.Entities;
@@ -17,6 +18,7 @@ namespace UltimatePos.Application.Production
     public class ProductionService
     {
         private const int QuantityDecimals = 4;
+        private const int MaxAdditionalCostLines = 20;
 
         private readonly IProductionRepository _repository;
         private readonly ICatalogRepository _catalogRepository;
@@ -113,18 +115,51 @@ namespace UltimatePos.Application.Production
         {
             var plan = await BuildPlanAsync(request.FormulaId, request.QuantityToProduce, request.UnitOfMeasureId);
 
+            //return new ProductionPreviewDto(
+            //    plan.Formula.FormulaId, plan.Formula.VersionNumber, plan.Formula.ProductId, plan.Formula.Product.Name,
+            //    request.QuantityToProduce, request.UnitOfMeasureId,
+            //    plan.Requirements.All(r => r.Shortfall == 0),
+            //    plan.Requirements.Select(r => new ProductionRequirementDto(
+            //        r.Line.IngredientProductId, r.Line.IngredientProduct.Name, r.Line.IngredientProduct.Sku, r.Line.UnitOfMeasureId,
+            //        r.RequiredInLineUnit, r.RequiredBase, r.AvailableBase, r.Shortfall)));
+
+            var additionalCosts = BuildAdditionalCosts(request.AdditionalCosts, null);
+
+            var output = request.ActualQuantityProduced ?? request.QuantityToProduce;
+            if (output <= 0)
+                throw new InvalidAssignmentException("Actual quantity produced must be greater than zero.");
+
+            // Estimate only: stock is costed at today's average, and the real figure is fixed inside the run's transaction.
+            var material = plan.Requirements.Sum(r => r.EstimatedCost);
+            var additional = additionalCosts.Sum(c => c.Amount);
+            var total = material + additional;
+            var costPerUnit = CostingCalculator.RoundMoney(total / output);
+
+            var priceChecks = new List<ProductionPriceCheckDto>();
+            foreach (var priceType in Enum.GetValues<PriceType>())
+            {
+                var price = await _catalogRepository.GetActivePriceAsync(plan.Formula.ProductId, request.UnitOfMeasureId, priceType);
+                if (!price.HasValue) continue;
+                var (margin, percent) = CostingCalculator.Margin(price.Value, costPerUnit);
+                priceChecks.Add(new ProductionPriceCheckDto(priceType.ToString(), price.Value, margin, percent));
+            }
+
             return new ProductionPreviewDto(
                 plan.Formula.FormulaId, plan.Formula.VersionNumber, plan.Formula.ProductId, plan.Formula.Product.Name,
                 request.QuantityToProduce, request.UnitOfMeasureId,
                 plan.Requirements.All(r => r.Shortfall == 0),
                 plan.Requirements.Select(r => new ProductionRequirementDto(
                     r.Line.IngredientProductId, r.Line.IngredientProduct.Name, r.Line.IngredientProduct.Sku, r.Line.UnitOfMeasureId,
-                    r.RequiredInLineUnit, r.RequiredBase, r.AvailableBase, r.Shortfall)));
+                    r.RequiredInLineUnit, r.RequiredBase, r.AvailableBase, r.Shortfall, r.UnitCost, r.EstimatedCost)),
+                material, additional, total, costPerUnit,
+                plan.Requirements.All(r => r.UnitCost > 0), priceChecks);
         }
 
         public async Task<ProductionRunDto> RecordProductionRunAsync(CreateProductionRunRequestDto request)
         {
             var plan = await BuildPlanAsync(request.FormulaId, request.QuantityToProduce, request.UnitOfMeasureId);
+
+            var additionalCosts = BuildAdditionalCosts(request.AdditionalCosts, _currentUser.UserId);
 
             var shortages = plan.Requirements.Where(r => r.Shortfall > 0).ToList();
             if (shortages.Count > 0)
@@ -132,6 +167,15 @@ namespace UltimatePos.Application.Production
                     "Insufficient stock to produce this batch (base units): " +
                     string.Join("; ", shortages.Select(s =>
                         $"{s.Line.IngredientProduct.Name} — need {s.RequiredBase}, have {s.AvailableBase}, short {s.Shortfall}")));
+
+            // A run can only be costed if everything it consumes has a cost. Producing anyway would enter the finished good
+            // into stock cheaper than it really is, and every margin report after that would be wrong.
+            var uncosted = plan.Requirements.Where(r => r.UnitCost <= 0).ToList();
+            if (uncosted.Count > 0)
+                throw new InvalidAssignmentException(
+                    "This batch cannot be costed — no cost is recorded for: " +
+                    string.Join(", ", uncosted.Select(u => u.Line.IngredientProduct.Name)) +
+                    ". Receive them on a purchase order with a unit cost, or set a cost with POST /costing/revaluations.");
 
             var actual = request.ActualQuantityProduced ?? request.QuantityToProduce;
             if (actual <= 0)
@@ -157,6 +201,9 @@ namespace UltimatePos.Application.Production
                 QuantityProduced = actual,
                 Notes = request.Notes,
                 CreatedBy = userId,
+                // The repository finalises every cost figure inside the stock transaction, where the average cost is locked.
+                AdditionalCost = additionalCosts.Sum(c => c.Amount),
+                AdditionalCosts = additionalCosts,
                 Inputs = plan.Requirements.Select(r => new ProductionRunInput
                 {
                     IngredientProductId = r.Line.IngredientProductId,
@@ -213,9 +260,10 @@ namespace UltimatePos.Application.Production
 
         // ---- Planning (shared by preview and record, so what you preview is exactly what runs) ----
 
-        private sealed record RequirementLine(FormulaLine Line, decimal RequiredInLineUnit, decimal RequiredBase, decimal AvailableBase)
+        private sealed record RequirementLine(FormulaLine Line, decimal RequiredInLineUnit, decimal RequiredBase, decimal AvailableBase, decimal UnitCost)
         {
             public decimal Shortfall => Math.Max(0, RequiredBase - AvailableBase);
+            public decimal EstimatedCost => CostingCalculator.LineCost(RequiredBase, UnitCost);
         }
 
         private sealed record ProductionPlan(Formula Formula, decimal OutputFactor, IReadOnlyList<RequirementLine> Requirements);
@@ -239,7 +287,11 @@ namespace UltimatePos.Application.Production
             // How many "standard batches" this run is, measured in the product's base unit so mixed units compare correctly.
             var scale = (quantityToProduce * outputFactor) / (formula.OutputQuantity * formulaOutputFactor);
 
-            var onHand = await _inventoryRepository.GetQuantitiesOnHandAsync(formula.Lines.Select(l => l.IngredientProductId));
+            //var onHand = await _inventoryRepository.GetQuantitiesOnHandAsync(formula.Lines.Select(l => l.IngredientProductId));
+
+            var ingredientIds = formula.Lines.Select(l => l.IngredientProductId).ToList();
+            var onHand = await _inventoryRepository.GetQuantitiesOnHandAsync(ingredientIds);
+            var averageCosts = await _inventoryRepository.GetAverageCostsAsync(ingredientIds);
 
             var requirements = new List<RequirementLine>();
             foreach (var line in formula.Lines)
@@ -252,14 +304,43 @@ namespace UltimatePos.Application.Production
                 if (requiredBase <= 0)
                     throw new InvalidAssignmentException($"Quantity is too small — '{line.IngredientProduct.Name}' rounds to zero.");
 
+                //onHand.TryGetValue(line.IngredientProductId, out var available);
+                //requirements.Add(new RequirementLine(line, requiredInLineUnit, requiredBase, available));
+
                 onHand.TryGetValue(line.IngredientProductId, out var available);
-                requirements.Add(new RequirementLine(line, requiredInLineUnit, requiredBase, available));
+                averageCosts.TryGetValue(line.IngredientProductId, out var unitCost);
+                requirements.Add(new RequirementLine(line, requiredInLineUnit, requiredBase, available, unitCost));
             }
 
             return new ProductionPlan(formula, outputFactor, requirements);
         }
 
         private static decimal Round(decimal value) => Math.Round(value, QuantityDecimals, MidpointRounding.AwayFromZero);
+
+        private static List<ProductionRunCost> BuildAdditionalCosts(IEnumerable<ProductionCostRequestDto>? costs, Guid? userId)
+        {
+            var list = costs?.ToList() ?? new List<ProductionCostRequestDto>();
+            if (list.Count > MaxAdditionalCostLines)
+                throw new InvalidAssignmentException($"A run can have at most {MaxAdditionalCostLines} additional cost lines.");
+
+            foreach (var c in list)
+            {
+                if (!Enum.IsDefined(c.CostType))
+                    throw new InvalidAssignmentException("Unknown cost type.");
+                if (c.Amount <= 0)
+                    throw new InvalidAssignmentException("Each additional cost must be greater than zero.");
+                if (c.Description is { Length: > 200 })
+                    throw new InvalidAssignmentException("A cost description cannot exceed 200 characters.");
+            }
+
+            return list.Select(c => new ProductionRunCost
+            {
+                CostType = c.CostType,
+                Description = string.IsNullOrWhiteSpace(c.Description) ? null : c.Description.Trim(),
+                Amount = CostingCalculator.RoundMoney(c.Amount),
+                CreatedBy = userId
+            }).ToList();
+        }
 
         // ---- Mapping ----
 
@@ -274,6 +355,9 @@ namespace UltimatePos.Application.Production
                 r.QuantityPlanned, r.QuantityProduced,
                 r.QuantityPlanned == 0 ? 0 : Math.Round(r.QuantityProduced / r.QuantityPlanned * 100m, 2),
                 r.Notes, r.CreatedAt,
-                r.Inputs.Select(i => new ProductionRunInputDto(i.IngredientProductId, i.UnitOfMeasureId, i.QuantityConsumed, i.QuantityConsumedInBaseUnits)));
+                r.Inputs.Select(i => new ProductionRunInputDto(i.IngredientProductId, i.UnitOfMeasureId, i.QuantityConsumed, i.QuantityConsumedInBaseUnits, i.UnitCost, i.TotalCost)),
+                r.MaterialCost, r.AdditionalCost, r.TotalCost, r.UnitCost,
+                r.QuantityProduced == 0 ? 0 : CostingCalculator.RoundMoney(r.TotalCost / r.QuantityProduced),
+                r.AdditionalCosts.Select(c => new ProductionRunCostDto(c.CostType.ToString(), c.Description, c.Amount)));
     }
 }

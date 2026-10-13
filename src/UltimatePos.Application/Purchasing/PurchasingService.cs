@@ -8,6 +8,7 @@ using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Common.Helpers;
 using UltimatePos.Application.Common.Interfaces;
+using UltimatePos.Application.Costing;
 using UltimatePos.Application.Purchasing.Dtos;
 using UltimatePos.Domain.Entities;
 using UltimatePos.Domain.Exceptions;
@@ -255,7 +256,8 @@ namespace UltimatePos.Application.Purchasing
                 order.Lines.Where(l => receivingLineIds.Contains(l.PurchaseOrderLineId)).Select(l => l.ProductId));
 
             var lineUpdates = new List<(Guid, decimal)>();
-            var movements = new List<(Guid, decimal)>();
+            //var movements = new List<(Guid, decimal)>();
+            var movements = new List<(Guid ProductId, decimal QuantityInBaseUnits, decimal? UnitCostPerBaseUnit)>();
 
             foreach (var receiveLine in receiveLines)
             {
@@ -276,7 +278,12 @@ namespace UltimatePos.Application.Purchasing
                         $"No unit conversion exists for product '{line.ProductId}' in the ordered unit — add one via POST /products/{{id}}/unit-conversions first.");
 
                 lineUpdates.Add((line.PurchaseOrderLineId, newTotal));
-                movements.Add((line.ProductId, receiveLine.QuantityReceived * factor));
+                //movements.Add((line.ProductId, receiveLine.QuantityReceived * factor));
+
+                // The supplier's price is per ordered unit (a 25kg bag); stock is costed per base unit (kg). A line with no
+                // price (0) is received at the current average rather than blended in as free goods.
+                decimal? unitCostPerBase = line.UnitCost > 0 ? CostingCalculator.ToUnitCostPerBaseUnit(line.UnitCost, factor) : null;
+                movements.Add((line.ProductId, receiveLine.QuantityReceived * factor, unitCostPerBase));
             }
 
             var finalQuantities = order.Lines.ToDictionary(l => l.PurchaseOrderLineId, l => l.QuantityReceived);

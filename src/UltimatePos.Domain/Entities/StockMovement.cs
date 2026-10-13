@@ -14,6 +14,10 @@ namespace UltimatePos.Domain.Entities
         public Guid ProductId { get; set; }
         public StockMovementType MovementType { get; set; }
         public decimal QuantityChange { get; set; }
+
+        /// <summary>Cost per BASE unit this movement was valued at. For decreases it is the average cost at that moment (set by
+        /// StockLedger). Null on movements recorded before costing existed.</summary>
+        public decimal? UnitCost { get; set; }
         public string ReferenceType { get; set; } = string.Empty;
         public Guid ReferenceId { get; set; }
         public Guid BatchId { get; set; }

@@ -46,7 +46,15 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 .OrderByDescending(m => m.CreatedAt)
                 .ToListAsync();
 
-        public async Task AdjustStockAsync(Guid productId, decimal quantityChangeInBaseUnits, string reason, Guid? adjustedBy)
+        public async Task<Dictionary<Guid, decimal>> GetAverageCostsAsync(IEnumerable<Guid> productIds)
+        {
+            var ids = productIds.Distinct().ToList();
+            return await _context.StockLevels.AsNoTracking()
+                .Where(s => ids.Contains(s.ProductId))
+                .ToDictionaryAsync(s => s.ProductId, s => s.AverageUnitCost);
+        }
+
+        public async Task AdjustStockAsync(Guid productId, decimal quantityChangeInBaseUnits, string reason, Guid? adjustedBy, decimal? unitCostPerBaseUnit)
         {
             await using var tx = await _context.Database.BeginTransactionAsync();
 
@@ -56,11 +64,37 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 ProductId = productId,
                 MovementType = StockMovementType.Adjustment,
                 QuantityChange = quantityChangeInBaseUnits,
+                UnitCost = unitCostPerBaseUnit, // only read for additions; removals are valued by the ledger at the current average
                 ReferenceType = "StockAdjustment",
                 ReferenceId = adjustmentId,
                 BatchId = adjustmentId,
                 Notes = reason,
                 CreatedBy = adjustedBy
+            });
+
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+
+        public async Task RevalueStockAsync(Guid productId, decimal newUnitCostPerBaseUnit, string reason, Guid? revaluedBy)
+        {
+            await using var tx = await _context.Database.BeginTransactionAsync();
+
+            var previous = await _stockLedger.RevalueAsync(productId, newUnitCostPerBaseUnit);
+
+            // Append-only audit trail: a revaluation moves no quantity, but it changes what the stock is worth.
+            var revaluationId = Guid.NewGuid();
+            _context.StockMovements.Add(new StockMovement
+            {
+                ProductId = productId,
+                MovementType = StockMovementType.Revaluation,
+                QuantityChange = 0,
+                UnitCost = newUnitCostPerBaseUnit,
+                ReferenceType = "StockRevaluation",
+                ReferenceId = revaluationId,
+                BatchId = revaluationId,
+                Notes = $"{reason} (average cost {previous:0.######} -> {newUnitCostPerBaseUnit:0.######})",
+                CreatedBy = revaluedBy
             });
 
             await _context.SaveChangesAsync();
