@@ -43,6 +43,17 @@ namespace UltimatePos.Api.Controllers
             return Ok(ApiResponse<ProfitReportDto>.Ok(result));
         }
 
+        // Revenue - cost of goods sold - operating expenses = net profit, for whole days from..to (both inclusive, yyyy-MM-dd).
+        // utcOffsetMinutes is the business's local offset from UTC (default 180 = East Africa Time); it only affects which
+        // sales fall on which day. Check `isComplete`: false means some revenue has no recorded cost, so net profit is understated.
+        [Authorize(Policy = "PERMISSION:Costing.View")]
+        [HttpGet("profit-and-loss")]
+        public async Task<IActionResult> GetProfitAndLoss([FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] int utcOffsetMinutes = 180)
+        {
+            var result = await _costingService.GetProfitAndLossAsync(from, to, utcOffsetMinutes);
+            return Ok(ApiResponse<ProfitAndLossDto>.Ok(result));
+        }
+
         // Sets the average cost of stock that already exists (onboarding, or correcting a wrong cost). Quantity is untouched.
         [Authorize(Policy = "PERMISSION:Costing.Revalue")]
         [HttpPost("revaluations")]
