@@ -39,8 +39,36 @@ public static class DbSeeder
     ("Sales.Create", "Sales"), ("Sales.View", "Sales"), ("Sales.Void", "Sales"),
     ("Mpesa.Configure", "Mpesa"), ("Mpesa.View", "Mpesa"),
 
-    ("Costing.View", "Costing"), ("Costing.Revalue", "Costing")
+    ("Costing.View", "Costing"), ("Costing.Revalue", "Costing"),
+
+
+    ("ExpenseCategories.Create", "Expenses"), ("ExpenseCategories.View", "Expenses"),
+    ("ExpenseCategories.Update", "Expenses"), ("ExpenseCategories.Deactivate", "Expenses"),
+    ("Expenses.Create", "Expenses"), ("Expenses.View", "Expenses"),
+    ("Expenses.Update", "Expenses"), ("Expenses.Void", "Expenses")
+
+
 };
+
+    // Starting set so expenses can be recorded on day one. Seeded only while the table is empty; everything here can be
+    // renamed or deactivated afterwards through the API.
+    private static readonly (string Code, string Name, string Description)[] DefaultExpenseCategories =
+    {
+    ("RENT", "Rent", "Premises rent and service charge"),
+    ("UTIL", "Utilities", "Electricity, water, internet, phone and airtime"),
+    ("SAL", "Salaries & Wages", "Staff pay, casual labour outside production runs, allowances"),
+    ("TRN", "Transport & Fuel", "Delivery, fuel, fares and vehicle running costs"),
+    ("REP", "Repairs & Maintenance", "Equipment, mill, vehicle and premises repairs"),
+    ("LIC", "Licences & Permits", "County licences, permits and registrations"),
+    ("MKT", "Marketing & Advertising", "Promotion, signage, SMS and print"),
+    ("FIN", "Bank & M-Pesa Charges", "Transaction fees, bank charges and interest"),
+    ("OFF", "Office & Stationery", "Stationery, printing, receipt rolls and small office items"),
+    ("PRO", "Professional Fees", "Accounting, legal, veterinary and consultancy fees"),
+    ("INS", "Insurance", "Premises, stock and vehicle insurance"),
+    ("SEC", "Security", "Guards, alarms and monitoring"),
+    ("MISC", "Miscellaneous", "Anything that fits no other category")
+};
+
     public static async Task SeedAsync(IServiceProvider services)
     {
         var context = services.GetRequiredService<UltimatePosDbContext>();
@@ -73,6 +101,17 @@ public static class DbSeeder
             await context.SaveChangesAsync();
             //logger.LogInformation("DbSeeder: added {Count} missing permission(s) to Admin role: {Names}",
             //    newPermissions.Count, string.Join(", ", newPermissions.Select(p => p.Name)));
+        }
+
+        if (!await context.ExpenseCategories.AnyAsync())
+        {
+            context.ExpenseCategories.AddRange(DefaultExpenseCategories.Select(c => new ExpenseCategory
+            {
+                Code = c.Code,
+                Name = c.Name,
+                Description = c.Description
+            }));
+            await context.SaveChangesAsync();
         }
 
         if (!await context.Users.AnyAsync(u => u.Email == "admin@ultimatepos.local"))

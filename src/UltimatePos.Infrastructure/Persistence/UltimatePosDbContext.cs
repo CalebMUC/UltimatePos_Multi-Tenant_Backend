@@ -42,6 +42,9 @@ namespace UltimatePos.Infrastructure.Persistence
 
         public DbSet<ProductionRunCost> ProductionRunCosts => Set<ProductionRunCost>();
 
+        public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
+        public DbSet<Expense> Expenses => Set<Expense>();
+
         public DbSet<MpesaTransaction> MpesaTransactions => Set<MpesaTransaction>();
 
         public DbSet<Sale> Sales => Set<Sale>();
@@ -193,6 +196,21 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<ProductionRunCost>()
                 .HasOne(c => c.ProductionRun).WithMany(r => r.AdditionalCosts)
                 .HasForeignKey(c => c.ProductionRunId).OnDelete(DeleteBehavior.Cascade);
+
+
+            modelBuilder.Entity<ExpenseCategory>().HasIndex(c => c.Code).IsUnique();
+            modelBuilder.Entity<ExpenseCategory>().HasIndex(c => c.Name).IsUnique();
+
+            modelBuilder.Entity<Expense>().Property(e => e.PaymentMethod).HasConversion<string>();
+            modelBuilder.Entity<Expense>().Property(e => e.Status).HasConversion<string>();
+            modelBuilder.Entity<Expense>().HasIndex(e => e.ExpenseNumber).IsUnique();
+            modelBuilder.Entity<Expense>().HasIndex(e => e.ExpenseDate);
+            modelBuilder.Entity<Expense>()
+                .HasOne(e => e.Category).WithMany()
+                .HasForeignKey(e => e.ExpenseCategoryId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<Expense>()
+                .HasOne(e => e.Supplier).WithMany()
+                .HasForeignKey(e => e.SupplierId).OnDelete(DeleteBehavior.Restrict);
 
 
             modelBuilder.Entity<MpesaTransaction>().Property(t => t.TransactionType).HasConversion<string>();

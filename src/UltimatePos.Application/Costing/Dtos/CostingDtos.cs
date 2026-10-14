@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Expenses.Dtos;
 
 namespace UltimatePos.Application.Costing.Dtos
 {
@@ -24,6 +25,16 @@ namespace UltimatePos.Application.Costing.Dtos
         decimal Revenue, decimal Cost, decimal GrossProfit, decimal? MarginPercent, decimal UncostedRevenue);
     public record ProfitReportDto(DateTimeOffset From, DateTimeOffset To, IEnumerable<ProfitRowDto> Items,
         decimal TotalRevenue, decimal TotalCost, decimal GrossProfit, decimal? MarginPercent, decimal UncostedRevenue);
+
+    // ---- Profit and loss ----
+    // Revenue is every sale. CostOfGoodsSold and GrossProfit are measured ONLY over sales whose cost was known, so
+    // sales from before costing (UncostedRevenue) are excluded from profit rather than counted as 100% margin.
+    // NetProfit = GrossProfit - TotalOperatingExpenses. IsComplete is false while any revenue is uncosted,
+    // which means NetProfit is understated by the margin on that revenue.
+    public record ProfitAndLossDto(DateOnly From, DateOnly To, decimal Revenue, decimal CostOfGoodsSold, decimal GrossProfit,
+        decimal? GrossMarginPercent, decimal UncostedRevenue,
+        IEnumerable<ExpenseCategoryTotalDto> OperatingExpenses, decimal TotalOperatingExpenses,
+        decimal NetProfit, decimal? NetMarginPercent, bool IsComplete);
 
     // ---- Revaluation ----
     public record RevalueStockRequestDto(Guid ProductId, Guid UnitOfMeasureId, decimal UnitCost, string Reason);

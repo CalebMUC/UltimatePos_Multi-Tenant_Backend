@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Costing.Dtos;
+using UltimatePos.Application.Expenses;
 using UltimatePos.Application.Inventory;
 using UltimatePos.Domain.Exceptions;
 using static UltimatePos.Domain.Enums.PosEnums;
@@ -20,15 +21,17 @@ namespace UltimatePos.Application.Costing
         private readonly ICatalogRepository _catalogRepository;
         private readonly ICurrentUser _currentUser;
 
+        private readonly IExpenseRepository _expenseRepository;
+
         public CostingService(ICostingRepository repository, IInventoryRepository inventoryRepository,
-            ICatalogRepository catalogRepository, ICurrentUser currentUser)
+            ICatalogRepository catalogRepository, ICurrentUser currentUser, IExpenseRepository expenseRepository)
         {
             _repository = repository;
             _inventoryRepository = inventoryRepository;
             _catalogRepository = catalogRepository;
             _currentUser = currentUser;
+            _expenseRepository = expenseRepository;
         }
-
         // ---- What the stock on the shelf is worth ----
 
         public async Task<StockValuationDto> GetStockValuationAsync(ItemType? itemType)
@@ -134,6 +137,37 @@ namespace UltimatePos.Application.Costing
 
         private static decimal? Percent(decimal profit, decimal revenue) =>
             revenue == 0 ? null : Math.Round(profit / revenue * 100m, 2, MidpointRounding.AwayFromZero);
+
+
+        // ---- Profit and loss: what is left after the cost of goods AND the cost of running the business ----
+
+        /// <param name="from">First day of the period, inclusive.</param>
+        /// <param name="to">Last day of the period, inclusive.</param>
+        /// <param name="utcOffsetMinutes">Offset of the business's local time from UTC, used to turn the dates into exact
+        /// instants for sales. Defaults to East Africa Time (+180). Expenses carry a plain calendar date and need no offset.</param>
+        public async Task<ProfitAndLossDto> GetProfitAndLossAsync(DateOnly from, DateOnly to, int utcOffsetMinutes)
+        {
+            ExpenseService.ValidateDateRange(from, to);
+            if (Math.Abs(utcOffsetMinutes) > 14 * 60)
+                throw new InvalidAssignmentException("utcOffsetMinutes must be between -840 and 840.");
+
+            var offset = TimeSpan.FromMinutes(utcOffsetMinutes);
+            var fromInstant = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue), offset);
+            var toInstant = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue), offset); // exclusive end = start of the next day
+
+            var profit = await GetProfitAsync(fromInstant, toInstant, null);
+
+            var expenseRows = await _expenseRepository.GetSummaryRowsAsync(from, to);
+            var byCategory = ExpenseService.GroupByCategory(expenseRows);
+            var totalExpenses = byCategory.Sum(c => c.Total);
+
+            var netProfit = profit.GrossProfit - totalExpenses;
+            var costedRevenue = profit.TotalRevenue - profit.UncostedRevenue;
+
+            return new ProfitAndLossDto(from, to, profit.TotalRevenue, profit.TotalCost, profit.GrossProfit, profit.MarginPercent,
+                profit.UncostedRevenue, byCategory, totalExpenses, netProfit, Percent(netProfit, costedRevenue),
+                IsComplete: profit.UncostedRevenue == 0);
+        }
 
         // ---- Setting a cost on stock that already exists (onboarding / correcting a wrong cost) ----
 

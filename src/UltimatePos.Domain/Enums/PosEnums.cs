@@ -25,5 +25,10 @@ namespace UltimatePos.Domain.Enums
         public enum PaymentMethod { Cash, Credit, MpesaTill, MpesaStkPush }
         public enum MpesaTransactionType { C2B, StkPush }
         public enum MpesaTransactionStatus { Received, Matched, Pending, Confirmed, Failed }
+
+
+        // How an operating expense was PAID. Expenses are recorded when paid (cash basis); unpaid bills / payables are not modelled yet.
+        public enum ExpensePaymentMethod { Cash, Mpesa, BankTransfer, Cheque }
+        public enum ExpenseStatus { Posted, Voided }
     }
 }
