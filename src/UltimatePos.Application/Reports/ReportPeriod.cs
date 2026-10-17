@@ -28,6 +28,11 @@ namespace UltimatePos.Application.Reports
         public static ReportPeriod Create(DateOnly from, DateOnly to, int utcOffsetMinutes)
         {
             ValidateOffset(utcOffsetMinutes);
+
+            // A date left out of the query string binds to DateOnly.MinValue (0001-01-01), which would otherwise be reported as a bad year.
+            if (from == default || to == default)
+                throw new InvalidAssignmentException("Both 'from' and 'to' are required, as yyyy-MM-dd (for example from=2026-10-01&to=2026-10-31).");
+
             ExpenseService.ValidateDateRange(from, to); // from <= to, years 2000..2200, at most 366 days
             return new ReportPeriod(from, to, TimeSpan.FromMinutes(utcOffsetMinutes));
         }

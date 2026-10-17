@@ -43,6 +43,17 @@ public class ReportPeriodTests
         Assert.Throws<InvalidAssignmentException>(() => ReportPeriod.Create(October31, October1, 180));
         Assert.Throws<InvalidAssignmentException>(() => ReportPeriod.Create(new DateOnly(2025, 1, 1), new DateOnly(2026, 12, 31), 180));
     }
+
+    [Fact]
+    public void A_date_left_out_of_the_request_says_so_instead_of_blaming_the_year()
+    {
+        // An omitted query-string date arrives as DateOnly.MinValue.
+        var missingFrom = Assert.Throws<InvalidAssignmentException>(() => ReportPeriod.Create(default, October31, 180));
+        var missingTo = Assert.Throws<InvalidAssignmentException>(() => ReportPeriod.Create(October1, default, 180));
+
+        Assert.Contains("required", missingFrom.Message);
+        Assert.Contains("required", missingTo.Message);
+    }
 }
 
 public class AgingCalculatorTests
