@@ -77,7 +77,9 @@ namespace UltimatePos.Infrastructure.Migrations
                 table: "Businesses",
                 type: "text",
                 nullable: false,
-                defaultValue: "");
+                // Kind is an enum stored as text: "" could not be read back for businesses that already exist. Manufacturer is
+                // the enum's default value; change it per business through the business update endpoint if it is a Trader.
+                defaultValue: "Manufacturer");
 
             migrationBuilder.CreateTable(
                 name: "ExpenseCategories",
