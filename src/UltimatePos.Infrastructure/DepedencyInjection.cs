@@ -18,6 +18,7 @@ using UltimatePos.Application.Inventory;
 using UltimatePos.Application.Payments;
 using UltimatePos.Application.Production;
 using UltimatePos.Application.Purchasing;
+using UltimatePos.Application.Reports;
 using UltimatePos.Application.Sales;
 using UltimatePos.Infrastructure.Auth;
 using UltimatePos.Infrastructure.Configuration;
@@ -74,6 +75,8 @@ namespace UltimatePos.Infrastructure
             services.AddScoped<ICostingRepository, CostingRepository>();
 
             services.AddScoped<IExpenseRepository, ExpenseRepository>();
+
+            services.AddScoped<IReportsRepository, ReportsRepository>();
 
             return services;
 

@@ -54,6 +54,10 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("KraPin")
                         .IsRequired()
                         .HasColumnType("text");
@@ -235,6 +239,136 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.HasIndex("CustomerId");
 
                     b.ToTable("CustomerLedgerEntries");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.Expense", b =>
+                {
+                    b.Property<Guid>("ExpenseId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EtimsControlNumber")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ExpenseCategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ExpenseDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ExpenseNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("LastUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PayeeName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PaymentReference")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReceiptUrl")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SupplierInvoiceNumber")
+                        .HasColumnType("text");
+
+                    b.Property<string>("VoidReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("VoidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("VoidedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ExpenseId");
+
+                    b.HasIndex("ExpenseCategoryId");
+
+                    b.HasIndex("ExpenseDate");
+
+                    b.HasIndex("ExpenseNumber")
+                        .IsUnique();
+
+                    b.HasIndex("SupplierId");
+
+                    b.ToTable("Expenses");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.ExpenseCategory", b =>
+                {
+                    b.Property<Guid>("ExpenseCategoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("ExpenseCategoryId");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("ExpenseCategories");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.Formula", b =>
@@ -567,6 +701,9 @@ namespace UltimatePos.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<decimal>("AdditionalCost")
+                        .HasColumnType("numeric");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -575,6 +712,9 @@ namespace UltimatePos.Infrastructure.Migrations
 
                     b.Property<Guid>("FormulaId")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal>("MaterialCost")
+                        .HasColumnType("numeric");
 
                     b.Property<string>("Notes")
                         .HasColumnType("text");
@@ -592,6 +732,12 @@ namespace UltimatePos.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<decimal>("TotalCost")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("UnitCost")
+                        .HasColumnType("numeric");
+
                     b.Property<Guid>("UnitOfMeasureId")
                         .HasColumnType("uuid");
 
@@ -607,6 +753,38 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.HasIndex("UnitOfMeasureId");
 
                     b.ToTable("ProductionRuns");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.ProductionRunCost", b =>
+                {
+                    b.Property<Guid>("ProductionRunCostId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("CostType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProductionRunId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ProductionRunCostId");
+
+                    b.HasIndex("ProductionRunId");
+
+                    b.ToTable("ProductionRunCosts");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.ProductionRunInput", b =>
@@ -631,6 +809,12 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasColumnType("numeric");
 
                     b.Property<decimal>("QuantityConsumedInBaseUnits")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("TotalCost")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("UnitCost")
                         .HasColumnType("numeric");
 
                     b.Property<Guid>("UnitOfMeasureId")
@@ -893,6 +1077,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<Guid>("SaleId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal?>("UnitCost")
+                        .HasColumnType("numeric");
+
                     b.Property<Guid>("UnitOfMeasureId")
                         .HasColumnType("uuid");
 
@@ -927,6 +1114,9 @@ namespace UltimatePos.Infrastructure.Migrations
                 {
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal>("AverageUnitCost")
+                        .HasColumnType("numeric");
 
                     b.Property<DateTime>("LastUpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -973,6 +1163,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<string>("ReferenceType")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<decimal?>("UnitCost")
+                        .HasColumnType("numeric");
 
                     b.HasKey("StockMovementId");
 
@@ -1226,6 +1419,24 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Navigation("Customer");
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.Expense", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.ExpenseCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("ExpenseCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.Supplier", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Category");
+
+                    b.Navigation("Supplier");
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.Formula", b =>
                 {
                     b.HasOne("UltimatePos.Domain.Entities.UnitOfMeasure", "OutputUnitOfMeasure")
@@ -1364,6 +1575,17 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Navigation("Product");
 
                     b.Navigation("UnitOfMeasure");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.ProductionRunCost", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.ProductionRun", "ProductionRun")
+                        .WithMany("AdditionalCosts")
+                        .HasForeignKey("ProductionRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ProductionRun");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.ProductionRunInput", b =>
@@ -1581,6 +1803,8 @@ namespace UltimatePos.Infrastructure.Migrations
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.ProductionRun", b =>
                 {
+                    b.Navigation("AdditionalCosts");
+
                     b.Navigation("Inputs");
                 });
 

@@ -45,7 +45,13 @@ public static class DbSeeder
     ("ExpenseCategories.Create", "Expenses"), ("ExpenseCategories.View", "Expenses"),
     ("ExpenseCategories.Update", "Expenses"), ("ExpenseCategories.Deactivate", "Expenses"),
     ("Expenses.Create", "Expenses"), ("Expenses.View", "Expenses"),
-    ("Expenses.Update", "Expenses"), ("Expenses.Void", "Expenses")
+    ("Expenses.Update", "Expenses"), ("Expenses.Void", "Expenses"),
+
+    // Reports and dashboard. Each is its own permission so a role gets only the information it needs. Costs inside the inventory
+    // reports and the dashboard's stock value stay behind Costing.View on top of these.
+    ("Dashboard.View", "Dashboard"),
+    ("SalesReports.View", "Reports"), ("CustomerReports.View", "Reports"), ("ProductionReports.View", "Reports"),
+    ("InventoryReports.View", "Reports"), ("PurchaseReports.View", "Reports")
 
 
 };
@@ -78,6 +84,7 @@ public static class DbSeeder
         await context.Database.MigrateAsync();
 
         var adminRole = await context.Roles.FirstOrDefaultAsync(r => r.RoleName == "Admin");
+        var adminRoleCreated = adminRole is null;
         if (adminRole is null)
         {
             adminRole = new Role { RoleName = "Admin" };
@@ -89,18 +96,30 @@ public static class DbSeeder
         var existingNames = await context.Permissions.Select(p => p.Name).ToListAsync();
         var missing = RequiredPermissions.Where(p => !existingNames.Contains(p.Name)).ToList();
 
-        if (missing.Count > 0)
+        var newPermissions = missing.Select(p => new Permission { Name = p.Name, Module = p.Module }).ToList();
+        if (newPermissions.Count > 0)
         {
-            var newPermissions = missing.Select(p => new Permission { Name = p.Name, Module = p.Module }).ToList();
             context.Permissions.AddRange(newPermissions);
             await context.SaveChangesAsync();
+        }
 
-            foreach (var permission in newPermissions)
+        // A new Admin role gets every permission, including those a migration added before the role existed. An existing one only
+        // gets the permissions created just now, so a permission deliberately taken away from Admin stays taken away.
+        var toGrant = newPermissions;
+        if (adminRoleCreated)
+        {
+            var requiredNames = RequiredPermissions.Select(p => p.Name).ToList();
+            toGrant = await context.Permissions.Where(p => requiredNames.Contains(p.Name)).ToListAsync();
+        }
+
+        if (toGrant.Count > 0)
+        {
+            foreach (var permission in toGrant)
                 context.RolePermissions.Add(new RolePermission { RoleId = adminRole.RoleId, PermissionId = permission.PermissionId });
 
             await context.SaveChangesAsync();
             //logger.LogInformation("DbSeeder: added {Count} missing permission(s) to Admin role: {Names}",
-            //    newPermissions.Count, string.Join(", ", newPermissions.Select(p => p.Name)));
+            //    toGrant.Count, string.Join(", ", toGrant.Select(p => p.Name)));
         }
 
         if (!await context.ExpenseCategories.AnyAsync())

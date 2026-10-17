@@ -8,11 +8,13 @@ using UltimatePos.Application.Accounting;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Costing;
+using UltimatePos.Application.Dashboard;
 using UltimatePos.Application.Expenses;
 using UltimatePos.Application.Identity;
 using UltimatePos.Application.Inventory;
 using UltimatePos.Application.Production;
 using UltimatePos.Application.Purchasing;
+using UltimatePos.Application.Reports;
 using UltimatePos.Application.Sales;
 
 namespace UltimatePos.Application
@@ -32,6 +34,8 @@ namespace UltimatePos.Application
             services.AddScoped<AccountingService>();
             services.AddScoped<CostingService>();
             services.AddScoped<ExpenseService>();
+            services.AddScoped<ReportsService>();
+            services.AddScoped<DashboardService>();
 
             return services;
         }
