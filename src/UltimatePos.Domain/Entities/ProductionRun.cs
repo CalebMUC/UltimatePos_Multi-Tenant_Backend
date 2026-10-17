@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,9 +7,10 @@ using System.Threading.Tasks;
 namespace UltimatePos.Domain.Entities
 {
     // A completed production fact — immutable, no IsActive/LastUpdated*. Corrections go through stock adjustments.
-    public class ProductionRun
+    public class ProductionRun : ITenantEntity
     {
         public Guid ProductionRunId { get; set; }
+        public Guid BusinessId { get; set; }
         public string RunNumber { get; set; } = string.Empty;
         public Guid FormulaId { get; set; }
         public Guid ProductId { get; set; }

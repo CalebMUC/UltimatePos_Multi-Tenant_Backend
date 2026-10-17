@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -16,6 +16,10 @@ namespace UltimatePos.Domain.Entities
         public string ReferenceType { get; set; } = string.Empty;
         public Guid ReferenceId { get; set; }
         public string? Notes { get; set; }
+        /// <summary>For payments: how the customer paid.</summary>
+        public SettlementMethod? PaymentMethod { get; set; }
+        /// <summary>For payments: M-Pesa code, bank reference or cheque number.</summary>
+        public string? PaymentReference { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }
 

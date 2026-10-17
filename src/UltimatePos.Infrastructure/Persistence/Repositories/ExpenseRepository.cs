@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -79,14 +79,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         // Same shared sequence table the other document numbers use (SKU, INV, PO, PR); the prefix keeps them apart.
         public async Task<int> GetNextDocumentNumberAsync(string prefix)
         {
-            var results = await _context.Database
-                .SqlQuery<int>($"""
-                INSERT INTO "SkuSequences" ("Prefix", "LastNumber") VALUES ({prefix}, 1)
-                ON CONFLICT ("Prefix") DO UPDATE SET "LastNumber" = "SkuSequences"."LastNumber" + 1
-                RETURNING "LastNumber" AS "Value"
-                """)
-                .ToListAsync();
-            return results.Single();
+            return await _context.NextSequenceNumberAsync(prefix);
         }
 
         public async Task<Expense> CreateExpenseAsync(Expense expense)

@@ -2,153 +2,92 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using UltimatePos.Application.Common.Interfaces;
+using UltimatePos.Application.Identity;
 using UltimatePos.Domain.Entities;
 
 namespace UltimatePos.Infrastructure.Persistence;
 
+/// <summary>
+/// Development seeding. Production environments get the same permissions and roles from migrations; this only adds what a fresh
+/// local database needs to be usable: every permission, the Platform Admin role, and a platform admin who can register the first
+/// business (which then gets its own Admin role through onboarding).
+/// </summary>
 public static class DbSeeder
 {
-    private static readonly (string Name, string Module)[] RequiredPermissions =
- {
-    ("Users.Create", "Users"), ("Users.View", "Users"), ("Users.AssignRoles", "Users"),
-    ("Users.Deactivate", "Users"), ("Users.Lock", "Users"),
-    ("Roles.View", "Roles"), ("Roles.Create", "Roles"), ("Roles.Update", "Roles"),
-    ("Roles.Deactivate", "Roles"), ("Roles.AssignPermissions", "Roles"),
-    ("Permissions.View", "Permissions"),
-
-    ("Businesses.Register", "Businesses"), ("Businesses.View", "Businesses"),
-    ("Businesses.Update", "Businesses"), ("Businesses.Deactivate", "Businesses"),
-    ("Customers.Register", "Customers"), ("Customers.View", "Customers"),
-    ("Customers.Update", "Customers"), ("Customers.Deactivate", "Customers"),
-    ("Customers.ViewLedger", "Customers"), ("Customers.RecordPayment", "Customers"),
-
-    ("Categories.View", "Categories"), ("Categories.Create", "Categories"), ("Categories.BulkImport", "Categories"),
-    ("Units.View", "Units"), ("Units.Create", "Units"),
-    ("Products.View", "Products"), ("Products.Create", "Products"), ("Products.Update", "Products"),
-    ("Products.ManagePricing", "Products"), ("Products.BulkImport", "Products"), ("Products.ManageUnitConversions", "Products"),
-
-    ("Suppliers.Register", "Suppliers"), ("Suppliers.View", "Suppliers"),
-    ("Suppliers.Update", "Suppliers"), ("Suppliers.Deactivate", "Suppliers"),
-    ("PurchaseOrders.Create", "PurchaseOrders"), ("PurchaseOrders.View", "PurchaseOrders"),
-    ("PurchaseOrders.Receive", "PurchaseOrders"), ("PurchaseOrders.Cancel", "PurchaseOrders"),
-    ("Stock.View", "Stock"), ("Stock.Adjust", "Stock"),
-
-    ("Formulas.Create", "Formulas"), ("Formulas.View", "Formulas"), ("Formulas.Deactivate", "Formulas"),
-    ("Production.Run", "Production"), ("Production.View", "Production"),
-
-    ("Sales.Create", "Sales"), ("Sales.View", "Sales"), ("Sales.Void", "Sales"),
-    ("Mpesa.Configure", "Mpesa"), ("Mpesa.View", "Mpesa"),
-
-    ("Costing.View", "Costing"), ("Costing.Revalue", "Costing"),
-
-
-    ("ExpenseCategories.Create", "Expenses"), ("ExpenseCategories.View", "Expenses"),
-    ("ExpenseCategories.Update", "Expenses"), ("ExpenseCategories.Deactivate", "Expenses"),
-    ("Expenses.Create", "Expenses"), ("Expenses.View", "Expenses"),
-    ("Expenses.Update", "Expenses"), ("Expenses.Void", "Expenses"),
-
-    // Reports and dashboard. Each is its own permission so a role gets only the information it needs. Costs inside the inventory
-    // reports and the dashboard's stock value stay behind Costing.View on top of these.
-    ("Dashboard.View", "Dashboard"),
-    ("SalesReports.View", "Reports"), ("CustomerReports.View", "Reports"), ("ProductionReports.View", "Reports"),
-    ("InventoryReports.View", "Reports"), ("PurchaseReports.View", "Reports")
-
-
-};
-
-    // Starting set so expenses can be recorded on day one. Seeded only while the table is empty; everything here can be
-    // renamed or deactivated afterwards through the API.
-    private static readonly (string Code, string Name, string Description)[] DefaultExpenseCategories =
-    {
-    ("RENT", "Rent", "Premises rent and service charge"),
-    ("UTIL", "Utilities", "Electricity, water, internet, phone and airtime"),
-    ("SAL", "Salaries & Wages", "Staff pay, casual labour outside production runs, allowances"),
-    ("TRN", "Transport & Fuel", "Delivery, fuel, fares and vehicle running costs"),
-    ("REP", "Repairs & Maintenance", "Equipment, mill, vehicle and premises repairs"),
-    ("LIC", "Licences & Permits", "County licences, permits and registrations"),
-    ("MKT", "Marketing & Advertising", "Promotion, signage, SMS and print"),
-    ("FIN", "Bank & M-Pesa Charges", "Transaction fees, bank charges and interest"),
-    ("OFF", "Office & Stationery", "Stationery, printing, receipt rolls and small office items"),
-    ("PRO", "Professional Fees", "Accounting, legal, veterinary and consultancy fees"),
-    ("INS", "Insurance", "Premises, stock and vehicle insurance"),
-    ("SEC", "Security", "Guards, alarms and monitoring"),
-    ("MISC", "Miscellaneous", "Anything that fits no other category")
-};
+    public const string DevAdminEmail = "admin@ultimatepos.local";
+    public const string DevAdminPassword = "Admin@12345";
 
     public static async Task SeedAsync(IServiceProvider services)
     {
         var context = services.GetRequiredService<UltimatePosDbContext>();
         var hasher = services.GetRequiredService<IPasswordHasher>();
-        //var logger = services.GetRequiredService<ILogger>();
 
         await context.Database.MigrateAsync();
 
-        var adminRole = await context.Roles.FirstOrDefaultAsync(r => r.RoleName == "Admin");
-        var adminRoleCreated = adminRole is null;
-        if (adminRole is null)
-        {
-            adminRole = new Role { RoleName = "Admin" };
-            context.Roles.Add(adminRole);
-            await context.SaveChangesAsync();
-            //logger.LogInformation("DbSeeder: created Admin role.");
-        }
-
+        // ---- Permissions ----
         var existingNames = await context.Permissions.Select(p => p.Name).ToListAsync();
-        var missing = RequiredPermissions.Where(p => !existingNames.Contains(p.Name)).ToList();
-
-        var newPermissions = missing.Select(p => new Permission { Name = p.Name, Module = p.Module }).ToList();
+        var newPermissions = PermissionCatalog.All
+            .Where(p => !existingNames.Contains(p.Name))
+            .Select(p => new Permission { Name = p.Name, Module = p.Module })
+            .ToList();
         if (newPermissions.Count > 0)
         {
             context.Permissions.AddRange(newPermissions);
             await context.SaveChangesAsync();
         }
 
-        // A new Admin role gets every permission, including those a migration added before the role existed. An existing one only
-        // gets the permissions created just now, so a permission deliberately taken away from Admin stays taken away.
-        var toGrant = newPermissions;
-        if (adminRoleCreated)
+        // ---- Platform Admin (BusinessId null) ----
+        var platformRole = await context.Roles.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(r => r.BusinessId == null && r.RoleName == PermissionCatalog.PlatformAdminRole);
+        var platformRoleCreated = platformRole is null;
+        if (platformRole is null)
         {
-            var requiredNames = RequiredPermissions.Select(p => p.Name).ToList();
-            toGrant = await context.Permissions.Where(p => requiredNames.Contains(p.Name)).ToListAsync();
-        }
-
-        if (toGrant.Count > 0)
-        {
-            foreach (var permission in toGrant)
-                context.RolePermissions.Add(new RolePermission { RoleId = adminRole.RoleId, PermissionId = permission.PermissionId });
-
-            await context.SaveChangesAsync();
-            //logger.LogInformation("DbSeeder: added {Count} missing permission(s) to Admin role: {Names}",
-            //    toGrant.Count, string.Join(", ", toGrant.Select(p => p.Name)));
-        }
-
-        if (!await context.ExpenseCategories.AnyAsync())
-        {
-            context.ExpenseCategories.AddRange(DefaultExpenseCategories.Select(c => new ExpenseCategory
-            {
-                Code = c.Code,
-                Name = c.Name,
-                Description = c.Description
-            }));
+            platformRole = new Role { RoleName = PermissionCatalog.PlatformAdminRole, Description = "Registers and manages businesses." };
+            context.Roles.Add(platformRole);
             await context.SaveChangesAsync();
         }
 
-        if (!await context.Users.AnyAsync(u => u.Email == "admin@ultimatepos.local"))
+        // A new role gets every permission of its kind; an existing one only the permissions created just now, so a permission
+        // deliberately taken away stays taken away.
+        var platformNames = PermissionCatalog.Platform.Select(p => p.Name).ToList();
+        var platformGrants = platformRoleCreated
+            ? await context.Permissions.Where(p => platformNames.Contains(p.Name)).ToListAsync()
+            : newPermissions.Where(p => PermissionCatalog.IsPlatform(p.Name)).ToList();
+        context.RolePermissions.AddRange(platformGrants.Select(p => new RolePermission { RoleId = platformRole.RoleId, PermissionId = p.PermissionId }));
+
+        // ---- Each business's Admin role picks up new business permissions ----
+        var newBusinessPermissions = newPermissions.Where(p => !PermissionCatalog.IsPlatform(p.Name)).ToList();
+        if (newBusinessPermissions.Count > 0)
         {
-            var (hash, salt) = hasher.HashPassword("Admin@12345");
-            var adminUser = new User
+            var businessAdminRoleIds = await context.Roles.IgnoreQueryFilters()
+                .Where(r => r.BusinessId != null && r.RoleName == PermissionCatalog.BusinessAdminRole)
+                .Select(r => r.RoleId)
+                .ToListAsync();
+            foreach (var roleId in businessAdminRoleIds)
+                context.RolePermissions.AddRange(newBusinessPermissions.Select(p => new RolePermission { RoleId = roleId, PermissionId = p.PermissionId }));
+        }
+        await context.SaveChangesAsync();
+
+        // ---- Dev platform admin ----
+        var adminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == DevAdminEmail);
+        if (adminUser is null)
+        {
+            var (hash, salt) = hasher.HashPassword(DevAdminPassword);
+            adminUser = new User
             {
-                Email = "admin@ultimatepos.local",
+                Email = DevAdminEmail,
                 Username = "admin",
                 PasswordHash = hash,
                 PasswordSalt = salt
             };
             context.Users.Add(adminUser);
             await context.SaveChangesAsync();
+        }
 
-            context.UserRoles.Add(new UserRole { UserId = adminUser.UserId, RoleId = adminRole.RoleId });
+        if (!await context.UserRoles.IgnoreQueryFilters().AnyAsync(ur => ur.UserId == adminUser.UserId && ur.RoleId == platformRole.RoleId))
+        {
+            context.UserRoles.Add(new UserRole { UserId = adminUser.UserId, RoleId = platformRole.RoleId });
             await context.SaveChangesAsync();
-            //logger.LogInformation("DbSeeder: created default admin user.");
         }
     }
 }

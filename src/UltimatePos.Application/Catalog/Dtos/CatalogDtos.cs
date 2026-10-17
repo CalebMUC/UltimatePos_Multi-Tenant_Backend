@@ -4,35 +4,53 @@ using static UltimatePos.Domain.Enums.PosEnums;
 namespace UltimatePos.Application.Catalog.Dtos;
 
 public record CreateCategoryRequestDto(string Name, string Code, Guid? ParentCategoryId);
+/// <summary>The code is fixed once created: it is baked into the SKUs of the category's products.</summary>
+public record UpdateCategoryRequestDto(string Name, Guid? ParentCategoryId);
 public record CategoryDto(Guid CategoryId, string Name, string Code, Guid? ParentCategoryId, bool IsActive, IEnumerable<CategoryDto> Subcategories);
 public record CategoryImportRowResult(int RowNumber, string Name, string Code, string? ParentCode, bool IsValid, string? Error);
 public record CategoryBulkImportResultDto(bool Committed, int TotalRows, int ValidRows, int InvalidRows, IEnumerable<CategoryImportRowResult> Rows);
 
 public record CreateUnitOfMeasureRequestDto(string Name, string Symbol);
+public record UpdateUnitOfMeasureRequestDto(string Name, string Symbol);
 public record UnitOfMeasureDto(Guid UnitOfMeasureId, string Name, string Symbol, bool IsActive);
 
+/// <param name="Barcode">Manufacturer's barcode as printed on the pack. Optional; unique within the business.</param>
+/// <param name="IsBatchTracked">Hold stock in batches with expiry dates and sell first-expiry-first-out. Use for medicines.</param>
+/// <param name="RequiresPrescription">Prescription-only: a sale must carry prescription details.</param>
 public record CreateProductRequestDto(
     string Name, string? Description, Guid CategoryId, ItemType ItemType,
-    TaxClassification TaxClassification, Guid BaseUnitOfMeasureId, decimal ReorderLevel);
-
+    TaxClassification TaxClassification, Guid BaseUnitOfMeasureId, decimal ReorderLevel,
+    string? Barcode = null, bool IsBatchTracked = false, bool RequiresPrescription = false,
+    string? GenericName = null, string? Strength = null, string? DosageForm = null, string? Manufacturer = null);
+/// <summary>Full replace. IsBatchTracked cannot be switched off while the product still has stock in batches.</summary>
 public record UpdateProductRequestDto(
     string Name, string? Description, Guid CategoryId, ItemType ItemType,
-    TaxClassification TaxClassification, Guid BaseUnitOfMeasureId, decimal ReorderLevel);
-
+    TaxClassification TaxClassification, Guid BaseUnitOfMeasureId, decimal ReorderLevel,
+    string? Barcode = null, bool IsBatchTracked = false, bool RequiresPrescription = false,
+    string? GenericName = null, string? Strength = null, string? DosageForm = null, string? Manufacturer = null);
 public record ProductDto(
     Guid ProductId, string Sku, string Name, string? Description, Guid CategoryId, ItemType ItemType,
-    TaxClassification TaxClassification, Guid BaseUnitOfMeasureId, decimal ReorderLevel, bool IsActive);
-
-public record ProductUnitConversionDto(Guid ProductUnitConversionId, Guid PackUnitOfMeasureId, decimal ConversionFactor);
+    TaxClassification TaxClassification, Guid BaseUnitOfMeasureId, decimal ReorderLevel, bool IsActive,
+    string? Barcode = null, bool IsBatchTracked = false, bool RequiresPrescription = false,
+    string? GenericName = null, string? Strength = null, string? DosageForm = null, string? Manufacturer = null,
+    string? CategoryName = null, string? BaseUnitSymbol = null);
+public record ProductUnitConversionDto(Guid ProductUnitConversionId, Guid PackUnitOfMeasureId, decimal ConversionFactor,
+    bool IsActive = true, string? PackUnitSymbol = null);
 public record ProductPriceTierDto(Guid ProductPriceTierId, Guid UnitOfMeasureId, PriceType PriceType, decimal Price, DateTime EffectiveFrom);
 public record AddPriceTierRequestDto(Guid UnitOfMeasureId, PriceType PriceType, decimal Price, DateTime EffectiveFrom);
-
 public record ProductDetailDto(
     Guid ProductId, string Sku, string Name, string? Description, Guid CategoryId, ItemType ItemType,
     TaxClassification TaxClassification, Guid BaseUnitOfMeasureId, decimal ReorderLevel, bool IsActive,
-    IEnumerable<ProductUnitConversionDto> UnitConversions, IEnumerable<ProductPriceTierDto> PriceTiers);
-
+    IEnumerable<ProductUnitConversionDto> UnitConversions, IEnumerable<ProductPriceTierDto> PriceTiers,
+    string? Barcode = null, bool IsBatchTracked = false, bool RequiresPrescription = false,
+    string? GenericName = null, string? Strength = null, string? DosageForm = null, string? Manufacturer = null,
+    string? CategoryName = null, string? BaseUnitSymbol = null);
 public record ProductImportRowResult(int RowNumber, string Name, bool IsValid, string? Error, string? Sku);
 public record ProductBulkImportResultDto(bool Committed, int TotalRows, int ValidRows, int InvalidRows, IEnumerable<ProductImportRowResult> Rows);
-
 public record CreateProductUnitConversionRequestDto(Guid PackUnitOfMeasureId, decimal ConversionFactor);
+/// <summary>Changes how many base units the pack holds. Past documents keep the base quantities they were recorded with.</summary>
+public record UpdateProductUnitConversionRequestDto(decimal ConversionFactor);
+
+/// <summary>Filters and ordering for the product list. Search matches name, SKU, barcode and generic name.</summary>
+public record ProductQuery(Guid? CategoryId = null, ItemType? ItemType = null, string? Search = null, bool? IsActive = null,
+    bool? IsBatchTracked = null, bool? RequiresPrescription = null, string? SortBy = null, string? SortDirection = null);

@@ -12,5 +12,7 @@ namespace UltimatePos.Infrastructure.Configuration
         public string Issuer { get; set; } = string.Empty;
         public string Audience { get; set; } = string.Empty;
         public int ExpiryMinutes { get; set; } = 30;
+        /// <summary>How long a refresh token (and so a signed-in device) lasts without being used.</summary>
+        public int RefreshTokenDays { get; set; } = 14;
     }
 }

@@ -9,25 +9,24 @@ namespace UltimatePos.Application.Common.Dtos
     public class ApiResponse<T>
     {
         public bool Success { get; set; }
-        //public string Message { get; set; }
         public T? Data { get; set; }
         public ApiError? Error { get; init; }
         public object? Meta { get; init; }
 
-        public static ApiResponse<T> Ok(T data, object? meta = null) => new() 
+        public static ApiResponse<T> Ok(T data, object? meta = null) => new()
         {
             Success = true,
             Data = data,
             Meta = meta
         };
 
-        public static ApiResponse<T> Fail(string code,string message) => new()
+        public static ApiResponse<T> Fail(string code, string message, IReadOnlyDictionary<string, string[]>? details = null) => new()
         {
-            Success = true,
-            Error = new ApiError(code, message)
+            Success = false,
+            Error = new ApiError(code, message, details)
         };
 
-        public record ApiError(string Code, string Message);
+        /// <param name="Details">Field-keyed messages (camelCase field names) for validation failures, so each can be shown beside its input.</param>
+        public record ApiError(string Code, string Message, IReadOnlyDictionary<string, string[]>? Details = null);
     }
-    
 }

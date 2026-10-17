@@ -24,9 +24,24 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             if (productId.HasValue)
                 query = query.Where(l => l.ProductId == productId.Value);
 
-            return await query
-                .Select(l => new SaleCostRow(l.ProductId, l.Product.Name, l.Product.Sku, l.QuantityInBaseUnits, l.LineTotal, l.UnitCost))
+            // Revenue is what the business keeps: the charged amount less the VAT in it (owed to KRA).
+            var sold = await query
+                .Select(l => new SaleCostRow(l.ProductId, l.Product.Name, l.Product.Sku, l.QuantityInBaseUnits, l.LineTotal - l.TaxAmount, l.UnitCost))
                 .ToListAsync();
+
+            // Returns fall in the period they were made, as negative rows. Goods put back on the shelf also take their cost back out
+            // of cost of goods sold; goods written off (damaged, expired) keep their cost — that stock is lost.
+            var returnsQuery = _context.SaleReturnLines.AsNoTracking()
+                .Where(l => l.SaleReturn.CreatedAt >= fromUtc && l.SaleReturn.CreatedAt < toUtcExclusive);
+            if (productId.HasValue)
+                returnsQuery = returnsQuery.Where(l => l.ProductId == productId.Value);
+
+            var returned = await returnsQuery
+                .Select(l => new SaleCostRow(l.ProductId, l.Product.Name, l.Product.Sku, l.Restock ? -l.QuantityInBaseUnits : 0m,
+                    -(l.Amount - l.TaxAmount), l.UnitCost))
+                .ToListAsync();
+
+            return sold.Concat(returned).ToList();
         }
 
         public async Task<IReadOnlyList<ProductPriceTier>> GetCurrentPriceTiersAsync(PriceType? priceType)

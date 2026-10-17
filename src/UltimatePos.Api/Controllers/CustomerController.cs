@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UltimatePos.Application.Accounting;
 using UltimatePos.Application.Accounting.Dtos;
@@ -30,12 +30,12 @@ public class CustomersController : ControllerBase
         return Ok(ApiResponse<CustomerDto>.Ok(result));
     }
 
-    // Scoped by business on purpose — a wholesaler only ever sees its own customer book.
+    // Always the customers of the business signed in to. businessId is accepted for older clients and must match it.
     [Authorize(Policy = "PERMISSION:Customers.View")]
     [HttpGet]
-    public async Task<IActionResult> GetCustomers([FromQuery] Guid businessId)
+    public async Task<IActionResult> GetCustomers([FromQuery] Guid? businessId = null, [FromQuery] string? search = null)
     {
-        var result = await _businessService.GetCustomersByBusinessAsync(businessId);
+        var result = await _businessService.GetCustomersAsync(businessId, search);
         return Ok(ApiResponse<IEnumerable<CustomerDto>>.Ok(result));
     }
 

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Purchasing;
@@ -24,7 +24,7 @@ namespace UltimatePos.Api.Controllers
 
         [Authorize(Policy = "PERMISSION:PurchaseOrders.Create")]
         [HttpGet("purchasable-item-types")]
-        public async Task<IActionResult> GetPurchasableItemTypes([FromQuery] Guid businessId)
+        public async Task<IActionResult> GetPurchasableItemTypes([FromQuery] Guid? businessId = null)
         {
             var result = await _purchasingService.GetPurchasableItemTypesAsync(businessId);
             return Ok(ApiResponse<IEnumerable<ItemType>>.Ok(result));

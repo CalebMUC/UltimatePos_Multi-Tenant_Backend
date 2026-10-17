@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -70,6 +70,7 @@ namespace UltimatePos.Infrastructure
             services.AddScoped<ISalesRepository, SalesRepository>();
 
             services.AddScoped<CustomerLedger>();
+            services.AddScoped<SupplierLedger>();
             services.AddScoped<IAccountingRepository, AccountingRepository>();
 
             services.AddScoped<ICostingRepository, CostingRepository>();

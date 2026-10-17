@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,7 +11,9 @@ namespace UltimatePos.Application.Payments
     {
         Task CreateAsync(MpesaTransaction transaction);
         Task<MpesaTransaction?> GetByIdAsync(Guid mpesaTransactionId);
-        Task<MpesaTransaction?> GetByCheckoutRequestIdAsync(string checkoutRequestId);
+        /// <summary>For webhooks, which run with no business in scope. Do not use where a user is signed in.</summary>
+        Task<MpesaTransaction?> GetByCheckoutRequestIdAnyBusinessAsync(string checkoutRequestId);
+        Task<bool> ReceiptExistsAnyBusinessAsync(string mpesaReceiptNumber);
         Task<MpesaTransaction?> GetBySaleIdAsync(Guid saleId);
         Task<IEnumerable<MpesaTransaction>> GetUnmatchedAsync();
         Task MatchToSaleAsync(Guid mpesaTransactionId, Guid saleId);

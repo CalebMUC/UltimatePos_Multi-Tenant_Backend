@@ -1,10 +1,13 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using UltimatePos.Application.Accounting;
+using UltimatePos.Application.Common;
+using UltimatePos.Application.Common.Interfaces;
+using UltimatePos.Application.Payments;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Costing;
@@ -24,13 +27,17 @@ namespace UltimatePos.Application
         public static IServiceCollection AddApplication(this IServiceCollection services)
         {
             // Feature services and validators register here as each area is built.
+            // The business every query is scoped to — from the caller's token, or entered explicitly by webhooks and onboarding.
+            services.AddScoped<ITenantContext, TenantContext>();
+
             services.AddScoped<AuthService>();
             services.AddScoped<BusinessService>();
             services.AddScoped<CatalogService>();
             services.AddScoped<PurchasingService>();
             services.AddScoped<InventoryService>();
             services.AddScoped<ProductionService>();
-            services.AddScoped<SalesService>(); 
+            services.AddScoped<SalesService>();
+            services.AddScoped<MpesaService>();
             services.AddScoped<AccountingService>();
             services.AddScoped<CostingService>();
             services.AddScoped<ExpenseService>();

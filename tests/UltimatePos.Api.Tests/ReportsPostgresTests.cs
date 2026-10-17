@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -55,8 +55,11 @@ public sealed class ReportsDatabase : IAsyncLifetime
         ConnectionString = new NpgsqlConnectionStringBuilder(server) { Database = $"ultimatepos_reports_{Guid.NewGuid():N}" }.ConnectionString;
         Services = BuildServices(ConnectionString, Sql);
 
+        using (var seedScope = Services.CreateScope())
+            await DbSeeder.SeedAsync(seedScope.ServiceProvider); // migrates, then permissions, Platform Admin and the admin user
+
+        ReportsSeed.Active = true; // from here on every scope is signed in to the test business
         using var scope = Services.CreateScope();
-        await DbSeeder.SeedAsync(scope.ServiceProvider); // migrates, then the Admin role, permissions and admin user
         Seed = await ReportsSeed.WriteAsync(scope.ServiceProvider.GetRequiredService<UltimatePosDbContext>());
         Sql.Clear();
     }
@@ -89,7 +92,7 @@ public sealed class ReportsDatabase : IAsyncLifetime
         services.AddLogging();
         services.AddApplication();
         services.AddInfrastructure(configuration);
-        services.AddScoped<ICurrentUser, NoCurrentUser>();
+        services.AddScoped<ICurrentUser, TestCurrentUser>();
 
         // Same provider and connection as production, plus a log of every command executed.
         services.RemoveAll<DbContextOptions<UltimatePosDbContext>>();
@@ -101,10 +104,16 @@ public sealed class ReportsDatabase : IAsyncLifetime
         return services.BuildServiceProvider();
     }
 
-    private sealed class NoCurrentUser : ICurrentUser
+    /// <summary>
+    /// A caller signed in to <see cref="ReportsSeed.BusinessId"/> with every permission — once the seed has created it. Until then
+    /// (migrating, DbSeeder) no business is in scope, as for system code in production.
+    /// </summary>
+    private sealed class TestCurrentUser : ICurrentUser
     {
         public Guid? UserId => null;
-        public bool IsAuthenticated => false;
+        public bool IsAuthenticated => true;
+        public Guid? BusinessId => ReportsSeed.Active ? ReportsSeed.BusinessId : null;
+        public bool HasPermission(string permission) => true;
     }
 }
 
@@ -117,6 +126,10 @@ public sealed class ReportsSeed
     public Guid AdminUserId, Maize, Unga, Salt, Bags, Sugar, Yeast, Kg, Bag, MillSupplies, AgroTraders, Wanjiku, Otieno, Kamau;
     public Guid SaleCredit, SaleOldCredit;
 
+    /// <summary>The seeded business. Fixed, so the test current user can be signed in to it from any scope.</summary>
+    public static readonly Guid BusinessId = Guid.Parse("7e57b00c-0000-4000-8000-000000000001");
+    public static volatile bool Active;
+
     public static DateTime Utc(int month, int day, int hour = 9, int minute = 0, int second = 0) =>
         new(2026, month, day, hour, minute, second, DateTimeKind.Utc);
 
@@ -124,7 +137,7 @@ public sealed class ReportsSeed
     {
         var s = new ReportsSeed { AdminUserId = (await db.Users.SingleAsync(u => u.Username == "admin")).UserId };
 
-        var business = new BusinessProfile { BusinessId = Guid.NewGuid(), BusinessName = "Test Mill", KraPin = "P000000001X" };
+        var business = new BusinessProfile { BusinessId = BusinessId, BusinessName = "Test Mill", KraPin = "P000000001X" };
         var category = new Category { CategoryId = Guid.NewGuid(), Name = "Flour", Code = "FLR" };
         var kg = new UnitOfMeasure { UnitOfMeasureId = s.Kg = Guid.NewGuid(), Name = "Kilogram", Symbol = "kg" };
         var bag = new UnitOfMeasure { UnitOfMeasureId = s.Bag = Guid.NewGuid(), Name = "50kg bag", Symbol = "bag50" };
@@ -553,20 +566,30 @@ public class ReportPermissionsMigrationTests
     }
 
     private static Task<List<string>> AdminPermissionsAsync(UltimatePosDbContext db) =>
-        db.RolePermissions.Where(rp => rp.Role.RoleName == "Admin" && rp.IsActive && rp.Permission.IsActive)
+        db.RolePermissions.IgnoreQueryFilters().Where(rp => rp.Role.RoleName == "Admin" && rp.IsActive && rp.Permission.IsActive)
             .Select(rp => rp.Permission.Name).ToListAsync();
 
     [PostgresFact]
-    public async Task A_new_database_set_up_by_the_seeder_gives_Admin_every_report_permission()
+    public async Task A_business_registered_on_a_new_database_gives_its_Admin_every_report_permission()
     {
-        // The migration adds the permissions before the seeder has created the Admin role; the seeder must still grant them.
+        // The seeder makes the platform admin; registering a business creates that business's Admin with every business permission.
         await WithFreshDatabaseAsync(async (sp, db) =>
         {
             await DbSeeder.SeedAsync(sp);
+            var adminId = (await db.Users.SingleAsync(u => u.Email == DbSeeder.DevAdminEmail)).UserId;
+            var platform = await db.RolePermissions.IgnoreQueryFilters()
+                .Where(rp => rp.Role.BusinessId == null && rp.Role.RoleName == "Platform Admin").Select(rp => rp.Permission.Name).ToListAsync();
+            Assert.Contains("Businesses.Register", platform);
+
+            var tenant = sp.GetRequiredService<ITenantContext>();
+            var business = new BusinessProfile { BusinessId = Guid.NewGuid(), BusinessName = "New Pharmacy", KraPin = "P000000009Z", Kind = BusinessKind.Trader };
+            using (tenant.Use(business.BusinessId))
+                await sp.GetRequiredService<UltimatePos.Application.Business.IBusinessRepository>().CreateBusinessAsync(business, adminId);
 
             var granted = await AdminPermissionsAsync(db);
             Assert.All(ReportPermissions, p => Assert.Contains(p, granted));
             Assert.DoesNotContain("Reports.View", granted);
+            Assert.DoesNotContain("Businesses.Register", granted); // platform permissions never sit on a business role
         });
     }
 
@@ -578,17 +601,25 @@ public class ReportPermissionsMigrationTests
             var migrator = db.GetService<IMigrator>();
             await migrator.MigrateAsync("AddCostingAndExpenses");
 
-            // A database from before this change: an Admin role holding the old single Reports.View permission.
-            var admin = new Role { RoleId = Guid.NewGuid(), RoleName = "Admin" };
-            var old = new Permission { PermissionId = Guid.NewGuid(), Name = "Reports.View", Module = "Reports" };
-            var dashboard = new Permission { PermissionId = Guid.NewGuid(), Name = "Dashboard.View", Module = "Dashboard" }; // already seeded once
-            db.AddRange(admin, old, dashboard, new RolePermission { RoleId = admin.RoleId, PermissionId = old.PermissionId });
-            await db.SaveChangesAsync();
+            // A database from before this change: an Admin role holding the old single Reports.View permission. Written as SQL, since
+            // today's model has columns that schema does not.
+            var adminId = Guid.NewGuid();
+            var dashboardId = Guid.NewGuid();
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "Roles" ("RoleId", "RoleName", "IsActive", "CreatedAt") VALUES ({adminId}, 'Admin', TRUE, now());
+                INSERT INTO "Permissions" ("PermissionId", "Name", "Module", "IsActive", "CreatedAt") VALUES
+                    ({Guid.NewGuid()}, 'Reports.View', 'Reports', TRUE, now()),
+                    ({dashboardId}, 'Dashboard.View', 'Dashboard', TRUE, now());
+                INSERT INTO "RolePermissions" ("RoleId", "PermissionId", "IsActive", "CreatedAt")
+                    SELECT {adminId}, "PermissionId", TRUE, now() FROM "Permissions" WHERE "Name" = 'Reports.View';
+                """);
 
-            await migrator.MigrateAsync();
+            await migrator.MigrateAsync("AddReportPermissions");
 
             var granted = await AdminPermissionsAsync(db);
             Assert.Equal(ReportPermissions.OrderBy(p => p), granted.OrderBy(p => p));
+            var dashboard = new Permission { PermissionId = dashboardId };
+            await migrator.MigrateAsync();
             Assert.False(await db.Permissions.AnyAsync(p => p.Name == "Reports.View"));
             Assert.Equal(dashboard.PermissionId, (await db.Permissions.SingleAsync(p => p.Name == "Dashboard.View")).PermissionId);
             Assert.Empty(await db.Database.GetPendingMigrationsAsync());

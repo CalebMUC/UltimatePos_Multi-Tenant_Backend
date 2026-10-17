@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -9,6 +9,8 @@ namespace UltimatePos.Domain.Entities
     public class Role
     {
         public Guid RoleId { get; set; }
+        /// <summary>The business this role belongs to. Null = a platform role (e.g. Platform Admin) that applies in every business.</summary>
+        public Guid? BusinessId { get; set; }
         public string RoleName { get; set; } = string.Empty;
         public string? Description { get; set; }
         public bool IsActive { get; set; } = true;

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,8 +25,11 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         public async Task<MpesaTransaction?> GetByIdAsync(Guid mpesaTransactionId) =>
             await _context.MpesaTransactions.AsNoTracking().FirstOrDefaultAsync(t => t.MpesaTransactionId == mpesaTransactionId);
 
-        public async Task<MpesaTransaction?> GetByCheckoutRequestIdAsync(string checkoutRequestId) =>
-            await _context.MpesaTransactions.AsNoTracking().FirstOrDefaultAsync(t => t.CheckoutRequestId == checkoutRequestId);
+        public async Task<MpesaTransaction?> GetByCheckoutRequestIdAnyBusinessAsync(string checkoutRequestId) =>
+            await _context.MpesaTransactions.AsNoTracking().IgnoreQueryFilters().FirstOrDefaultAsync(t => t.CheckoutRequestId == checkoutRequestId);
+
+        public async Task<bool> ReceiptExistsAnyBusinessAsync(string mpesaReceiptNumber) =>
+            await _context.MpesaTransactions.IgnoreQueryFilters().AnyAsync(t => t.MpesaReceiptNumber == mpesaReceiptNumber);
 
         public async Task<MpesaTransaction?> GetBySaleIdAsync(Guid saleId) =>
             await _context.MpesaTransactions.AsNoTracking().FirstOrDefaultAsync(t => t.SaleId == saleId);
