@@ -71,6 +71,123 @@ namespace UltimatePos.Infrastructure.Persistence
             _context.StockMovements.Add(movement);
         }
 
+        // ---------------------------------------------------------------- Batches
+        //
+        // For batch-tracked products the product's StockLevel is still the total and still carries the average cost; the batch
+        // rows split that total into lots. Every batch change is paired with a product-level movement through ApplyAsync, so
+        // the total always equals the sum of the batches. Lock order is always: batch rows, then the product row.
+
+        /// <summary>
+        /// Adds stock into the named lot, creating the lot on first receipt. A lot number already on file must carry the same
+        /// expiry date — two expiry dates under one lot number is a data-entry mistake, not a second lot.
+        /// </summary>
+        public async Task<Guid> ReceiveIntoBatchAsync(StockMovement movement, Guid businessId, string batchNumber, DateOnly? expiryDate,
+            DateOnly? manufactureDate, Guid? supplierId, Guid? purchaseOrderId)
+        {
+            if (movement.QuantityChange <= 0)
+                throw new InvalidOperationException("ReceiveIntoBatchAsync only adds stock.");
+
+            var rows = await _context.Database.SqlQuery<BatchRow>($"""
+                INSERT INTO "StockBatches" ("StockBatchId", "BusinessId", "ProductId", "BatchNumber", "ExpiryDate", "ManufactureDate",
+                                            "QuantityOnHand", "UnitCost", "SupplierId", "PurchaseOrderId", "CreatedAt", "CreatedBy", "LastUpdatedAt")
+                VALUES ({Guid.NewGuid()}, {businessId}, {movement.ProductId}, {batchNumber}, {expiryDate}, {manufactureDate},
+                        {movement.QuantityChange}, {movement.UnitCost}, {supplierId}, {purchaseOrderId}, now(), {movement.CreatedBy}, now())
+                ON CONFLICT ("ProductId", "BatchNumber") DO UPDATE
+                SET "QuantityOnHand" = "StockBatches"."QuantityOnHand" + EXCLUDED."QuantityOnHand",
+                    "LastUpdatedAt" = now()
+                RETURNING "StockBatchId", "ExpiryDate", "QuantityOnHand"
+                """).ToListAsync();
+
+            var batch = rows.Single();
+            if (batch.ExpiryDate != expiryDate)
+                throw new InvalidAssignmentException(
+                    $"Batch '{batchNumber}' is already on file with expiry {batch.ExpiryDate?.ToString("yyyy-MM-dd") ?? "none"} — " +
+                    $"check the expiry date ({expiryDate?.ToString("yyyy-MM-dd") ?? "none"} given) or the batch number.");
+
+            movement.StockBatchId = batch.StockBatchId;
+            await ApplyAsync(movement);
+            return batch.StockBatchId;
+        }
+
+        /// <summary>Moves stock into or out of one specific lot (stock adjustments, returns, voids). Removals never take a lot below zero.</summary>
+        public async Task ApplyToBatchAsync(StockMovement movement, Guid stockBatchId)
+        {
+            var updated = await _context.Database.SqlQuery<decimal>($"""
+                UPDATE "StockBatches"
+                SET "QuantityOnHand" = "QuantityOnHand" + {movement.QuantityChange}, "LastUpdatedAt" = now()
+                WHERE "StockBatchId" = {stockBatchId} AND "ProductId" = {movement.ProductId}
+                  AND "QuantityOnHand" + {movement.QuantityChange} >= 0
+                RETURNING "QuantityOnHand" AS "Value"
+                """).ToListAsync();
+
+            if (updated.Count == 0)
+                throw new InsufficientStockException(
+                    $"Batch '{stockBatchId}' does not hold enough stock of this product for this change.");
+
+            movement.StockBatchId = stockBatchId;
+            await ApplyAsync(movement);
+        }
+
+        /// <summary>
+        /// Issues <paramref name="template"/>'s quantity first-expiry-first-out, from lots that have not expired by
+        /// <paramref name="today"/>. Lots without an expiry date go last. Fails rather than issuing expired stock or going
+        /// negative. Returns how much came from each lot, with one movement recorded per lot.
+        /// </summary>
+        public async Task<IReadOnlyList<(Guid StockBatchId, decimal Quantity, decimal? UnitCost)>> IssueFefoAsync(StockMovement template, DateOnly today)
+        {
+            var required = -template.QuantityChange;
+            if (required <= 0)
+                throw new InvalidOperationException("IssueFefoAsync only removes stock.");
+
+            // Lock the usable lots in FEFO order, so a concurrent sale of the same product waits rather than double-allocating.
+            var lots = await _context.Database.SqlQuery<BatchRow>($"""
+                SELECT "StockBatchId", "ExpiryDate", "QuantityOnHand"
+                FROM "StockBatches"
+                WHERE "ProductId" = {template.ProductId} AND "QuantityOnHand" > 0
+                  AND ("ExpiryDate" IS NULL OR "ExpiryDate" >= {today})
+                ORDER BY "ExpiryDate" ASC NULLS LAST, "CreatedAt" ASC, "StockBatchId" ASC
+                FOR UPDATE
+                """).ToListAsync();
+
+            var available = lots.Sum(l => l.QuantityOnHand);
+            if (available < required)
+                throw new InsufficientStockException(
+                    $"Only {available:0.####} of product '{template.ProductId}' is in unexpired batches; {required:0.####} is needed. " +
+                    "Expired stock cannot be sold — write it off with a stock adjustment.");
+
+            var issued = new List<(Guid, decimal, decimal?)>();
+            var remaining = required;
+            foreach (var lot in lots)
+            {
+                if (remaining <= 0) break;
+                var take = Math.Min(lot.QuantityOnHand, remaining);
+                remaining -= take;
+
+                var movement = new StockMovement
+                {
+                    ProductId = template.ProductId,
+                    MovementType = template.MovementType,
+                    QuantityChange = -take,
+                    ReferenceType = template.ReferenceType,
+                    ReferenceId = template.ReferenceId,
+                    BatchId = template.BatchId,
+                    Notes = template.Notes,
+                    CreatedBy = template.CreatedBy
+                };
+                await ApplyToBatchAsync(movement, lot.StockBatchId);
+                issued.Add((lot.StockBatchId, take, movement.UnitCost));
+            }
+
+            return issued;
+        }
+
+        private sealed class BatchRow
+        {
+            public Guid StockBatchId { get; set; }
+            public DateOnly? ExpiryDate { get; set; }
+            public decimal QuantityOnHand { get; set; }
+        }
+
         /// <summary>Sets the average cost without touching quantity. Returns the cost it replaced.</summary>
         public async Task<decimal> RevalueAsync(Guid productId, decimal newUnitCost)
         {

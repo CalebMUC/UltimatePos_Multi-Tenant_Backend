@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -39,6 +39,12 @@ namespace UltimatePos.Domain.Entities
         public string? Email { get; set; }
         public string? LogoUrl { get; set; }
         public string? BackgroundImageUrl { get; set; }
+        /// <summary>VAT-registered businesses show VAT on every sale line; others charge none.</summary>
+        public bool IsVatRegistered { get; set; }
+        /// <summary>M-Pesa till or paybill number. Routes incoming till payments to this business.</summary>
+        public string? MpesaShortCode { get; set; }
+        /// <summary>Largest discount a cashier may give on one sale, as a percentage of its subtotal. Null = no cap.</summary>
+        public decimal? MaxDiscountPercent { get; set; }
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }

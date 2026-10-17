@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,9 +7,10 @@ using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Domain.Entities
 {
-    public class PurchaseOrder
+    public class PurchaseOrder : ITenantEntity
     {
         public Guid PurchaseOrderId { get; set; }
+        public Guid BusinessId { get; set; }
         public string OrderNumber { get; set; } = string.Empty;
         public Guid SupplierId { get; set; }
         public PurchaseOrderStatus Status { get; set; } = PurchaseOrderStatus.Draft;

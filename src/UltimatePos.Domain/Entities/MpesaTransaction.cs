@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,6 +10,8 @@ namespace UltimatePos.Domain.Entities
     public class MpesaTransaction
     {
         public Guid MpesaTransactionId { get; set; }
+        /// <summary>Null only for a till payment whose short code matched no business. Such payments are logged and shown to nobody.</summary>
+        public Guid? BusinessId { get; set; }
         public MpesaTransactionType TransactionType { get; set; }
         public MpesaTransactionStatus Status { get; set; }
         public string? MpesaReceiptNumber { get; set; }

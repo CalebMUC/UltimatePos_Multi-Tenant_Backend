@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using UltimatePos.Domain.Entities;
+using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Application.Business.Dtos
 {
@@ -19,8 +20,12 @@ namespace UltimatePos.Application.Business.Dtos
     string? PhoneNumber,
     string? Email,
     string? LogoUrl,
-    string? BackgroundImageUrl);
+    string? BackgroundImageUrl,
+    bool IsVatRegistered = false,
+    string? MpesaShortCode = null,
+    decimal? MaxDiscountPercent = null);
 
+    /// <summary>Full replace of the editable profile. Kind cannot change: it decides what the business may purchase.</summary>
     public record UpdateBusinessRequestDto(
         string BusinessName,
         string? TradingName,
@@ -32,31 +37,43 @@ namespace UltimatePos.Application.Business.Dtos
         string? PhoneNumber,
         string? Email,
         string? LogoUrl,
-        string? BackgroundImageUrl);
+        string? BackgroundImageUrl,
+        bool IsVatRegistered = false,
+        string? MpesaShortCode = null,
+        decimal? MaxDiscountPercent = null);
 
     public record BusinessDto(
         Guid BusinessId, string BusinessName, string? TradingName, BusinessType BusinessType, BusinessKind Kind,
         string? RegistrationNumber, string KraPin, string? PhysicalAddress, string? County,
-        string? PhoneNumber, string? Email, string? LogoUrl, string? BackgroundImageUrl, bool IsActive);
+        string? PhoneNumber, string? Email, string? LogoUrl, string? BackgroundImageUrl, bool IsActive,
+        bool IsVatRegistered, string? MpesaShortCode, decimal? MaxDiscountPercent);
 
+    /// <param name="BusinessId">Optional. Customers are always registered in the business signed in to; if given it must be that one.</param>
+    /// <param name="PriceType">Which price list the customer buys at. Defaults to Wholesale for a wholesaler, Retail for a retailer.</param>
+    /// <param name="CreditLimit">Most the customer may owe on credit sales. Null = no limit.</param>
     public record RegisterCustomerRequestDto(
-        Guid BusinessId,
+        Guid? BusinessId,
         string CustomerName,
         string? KraPin,
         string? ContactPerson,
         string? PhoneNumber,
         string? Email,
-        string? PhysicalAddress);
+        string? PhysicalAddress,
+        PriceType? PriceType = null,
+        decimal? CreditLimit = null);
 
+    /// <summary>Full replace. PriceType null keeps the current price type; CreditLimit null removes any limit.</summary>
     public record UpdateCustomerRequestDto(
         string CustomerName,
         string? KraPin,
         string? ContactPerson,
         string? PhoneNumber,
         string? Email,
-        string? PhysicalAddress);
+        string? PhysicalAddress,
+        PriceType? PriceType = null,
+        decimal? CreditLimit = null);
 
     public record CustomerDto(
         Guid CustomerId, Guid BusinessId, string CustomerName, string? KraPin, string? ContactPerson,
-        string? PhoneNumber, string? Email, string? PhysicalAddress, bool IsActive);
+        string? PhoneNumber, string? Email, string? PhysicalAddress, bool IsActive, PriceType PriceType, decimal? CreditLimit);
 }

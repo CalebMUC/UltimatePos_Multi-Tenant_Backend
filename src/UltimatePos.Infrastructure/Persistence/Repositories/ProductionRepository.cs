@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,14 +25,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
         public async Task<int> GetNextDocumentNumberAsync(string prefix)
         {
-            var results = await _context.Database
-                .SqlQuery<int>($"""
-                INSERT INTO "SkuSequences" ("Prefix", "LastNumber") VALUES ({prefix}, 1)
-                ON CONFLICT ("Prefix") DO UPDATE SET "LastNumber" = "SkuSequences"."LastNumber" + 1
-                RETURNING "LastNumber" AS "Value"
-                """)
-                .ToListAsync();
-            return results.Single();
+            return await _context.NextSequenceNumberAsync(prefix);
         }
 
         public async Task<Formula> CreateFormulaVersionAsync(Formula formula, Guid? updatedBy)

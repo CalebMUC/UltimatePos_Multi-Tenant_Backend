@@ -1,4 +1,4 @@
-﻿using Serilog;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -6,6 +6,8 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using UltimatePos.Application.Business;
+using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Payments.Dtos;
 using UltimatePos.Application.Sales;
 using UltimatePos.Domain.Entities;
@@ -19,14 +21,18 @@ namespace UltimatePos.Application.Payments
         private readonly IMpesaRepository _repository;
         private readonly IMpesaClient _client;
         private readonly SalesService _salesService;
-        private readonly ILogger _logger;
+        private readonly IBusinessRepository _businessRepository;
+        private readonly ITenantContext _tenant;
+        private readonly ILogger _logger = Log.ForContext<MpesaService>();
 
-        public MpesaService(IMpesaRepository repository, IMpesaClient client, SalesService salesService, ILogger logger)
+        public MpesaService(IMpesaRepository repository, IMpesaClient client, SalesService salesService,
+            IBusinessRepository businessRepository, ITenantContext tenant)
         {
             _repository = repository;
             _client = client;
             _salesService = salesService;
-            _logger = logger;
+            _businessRepository = businessRepository;
+            _tenant = tenant;
         }
 
         // Called by the webhook controller. Deliberately swallows and logs rather than throwing — a thrown exception
@@ -34,14 +40,18 @@ namespace UltimatePos.Application.Payments
         // backstop for anything genuinely lost.
         public async Task HandleStkCallbackAsync(StkCallback callback)
         {
-            var transaction = await _repository.GetByCheckoutRequestIdAsync(callback.CheckoutRequestID);
-            if (transaction is null)
+            // Safaricom calls with no user, so no business is in scope: find the transaction across businesses, then act inside
+            // the business that started the push.
+            var transaction = await _repository.GetByCheckoutRequestIdAnyBusinessAsync(callback.CheckoutRequestID);
+            if (transaction is null || transaction.BusinessId is not { } businessId)
             {
                 _logger.Warning("STK callback for unknown CheckoutRequestID {Id}", callback.CheckoutRequestID);
                 return;
             }
             if (transaction.Status != MpesaTransactionStatus.Pending || transaction.SaleId is null)
                 return; // already processed — duplicate callback, idempotent no-op
+
+            using var scope = _tenant.Use(businessId);
 
             if (callback.ResultCode == 0)
             {
@@ -58,11 +68,27 @@ namespace UltimatePos.Application.Payments
             }
         }
 
+        /// <summary>
+        /// A customer paid a till or paybill. The short code routes it to the business that owns it; a payment to a short code no
+        /// business has claimed is stored unassigned (visible to nobody) and logged. Safaricom retries, so a receipt seen before is ignored.
+        /// </summary>
         public async Task HandleC2bConfirmationAsync(C2bConfirmationPayload payload)
         {
+            if (!string.IsNullOrWhiteSpace(payload.TransID) && await _repository.ReceiptExistsAnyBusinessAsync(payload.TransID))
+                return;
+
+            var business = string.IsNullOrWhiteSpace(payload.BusinessShortCode)
+                ? null
+                : await _businessRepository.GetBusinessByMpesaShortCodeAsync(payload.BusinessShortCode.Trim());
+            if (business is null)
+                _logger.Warning("C2B payment {TransId} to short code {ShortCode} matches no business — stored unassigned",
+                    payload.TransID, payload.BusinessShortCode);
+
+            using var scope = business is null ? null : _tenant.Use(business.BusinessId);
             await _repository.CreateAsync(new MpesaTransaction
             {
                 MpesaTransactionId = Guid.NewGuid(),
+                BusinessId = business?.BusinessId,
                 TransactionType = MpesaTransactionType.C2B,
                 Status = MpesaTransactionStatus.Received,
                 MpesaReceiptNumber = payload.TransID,
@@ -112,9 +138,13 @@ namespace UltimatePos.Application.Payments
             return item.Value.ValueKind == JsonValueKind.String ? item.Value.GetString() : item.Value.ToString();
         }
 
+        /// <summary>
+        /// Safaricom sends Nairobi wall-clock time (UTC+3) with no zone. Stored as UTC: Npgsql refuses an unspecified DateTime for a
+        /// timestamptz column, which made every callback carrying a date fail to save.
+        /// </summary>
         private static DateTime? ParseMpesaDate(string? raw) =>
             !string.IsNullOrWhiteSpace(raw) && DateTime.TryParseExact(raw, "yyyyMMddHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt)
-                ? dt : null;
+                ? DateTime.SpecifyKind(dt.AddHours(-3), DateTimeKind.Utc) : null;
 
         private static MpesaTransactionDto ToDto(MpesaTransaction t) =>
             new(t.MpesaTransactionId, t.TransactionType, t.Status, t.MpesaReceiptNumber, t.PhoneNumber, t.Amount, t.TransactionDate, t.SaleId);

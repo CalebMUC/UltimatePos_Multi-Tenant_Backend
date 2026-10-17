@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,9 +13,10 @@ namespace UltimatePos.Domain.Entities
     /// Amount, date and payment method are fixed once posted — a mistake is corrected by voiding and re-entering,
     /// so the books always show what was originally recorded and who voided it.
     /// </summary>
-    public class Expense
+    public class Expense : ITenantEntity
     {
         public Guid ExpenseId { get; set; }
+        public Guid BusinessId { get; set; }
         /// <summary>EXP-000001 ...</summary>
         public string ExpenseNumber { get; set; } = string.Empty;
         /// <summary>The calendar day the cost was incurred (a date, not an instant — no time zone ambiguity).</summary>

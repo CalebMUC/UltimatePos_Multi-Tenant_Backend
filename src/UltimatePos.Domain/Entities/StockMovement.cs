@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -21,6 +21,8 @@ namespace UltimatePos.Domain.Entities
         public string ReferenceType { get; set; } = string.Empty;
         public Guid ReferenceId { get; set; }
         public Guid BatchId { get; set; }
+        /// <summary>The stock batch moved, for batch-tracked products. Null for products that are not batch-tracked.</summary>
+        public Guid? StockBatchId { get; set; }
         public string? Notes { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }

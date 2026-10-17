@@ -9,6 +9,12 @@ namespace UltimatePos.Application.Common.Interfaces
 {
     public interface ITokenService
     {
-        string GenerateToken(User user, IEnumerable<string> permissions, IEnumerable<string> roles);
+        /// <summary>A signed access token carrying the user, the business it is for (if any), their roles and permissions in it.</summary>
+        (string Token, DateTime ExpiresAt) GenerateToken(User user, Guid? businessId, IEnumerable<string> permissions, IEnumerable<string> roles);
+
+        /// <summary>A new opaque refresh token, and when it expires. Only its hash is stored.</summary>
+        (string Token, DateTime ExpiresAt) GenerateRefreshToken();
+
+        string HashRefreshToken(string refreshToken);
     }
 }

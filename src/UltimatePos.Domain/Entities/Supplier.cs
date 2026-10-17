@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace UltimatePos.Domain.Entities
 {
-    public class Supplier
+    public class Supplier : ITenantEntity
     {
         public Guid SupplierId { get; set; }
         public Guid BusinessId { get; set; }

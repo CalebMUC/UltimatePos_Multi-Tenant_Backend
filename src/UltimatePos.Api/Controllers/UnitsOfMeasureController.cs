@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Catalog.Dtos;
@@ -26,6 +26,30 @@ public class UnitsOfMeasureController : ControllerBase
     public async Task<IActionResult> CreateUnit(CreateUnitOfMeasureRequestDto request)
     {
         var result = await _catalogService.CreateUnitOfMeasureAsync(request);
+        return Ok(ApiResponse<UnitOfMeasureDto>.Ok(result));
+    }
+
+    [Authorize(Policy = "PERMISSION:Units.Update")]
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> UpdateUnit(Guid id, UpdateUnitOfMeasureRequestDto request)
+    {
+        var result = await _catalogService.UpdateUnitOfMeasureAsync(id, request);
+        return Ok(ApiResponse<UnitOfMeasureDto>.Ok(result));
+    }
+
+    [Authorize(Policy = "PERMISSION:Units.Deactivate")]
+    [HttpPost("{id:guid}/activate")]
+    public async Task<IActionResult> Activate(Guid id)
+    {
+        var result = await _catalogService.SetUnitOfMeasureActiveStatusAsync(id, true);
+        return Ok(ApiResponse<UnitOfMeasureDto>.Ok(result));
+    }
+
+    [Authorize(Policy = "PERMISSION:Units.Deactivate")]
+    [HttpPost("{id:guid}/deactivate")]
+    public async Task<IActionResult> Deactivate(Guid id)
+    {
+        var result = await _catalogService.SetUnitOfMeasureActiveStatusAsync(id, false);
         return Ok(ApiResponse<UnitOfMeasureDto>.Ok(result));
     }
 }

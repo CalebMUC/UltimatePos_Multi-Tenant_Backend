@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,7 +13,8 @@ namespace UltimatePos.Application.Purchasing
         Task<int> GetNextDocumentNumberAsync(string prefix);
 
         Task<Supplier> CreateSupplierAsync(Supplier supplier);
-        Task<IEnumerable<Supplier>> GetSuppliersByBusinessAsync(Guid businessId);
+        /// <summary>Suppliers of the business in scope.</summary>
+        Task<IEnumerable<Supplier>> GetSuppliersAsync();
         Task<Supplier?> GetSupplierByIdAsync(Guid supplierId);
         Task<Supplier> UpdateSupplierAsync(Guid supplierId, string supplierName, string? kraPin, string? contactPerson,
             string? phoneNumber, string? email, string? physicalAddress, int? paymentTermDays, Guid? updatedBy);
@@ -26,10 +27,15 @@ namespace UltimatePos.Application.Purchasing
 
         // Deliberately reaches into the stock tables directly — see the atomicity note above.
         // One SaveChangesAsync covering PurchaseOrder + PurchaseOrderLine + StockMovement + StockLevel together.
+        // Batch-tracked lines go into their lot (created on first receipt); the bill, if any, posts to the supplier's account.
         Task ReceivePurchaseOrderAsync(
-            Guid purchaseOrderId, PurchaseOrderStatus newStatus,
+            Guid purchaseOrderId, Guid supplierId, PurchaseOrderStatus newStatus,
             IEnumerable<(Guid PurchaseOrderLineId, decimal NewQuantityReceived)> lineUpdates,
-            IEnumerable<(Guid ProductId, decimal QuantityInBaseUnits, decimal? UnitCostPerBaseUnit)> movements,
-            Guid batchId, string? notes, Guid? updatedBy);
+            IEnumerable<ReceiptMovement> movements,
+            Guid batchId, string? notes, Guid? updatedBy, SupplierLedgerEntry? bill);
     }
+
+    /// <summary>One receipt of stock: quantity and cost per base unit, and the lot it goes into for batch-tracked products.</summary>
+    public record ReceiptMovement(Guid ProductId, decimal QuantityInBaseUnits, decimal? UnitCostPerBaseUnit,
+        string? BatchNumber, DateOnly? ExpiryDate, DateOnly? ManufactureDate);
 }

@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using UltimatePos.Api.Auth;
 using UltimatePos.Api.Middleware;
 using UltimatePos.Api.Services;
 using UltimatePos.Application;
+using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Infrastructure;
 using UltimatePos.Infrastructure.Configuration;
@@ -50,8 +52,32 @@ builder.Services.AddAuthorization(options =>
         .Build();
 });
 // Add services to the container.
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        // Model-binding failures (missing body, malformed GUID, wrong enum) use the same envelope as every other error, with the
+        // messages keyed by camelCase field name.
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var entries = context.ModelState.Where(e => e.Value?.Errors.Count > 0).ToList();
+            // A malformed field also fails the whole body parameter ("request is required"); report only the field when there is one.
+            if (entries.Any(e => e.Key.StartsWith("$.")))
+                entries = entries.Where(e => e.Key.StartsWith("$.")).ToList();
+            var details = entries.ToDictionary(
+                e => ToFieldName(e.Key),
+                e => e.Value!.Errors.Select(x => FriendlyBindingError(x.ErrorMessage)).ToArray());
+            var first = details.Values.SelectMany(v => v).FirstOrDefault() ?? "The request is not valid.";
+            return new BadRequestObjectResult(ApiResponse<object>.Fail("VALIDATION_FAILED", first, details));
+        };
+    });
 
-builder.Services.AddControllers();
+// Origins allowed to call the API from a browser (the separately hosted frontend). Empty = same-origin only.
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
+{
+    if (allowedOrigins.Length > 0)
+        policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
+}));
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options => {
@@ -61,7 +87,7 @@ builder.Services.AddSwaggerGen(options => {
         Scheme = "Bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Paste the access token from /api/v1/auth/login — no 'Bearer ' prefix needed, Swagger adds it."
+        Description = "Paste the access token from /api/v1/auth/login â€” no 'Bearer ' prefix needed, Swagger adds it."
     });
 
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -75,18 +101,6 @@ builder.Services.AddSwaggerGen(options => {
 });
 
 
-// JWT bearer + permission-policy wiring lands here once Auth is ported — build
-// order step 1.
-
-builder.Services.AddAuthorization(options =>
-{
-    // Default-deny: every endpoint requires authentication unless it opts out
-    // with [AllowAnonymous]. This is the one line that would have prevented most
-    // of the original repo's authorization gaps.
-    options.FallbackPolicy = new AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser()
-        .Build();
-});
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -102,6 +116,7 @@ app.UseMiddleware<MpesaIpAllowlistMiddleware>();
 
 app.UseHttpsRedirection();
 
+app.UseCors();
 app.UseAuthentication();
 
 app.UseAuthorization();
@@ -123,3 +138,18 @@ if (app.Environment.IsDevelopment()) {
 }
 
 app.Run();
+
+// "request.Lines[0].Quantity" / "$.lines[0].quantity" -> "lines[0].quantity"
+static string ToFieldName(string key)
+{
+    var trimmed = key.StartsWith("$.") ? key[2..] : key;
+    if (trimmed.StartsWith("request.", StringComparison.OrdinalIgnoreCase))
+        trimmed = trimmed["request.".Length..];
+    return string.Join('.', trimmed.Split('.').Select(part => part.Length == 0 ? part : char.ToLowerInvariant(part[0]) + part[1..]));
+}
+
+// System.Text.Json's conversion messages name .NET types; clients get a plain sentence instead.
+static string FriendlyBindingError(string message) =>
+    string.IsNullOrWhiteSpace(message) ? "The value is not valid."
+    : message.StartsWith("The JSON value could not be converted", StringComparison.Ordinal) ? "The value is not in the expected format."
+    : message;

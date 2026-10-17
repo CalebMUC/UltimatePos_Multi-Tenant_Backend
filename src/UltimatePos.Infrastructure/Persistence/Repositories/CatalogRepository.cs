@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Catalog.Dtos;
 using UltimatePos.Domain.Entities;
@@ -26,6 +26,32 @@ public class CatalogRepository : ICatalogRepository
     public async Task<Category?> GetCategoryByIdAsync(Guid categoryId) =>
         await _context.Categories.AsNoTracking().FirstOrDefaultAsync(c => c.CategoryId == categoryId);
 
+    public async Task<bool> CategoryCodeExistsAsync(string code) =>
+        await _context.Categories.AnyAsync(c => c.Code.ToUpper() == code.ToUpper());
+
+    public async Task<Category> UpdateCategoryAsync(Guid categoryId, string name, Guid? parentCategoryId, Guid? updatedBy)
+    {
+        var category = await _context.Categories.FirstOrDefaultAsync(c => c.CategoryId == categoryId)
+            ?? throw new NotFoundException($"Category '{categoryId}' not found.");
+        category.Name = name;
+        category.ParentCategoryId = parentCategoryId;
+        category.LastUpdatedBy = updatedBy;
+        category.LastUpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return category;
+    }
+
+    public async Task<Category> SetCategoryActiveStatusAsync(Guid categoryId, bool isActive, Guid? updatedBy)
+    {
+        var category = await _context.Categories.FirstOrDefaultAsync(c => c.CategoryId == categoryId)
+            ?? throw new NotFoundException($"Category '{categoryId}' not found.");
+        category.IsActive = isActive;
+        category.LastUpdatedBy = updatedBy;
+        category.LastUpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return category;
+    }
+
     public async Task<Dictionary<string, Guid>> GetCategoryCodeMapAsync() =>
         await _context.Categories.AsNoTracking().ToDictionaryAsync(c => c.Code, c => c.CategoryId, StringComparer.OrdinalIgnoreCase);
 
@@ -43,21 +69,40 @@ public class CatalogRepository : ICatalogRepository
     }
 
     public async Task<IEnumerable<UnitOfMeasure>> GetUnitsOfMeasureAsync() =>
-        await _context.UnitsOfMeasure.AsNoTracking().ToListAsync();
+        await _context.UnitsOfMeasure.AsNoTracking().OrderBy(u => u.Name).ToListAsync();
+
+    public async Task<bool> UnitSymbolExistsAsync(string symbol, Guid? exceptUnitId = null) =>
+        await _context.UnitsOfMeasure.AnyAsync(u => u.Symbol.ToLower() == symbol.ToLower() && (exceptUnitId == null || u.UnitOfMeasureId != exceptUnitId));
+
+    public async Task<UnitOfMeasure> UpdateUnitOfMeasureAsync(Guid unitOfMeasureId, string name, string symbol, Guid? updatedBy)
+    {
+        var unit = await _context.UnitsOfMeasure.FirstOrDefaultAsync(u => u.UnitOfMeasureId == unitOfMeasureId)
+            ?? throw new NotFoundException($"Unit of measure '{unitOfMeasureId}' not found.");
+        unit.Name = name;
+        unit.Symbol = symbol;
+        unit.LastUpdatedBy = updatedBy;
+        unit.LastUpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return unit;
+    }
+
+    public async Task<UnitOfMeasure> SetUnitOfMeasureActiveStatusAsync(Guid unitOfMeasureId, bool isActive, Guid? updatedBy)
+    {
+        var unit = await _context.UnitsOfMeasure.FirstOrDefaultAsync(u => u.UnitOfMeasureId == unitOfMeasureId)
+            ?? throw new NotFoundException($"Unit of measure '{unitOfMeasureId}' not found.");
+        unit.IsActive = isActive;
+        unit.LastUpdatedBy = updatedBy;
+        unit.LastUpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return unit;
+    }
 
     public async Task<Dictionary<string, Guid>> GetUnitSymbolMapAsync() =>
         await _context.UnitsOfMeasure.AsNoTracking().ToDictionaryAsync(u => u.Symbol, u => u.UnitOfMeasureId, StringComparer.OrdinalIgnoreCase);
 
     public async Task<int> GetNextSkuNumberAsync(string prefix)
     {
-        var results = await _context.Database
-            .SqlQuery<int>($"""
-                INSERT INTO "SkuSequences" ("Prefix", "LastNumber") VALUES ({prefix}, 1)
-                ON CONFLICT ("Prefix") DO UPDATE SET "LastNumber" = "SkuSequences"."LastNumber" + 1
-                RETURNING "LastNumber"
-                """)
-            .ToListAsync();
-        return results.Single();
+        return await _context.NextSequenceNumberAsync(prefix);
     }
 
     public async Task<Product> CreateProductAsync(Product product)
@@ -67,26 +112,83 @@ public class CatalogRepository : ICatalogRepository
         return product;
     }
 
-    public async Task<(IEnumerable<Product> Items, int TotalCount)> GetProductsAsync(int page, int pageSize, Guid? categoryId, ItemType? itemType)
+    public async Task<(IEnumerable<Product> Items, int TotalCount)> GetProductsAsync(int page, int pageSize, ProductQuery filter)
     {
-        var query = _context.Products.AsNoTracking().AsQueryable();
+        var query = _context.Products.AsNoTracking()
+            .Include(p => p.Category)
+            .Include(p => p.BaseUnitOfMeasure)
+            .AsQueryable();
 
-        if (categoryId.HasValue)
-            query = query.Where(p => p.CategoryId == categoryId.Value);
-        if (itemType.HasValue)
-            query = query.Where(p => p.ItemType == itemType.Value);
+        if (filter.CategoryId.HasValue)
+            query = query.Where(p => p.CategoryId == filter.CategoryId.Value);
+        if (filter.ItemType.HasValue)
+            query = query.Where(p => p.ItemType == filter.ItemType.Value);
+        if (filter.IsActive.HasValue)
+            query = query.Where(p => p.IsActive == filter.IsActive.Value);
+        if (filter.IsBatchTracked.HasValue)
+            query = query.Where(p => p.IsBatchTracked == filter.IsBatchTracked.Value);
+        if (filter.RequiresPrescription.HasValue)
+            query = query.Where(p => p.RequiresPrescription == filter.RequiresPrescription.Value);
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            var pattern = $"%{filter.Search.Trim()}%";
+            query = query.Where(p => EF.Functions.ILike(p.Name, pattern) || EF.Functions.ILike(p.Sku, pattern)
+                                     || (p.Barcode != null && EF.Functions.ILike(p.Barcode, pattern))
+                                     || (p.GenericName != null && EF.Functions.ILike(p.GenericName, pattern)));
+        }
+
+        var descending = string.Equals(filter.SortDirection, "desc", StringComparison.OrdinalIgnoreCase);
+        query = (filter.SortBy ?? "name").ToLowerInvariant() switch
+        {
+            "sku" => descending ? query.OrderByDescending(p => p.Sku) : query.OrderBy(p => p.Sku),
+            "createdat" => descending ? query.OrderByDescending(p => p.CreatedAt) : query.OrderBy(p => p.CreatedAt),
+            "category" => descending ? query.OrderByDescending(p => p.Category.Name).ThenBy(p => p.Name) : query.OrderBy(p => p.Category.Name).ThenBy(p => p.Name),
+            _ => descending ? query.OrderByDescending(p => p.Name) : query.OrderBy(p => p.Name),
+        };
 
         var totalCount = await query.CountAsync();
-        var items = await query.OrderBy(p => p.Name).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        var items = await ((IOrderedQueryable<Product>)query).ThenBy(p => p.ProductId)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
 
         return (items, totalCount);
     }
 
     public async Task<Product?> GetProductByIdAsync(Guid productId) =>
         await _context.Products.AsNoTracking()
-            .Include(p => p.UnitConversions)
+            .Include(p => p.Category)
+            .Include(p => p.BaseUnitOfMeasure)
+            .Include(p => p.UnitConversions).ThenInclude(c => c.PackUnitOfMeasure)
             .Include(p => p.PriceTiers)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(p => p.ProductId == productId);
+
+    public async Task<Product?> GetProductByCodeAsync(string code)
+    {
+        var upper = code.ToUpperInvariant();
+        var productId = await _context.Products.AsNoTracking()
+            .Where(p => p.Barcode == code || p.Sku.ToUpper() == upper)
+            .OrderByDescending(p => p.Barcode == code) // a barcode match beats a SKU that happens to look the same
+            .Select(p => (Guid?)p.ProductId)
+            .FirstOrDefaultAsync();
+        return productId is null ? null : await GetProductByIdAsync(productId.Value);
+    }
+
+    public async Task<bool> BarcodeExistsAsync(string barcode, Guid? exceptProductId = null) =>
+        await _context.Products.AnyAsync(p => p.Barcode == barcode && (exceptProductId == null || p.ProductId != exceptProductId));
+
+    public async Task<Product> SetProductActiveStatusAsync(Guid productId, bool isActive, Guid? updatedBy)
+    {
+        var product = await _context.Products.FirstOrDefaultAsync(p => p.ProductId == productId)
+            ?? throw new NotFoundException($"Product '{productId}' not found.");
+        product.IsActive = isActive;
+        product.LastUpdatedBy = updatedBy;
+        product.LastUpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return (await GetProductByIdAsync(productId))!;
+    }
+
+    public async Task<decimal> GetQuantityOnHandAsync(Guid productId) =>
+        await _context.StockLevels.Where(s => s.ProductId == productId).Select(s => (decimal?)s.QuantityOnHand).FirstOrDefaultAsync() ?? 0m;
 
     public async Task<Product> UpdateProductAsync(Guid productId, UpdateProductRequestDto request, Guid? updatedBy)
     {
@@ -100,6 +202,13 @@ public class CatalogRepository : ICatalogRepository
         product.BaseUnitOfMeasureId = request.BaseUnitOfMeasureId;
         product.ReorderLevel = request.ReorderLevel;
         product.Description = request.Description;
+        product.Barcode = request.Barcode;
+        product.IsBatchTracked = request.IsBatchTracked;
+        product.RequiresPrescription = request.RequiresPrescription;
+        product.GenericName = request.GenericName;
+        product.Strength = request.Strength;
+        product.DosageForm = request.DosageForm;
+        product.Manufacturer = request.Manufacturer;
         product.LastUpdatedBy = updatedBy;
         product.LastUpdatedAt = DateTime.UtcNow;
 
@@ -141,7 +250,22 @@ public class CatalogRepository : ICatalogRepository
     }
 
     public async Task<IEnumerable<ProductUnitConversion>> GetUnitConversionsAsync(Guid productId) =>
-        await _context.ProductUnitConversions.AsNoTracking().Where(c => c.ProductId == productId).ToListAsync();
+        await _context.ProductUnitConversions.AsNoTracking().Include(c => c.PackUnitOfMeasure).Where(c => c.ProductId == productId).ToListAsync();
+
+    public async Task<ProductUnitConversion> UpdateUnitConversionAsync(Guid productId, Guid conversionId, decimal? conversionFactor, bool? isActive, Guid? updatedBy)
+    {
+        var conversion = await _context.ProductUnitConversions.Include(c => c.PackUnitOfMeasure)
+            .FirstOrDefaultAsync(c => c.ProductId == productId && c.ProductUnitConversionId == conversionId)
+            ?? throw new NotFoundException($"Unit conversion '{conversionId}' not found on this product.");
+        if (conversionFactor.HasValue)
+            conversion.ConversionFactor = conversionFactor.Value;
+        if (isActive.HasValue)
+            conversion.IsActive = isActive.Value;
+        conversion.LastUpdatedBy = updatedBy;
+        conversion.LastUpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return conversion;
+    }
 
     public async Task<decimal?> GetConversionFactorAsync(Guid productId, Guid unitOfMeasureId)
     {

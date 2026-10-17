@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,7 +11,11 @@ namespace UltimatePos.Domain.Entities
         public Guid UserSessionId { get; set; }
         public Guid UserId { get; set; }
         public User User { get; set; } = null!;
+        /// <summary>SHA-256 of the refresh token, hex-encoded. The token itself is never stored.</summary>
         public string SessionToken { get; set; } = string.Empty;
+        /// <summary>The business the session is signed in to.</summary>
+        public Guid? BusinessId { get; set; }
+        public DateTime? RevokedAt { get; set; }
         public string DeviceInfo { get; set; } = string.Empty;
         public string IpAddress { get; set; } = string.Empty;
         public DateTime LoginAt { get; set; }

@@ -7,12 +7,17 @@ using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Costing;
 using UltimatePos.Application.Inventory.Dtos;
+using UltimatePos.Application.Reports;
+using UltimatePos.Domain.Entities;
 using UltimatePos.Domain.Exceptions;
 
 namespace UltimatePos.Application.Inventory
 {
     public class InventoryService
     {
+        public const int DefaultNearExpiryDays = 90;
+        private const string CostingViewPermission = "Costing.View";
+
         private readonly IInventoryRepository _repository;
         private readonly ICatalogRepository _catalogRepository;
         private readonly ICurrentUser _currentUser;
@@ -24,31 +29,47 @@ namespace UltimatePos.Application.Inventory
             _currentUser = currentUser;
         }
 
-        public async Task<IEnumerable<StockLevelDto>> GetStockLevelsAsync(bool belowReorderOnly) =>
-            (await _repository.GetStockLevelsAsync(belowReorderOnly))
-                .Select(s => new StockLevelDto(s.ProductId, s.Product.Name, s.Product.Sku, s.QuantityOnHand, s.Product.ReorderLevel, s.QuantityOnHand <= s.Product.ReorderLevel));
+        private static DateOnly Today => ReportPeriod.TodayAt(ReportPeriod.DefaultUtcOffsetMinutes);
+
+        public async Task<IEnumerable<StockLevelDto>> GetStockLevelsAsync(bool belowReorderOnly)
+        {
+            var levels = (await _repository.GetStockLevelsAsync(belowReorderOnly)).ToList();
+            var sellable = await _repository.GetSellableQuantitiesAsync(levels.Where(l => l.Product.IsBatchTracked).Select(l => l.ProductId), Today);
+            return levels.Select(s => ToDto(s, sellable));
+        }
 
         public async Task<StockLevelDto> GetStockLevelAsync(Guid productId)
         {
             var level = await _repository.GetStockLevelAsync(productId)
                 ?? throw new NotFoundException($"No stock record for product '{productId}' — nothing has been received, produced or adjusted against it yet.");
-            return new StockLevelDto(level.ProductId, level.Product.Name, level.Product.Sku, level.QuantityOnHand, level.Product.ReorderLevel, level.QuantityOnHand <= level.Product.ReorderLevel);
+            var sellable = await _repository.GetSellableQuantitiesAsync(new[] { productId }, Today);
+            return ToDto(level, sellable);
         }
 
-        public async Task<IEnumerable<StockMovementDto>> GetStockMovementsAsync(Guid productId) =>
-            (await _repository.GetStockMovementsAsync(productId))
-                .Select(m => new StockMovementDto(m.StockMovementId, m.ProductId, m.MovementType.ToString(), m.QuantityChange, m.ReferenceType, m.ReferenceId, m.BatchId, m.Notes, m.CreatedAt));
+        private static StockLevelDto ToDto(StockLevel s, IReadOnlyDictionary<Guid, decimal> sellable) =>
+            new(s.ProductId, s.Product.Name, s.Product.Sku, s.QuantityOnHand, s.Product.ReorderLevel, s.QuantityOnHand <= s.Product.ReorderLevel,
+                s.Product.IsBatchTracked, s.Product.IsBatchTracked ? sellable.GetValueOrDefault(s.ProductId) : s.QuantityOnHand,
+                s.Product.BaseUnitOfMeasure?.Symbol);
+
+        public async Task<IEnumerable<StockMovementDto>> GetStockMovementsAsync(Guid productId)
+        {
+            var movements = (await _repository.GetStockMovementsAsync(productId)).ToList();
+            var batchNumbers = (await _repository.GetBatchesAsync(productId, includeEmpty: true)).ToDictionary(b => b.StockBatchId, b => b.BatchNumber);
+            return movements.Select(m => new StockMovementDto(m.StockMovementId, m.ProductId, m.MovementType.ToString(), m.QuantityChange, m.ReferenceType,
+                m.ReferenceId, m.BatchId, m.Notes, m.CreatedAt, m.StockBatchId,
+                m.StockBatchId is { } id && batchNumbers.TryGetValue(id, out var number) ? number : null));
+        }
 
         // Opening balances and corrections. Positive or negative; reason is mandatory (audit trail).
         public async Task<StockLevelDto> AdjustStockAsync(CreateStockAdjustmentRequestDto request)
         {
             if (request.QuantityChange == 0)
-                throw new InvalidAssignmentException("Quantity change cannot be zero.");
+                throw new ValidationException("quantityChange", "Quantity change cannot be zero.");
             if (string.IsNullOrWhiteSpace(request.Reason))
-                throw new InvalidAssignmentException("A reason is required for every stock adjustment.");
+                throw new ValidationException("reason", "A reason is required for every stock adjustment.");
 
-            if (await _catalogRepository.GetProductByIdAsync(request.ProductId) is null)
-                throw new NotFoundException($"Product '{request.ProductId}' not found.");
+            var product = await _catalogRepository.GetProductByIdAsync(request.ProductId)
+                ?? throw new NotFoundException($"Product '{request.ProductId}' not found.");
 
             var factor = await _catalogRepository.GetConversionFactorAsync(request.ProductId, request.UnitOfMeasureId)
                 ?? throw new InvalidAssignmentException("This product has no conversion for the unit given.");
@@ -57,7 +78,6 @@ namespace UltimatePos.Application.Inventory
             if (changeInBaseUnits == 0)
                throw new InvalidAssignmentException("Quantity is too small — it rounds to zero in the product's base unit.");
 
-            //await _repository.AdjustStockAsync(request.ProductId, changeInBaseUnits, request.Reason.Trim(), _currentUser.UserId);
             decimal? unitCostPerBase = null;
             if (request.UnitCost.HasValue)
             {
@@ -79,8 +99,98 @@ namespace UltimatePos.Application.Inventory
                         "This product has no cost yet — provide a unit cost (the cost of one unit of the unit given) with this adjustment.");
             }
 
-            await _repository.AdjustStockAsync(request.ProductId, changeInBaseUnits, request.Reason.Trim(), _currentUser.UserId, unitCostPerBase);
+            var batch = await ResolveBatchAsync(product, request, changeInBaseUnits);
+            await _repository.AdjustStockAsync(request.ProductId, changeInBaseUnits, request.Reason.Trim(), _currentUser.UserId, unitCostPerBase, batch);
             return await GetStockLevelAsync(request.ProductId);
         }
+
+        /// <summary>Batch-tracked products are always adjusted lot by lot, so the batches keep adding up to the product's total.</summary>
+        private async Task<BatchTarget?> ResolveBatchAsync(Product product, CreateStockAdjustmentRequestDto request, decimal changeInBaseUnits)
+        {
+            var batchGiven = request.StockBatchId.HasValue || !string.IsNullOrWhiteSpace(request.BatchNumber);
+            if (!product.IsBatchTracked)
+            {
+                if (batchGiven)
+                    throw new ValidationException("stockBatchId", $"'{product.Name}' is not batch-tracked — leave the batch out.");
+                return null;
+            }
+
+            if (request.StockBatchId is { } batchId)
+            {
+                var existing = await _repository.GetBatchAsync(batchId);
+                if (existing is null || existing.ProductId != product.ProductId)
+                    throw new ValidationException("stockBatchId", "That batch does not belong to this product.");
+                if (changeInBaseUnits < 0 && existing.QuantityOnHand < -changeInBaseUnits)
+                    throw new ValidationException("quantityChange", $"Batch '{existing.BatchNumber}' only holds {existing.QuantityOnHand:0.####}.");
+                return new BatchTarget(batchId, null, null, null);
+            }
+
+            if (changeInBaseUnits < 0)
+                throw new ValidationException("stockBatchId", $"Choose the batch of '{product.Name}' to remove stock from.");
+            if (string.IsNullOrWhiteSpace(request.BatchNumber))
+                throw new ValidationException("batchNumber", $"'{product.Name}' is batch-tracked — give the batch number (and expiry date) of the stock being added.");
+
+            var number = request.BatchNumber.Trim();
+            if (number.Length > 64)
+                throw new ValidationException("batchNumber", "A batch number is at most 64 characters.");
+            if (request.ExpiryDate is { } expiry && request.ManufactureDate is { } made && made > expiry)
+                throw new ValidationException("manufactureDate", "The manufacture date cannot be after the expiry date.");
+            return new BatchTarget(null, number, request.ExpiryDate, request.ManufactureDate);
+        }
+
+        // ---- Batches and expiry ----
+
+        /// <param name="expiringWithinDays">Only batches that expire within this many days (expired ones included).</param>
+        public async Task<IEnumerable<StockBatchDto>> GetBatchesAsync(Guid? productId, int? expiringWithinDays, bool includeExpired, bool includeEmpty)
+        {
+            if (expiringWithinDays is < 0 or > 3650)
+                throw new ValidationException("expiringWithinDays", "expiringWithinDays must be between 0 and 3650.");
+
+            var today = Today;
+            var window = expiringWithinDays ?? DefaultNearExpiryDays;
+            var showCost = _currentUser.HasPermission(CostingViewPermission);
+
+            return (await _repository.GetBatchesAsync(productId, includeEmpty))
+                .Where(b => includeExpired || b.ExpiryDate is null || b.ExpiryDate >= today)
+                .Where(b => expiringWithinDays is null || (b.ExpiryDate is { } e && e <= today.AddDays(expiringWithinDays.Value)))
+                .OrderBy(b => b.ExpiryDate ?? DateOnly.MaxValue).ThenBy(b => b.Product.Name).ThenBy(b => b.BatchNumber)
+                .Select(b => new StockBatchDto(b.StockBatchId, b.ProductId, b.Product.Name, b.Product.Sku, b.BatchNumber, b.ExpiryDate, b.ManufactureDate,
+                    b.QuantityOnHand, b.Product.BaseUnitOfMeasure?.Symbol, showCost ? b.UnitCost : null,
+                    b.ExpiryDate is { } d ? d.DayNumber - today.DayNumber : null, ExpiryStatus(b.ExpiryDate, today, window),
+                    b.SupplierId, b.PurchaseOrderId, b.CreatedAt));
+        }
+
+        /// <summary>Stock that has expired or will within <paramref name="withinDays"/> days, soonest first — what to sell, return or write off.</summary>
+        public async Task<ExpiryReportDto> GetExpiryReportAsync(int withinDays)
+        {
+            if (withinDays is < 0 or > 3650)
+                throw new ValidationException("withinDays", "withinDays must be between 0 and 3650.");
+
+            var today = Today;
+            var batches = (await _repository.GetBatchesAsync(null, includeEmpty: false))
+                .Where(b => b.ExpiryDate is { } e && e <= today.AddDays(withinDays))
+                .ToList();
+            var showCost = _currentUser.HasPermission(CostingViewPermission);
+            var costs = showCost ? await _repository.GetAverageCostsAsync(batches.Select(b => b.ProductId)) : new Dictionary<Guid, decimal>();
+
+            var items = batches
+                .OrderBy(b => b.ExpiryDate).ThenBy(b => b.Product.Name)
+                .Select(b => new ExpiryReportItemDto(b.StockBatchId, b.ProductId, b.Product.Name, b.Product.Sku, b.BatchNumber, b.ExpiryDate!.Value,
+                    b.ExpiryDate!.Value.DayNumber - today.DayNumber, ExpiryStatus(b.ExpiryDate, today, withinDays), b.QuantityOnHand,
+                    b.Product.BaseUnitOfMeasure?.Symbol,
+                    showCost ? Math.Round(b.QuantityOnHand * costs.GetValueOrDefault(b.ProductId), 2, MidpointRounding.AwayFromZero) : null))
+                .ToList();
+
+            var expired = items.Where(i => i.ExpiryStatus == "Expired").ToList();
+            var near = items.Where(i => i.ExpiryStatus == "NearExpiry").ToList();
+            return new ExpiryReportDto(today, withinDays, expired.Count, showCost ? expired.Sum(i => i.Value ?? 0) : null,
+                near.Count, showCost ? near.Sum(i => i.Value ?? 0) : null, items);
+        }
+
+        private static string ExpiryStatus(DateOnly? expiry, DateOnly today, int nearExpiryDays) =>
+            expiry is not { } e ? "NoExpiry"
+            : e < today ? "Expired"
+            : e <= today.AddDays(nearExpiryDays) ? "NearExpiry"
+            : "Ok";
     }
 }

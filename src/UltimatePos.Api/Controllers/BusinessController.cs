@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Business.Dtos;
@@ -27,6 +27,14 @@ public class BusinessesController : ControllerBase
     {
         var result = await _businessService.GetBusinessesAsync();
         return Ok(ApiResponse<IEnumerable<BusinessDto>>.Ok(result));
+    }
+
+    /// <summary>The business signed in to — receipts, VAT registration and discount cap.</summary>
+    [HttpGet("current")]
+    public async Task<IActionResult> GetCurrentBusiness()
+    {
+        var result = await _businessService.GetCurrentBusinessAsync();
+        return Ok(ApiResponse<BusinessDto>.Ok(result));
     }
 
     [Authorize(Policy = "PERMISSION:Businesses.View")]
