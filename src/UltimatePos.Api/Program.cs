@@ -25,6 +25,13 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUserService>();
 
+// Background work: turn events into notifications and send email/SMS; sweep for stock, expiry, order and payment alerts.
+if (builder.Configuration.GetValue("Notifications:WorkersEnabled", true))
+{
+    builder.Services.AddHostedService<UltimatePos.Api.Background.NotificationDispatchWorker>();
+    builder.Services.AddHostedService<UltimatePos.Api.Background.AlertSweepWorker>();
+}
+
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

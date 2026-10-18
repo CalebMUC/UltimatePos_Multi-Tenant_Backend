@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using UltimatePos.Application.Common.Interfaces;
+using UltimatePos.Application.Notifications;
 using  UltimatePos.Application.Identity.Dtos;
 using UltimatePos.Domain.Entities;
 using UltimatePos.Domain.Exceptions;
@@ -21,12 +22,15 @@ namespace UltimatePos.Application.Identity
         private readonly ITokenService _tokenService;
         private readonly ICurrentUser _currentUser;
         private readonly ITenantContext _tenant;
+        private readonly ISystemEventRecorder _events;
         public AuthService(IAuthRepository authRepository,
             IPasswordHasher hasher,
             ITokenService tokenService,
             ICurrentUser currentUser,
-            ITenantContext tenant)
+            ITenantContext tenant,
+            ISystemEventRecorder events)
         {
+            _events = events;
             _authRepository = authRepository;
             _passwordHasher = hasher;
             _tokenService = tokenService;
@@ -50,6 +54,19 @@ namespace UltimatePos.Application.Identity
                 if (user.FailedLoginAttempts >= MaxFailedLoginAttempts)
                     user.IsLocked = true;
 
+                // Recorded with the counter update, in every business the user belongs to, so each business's admins see it.
+                var userBusinesses = (await _authRepository.GetMembershipsAsync(user.UserId)).Select(m => (Guid?)m.BusinessId).DefaultIfEmpty(null);
+                foreach (var memberOf in userBusinesses)
+                    _events.Record(user.IsLocked
+                        ? new SystemEventDraft(SystemEventTypes.UserAccountLocked,
+                            $"{user.Username} ({user.Email}) was locked out after {user.FailedLoginAttempts} failed sign-in attempts.",
+                            EventSeverity.Critical, "User", user.UserId, new { user.Email, ipAddress }, memberOf, ActorUserId: user.UserId,
+                            SubjectUserId: user.UserId)
+                        : new SystemEventDraft(SystemEventTypes.UserLoginFailed,
+                            $"Failed sign-in for {user.Email} (attempt {user.FailedLoginAttempts} of {MaxFailedLoginAttempts}).",
+                            EventSeverity.Warning, "User", user.UserId, new { user.Email, ipAddress, deviceInfo }, memberOf,
+                            ActorUserId: user.UserId, SubjectUserId: user.UserId));
+
                 await _authRepository.UpdateUserAsync(user);
                 throw new InvalidCredentialsException();
             }
@@ -63,6 +80,9 @@ namespace UltimatePos.Application.Identity
             var memberships = await _authRepository.GetMembershipsAsync(user.UserId);
             var businessId = await ChooseBusinessAsync(user.UserId, memberships, request.BusinessId);
 
+            _events.Record(new SystemEventDraft(SystemEventTypes.UserLoggedIn, $"{user.Username} signed in.",
+                EntityType: "User", EntityId: user.UserId, Data: new { ipAddress, deviceInfo }, BusinessId: businessId,
+                ActorUserId: user.UserId, SubjectUserId: user.UserId));
             return await IssueSessionAsync(user, businessId, memberships, deviceInfo, ipAddress);
         }
 
@@ -104,6 +124,8 @@ namespace UltimatePos.Application.Identity
                     await _authRepository.RevokeSessionAsync(old.UserSessionId);
             }
 
+            _events.Record(new SystemEventDraft(SystemEventTypes.UserSwitchedBusiness, $"{user.Username} switched to this business.",
+                EntityType: "User", EntityId: userId, BusinessId: businessId, ActorUserId: userId, SubjectUserId: userId));
             return await IssueSessionAsync(user, businessId, memberships, deviceInfo, ipAddress);
         }
 
@@ -111,7 +133,11 @@ namespace UltimatePos.Application.Identity
         {
             var session = await _authRepository.GetActiveSessionAsync(_tokenService.HashRefreshToken(request.RefreshToken ?? string.Empty));
             if (session is not null && session.UserId == _currentUser.UserId)
+            {
                 await _authRepository.RevokeSessionAsync(session.UserSessionId);
+                await _events.RecordNowAsync(new SystemEventDraft(SystemEventTypes.UserLoggedOut, "Signed out.",
+                    EntityType: "User", EntityId: session.UserId, BusinessId: session.BusinessId, SubjectUserId: session.UserId));
+            }
         }
 
         public async Task<MeDto> GetMeAsync()
@@ -139,6 +165,9 @@ namespace UltimatePos.Application.Identity
                 throw new ValidationException("currentPassword", "The current password is not correct.");
 
             SetPassword(user, request.NewPassword, userId);
+            _events.Record(new SystemEventDraft(SystemEventTypes.UserPasswordChanged,
+                $"The password for {user.Email} was changed. If this wasn't you, contact your administrator now.",
+                EventSeverity.Warning, "User", userId, SubjectUserId: userId));
             await _authRepository.UpdateUserAsync(user);
             // Signs out every other device; the caller's access token stays valid until it expires.
             await _authRepository.RevokeAllSessionsAsync(userId);
@@ -238,6 +267,10 @@ namespace UltimatePos.Application.Identity
                 CreatedBy = _currentUser.UserId
             };
             var createdUser = await _authRepository.CreateUserAsync(newUser, businessId, request.RoleName.Trim());
+            await _events.RecordNowAsync(new SystemEventDraft(SystemEventTypes.UserCreated,
+                $"{createdUser.Username} ({createdUser.Email}) was added with the {request.RoleName.Trim()} role. Sign in at Ultimate POS with this email address.",
+                EntityType: "User", EntityId: createdUser.UserId, Data: new { createdUser.Email, role = request.RoleName.Trim() },
+                SubjectUserId: createdUser.UserId));
             return await GetUserByIdAsync(createdUser.UserId);
         }
 
@@ -277,6 +310,8 @@ namespace UltimatePos.Application.Identity
             user.PhoneNumber = request.PhoneNumber;
             user.LastUpdatedBy = _currentUser.UserId;
             user.LastUpdatedAt = DateTime.UtcNow;
+            _events.Record(new SystemEventDraft(SystemEventTypes.UserUpdated, $"{user.Username}'s profile was updated.",
+                EntityType: "User", EntityId: userId, Data: new { user.Email, user.PhoneNumber }, SubjectUserId: userId));
             await _authRepository.UpdateUserAsync(user);
             return await GetUserByIdAsync(userId);
         }
@@ -289,6 +324,9 @@ namespace UltimatePos.Application.Identity
             SetPassword(user, request.NewPassword, _currentUser.UserId);
             user.IsLocked = false;
             user.FailedLoginAttempts = 0;
+            _events.Record(new SystemEventDraft(SystemEventTypes.UserPasswordReset,
+                $"An administrator reset the password for {user.Email}. Ask them for the new password, then change it after signing in.",
+                EventSeverity.Warning, "User", userId, SubjectUserId: userId));
             await _authRepository.UpdateUserAsync(user);
             await _authRepository.RevokeAllSessionsAsync(userId);
             return await GetUserByIdAsync(userId);
@@ -299,7 +337,11 @@ namespace UltimatePos.Application.Identity
             var businessId = _tenant.RequireBusinessId();
             await GetUserByIdAsync(userId);
             await _authRepository.AssignRolesToUserAsync(userId, businessId, request.RoleIds ?? Enumerable.Empty<Guid>());
-            return await GetUserByIdAsync(userId);
+            var updated = await GetUserByIdAsync(userId);
+            await _events.RecordNowAsync(new SystemEventDraft(SystemEventTypes.UserRolesChanged,
+                $"{updated.FullName}'s roles are now: {(updated.Roles.Any() ? string.Join(", ", updated.Roles) : "none")}.",
+                EntityType: "User", EntityId: userId, Data: new { roles = updated.Roles }, SubjectUserId: userId));
+            return updated;
         }
 
         /// <summary>
@@ -316,7 +358,11 @@ namespace UltimatePos.Application.Identity
             await _authRepository.SetMembershipActiveAsync(userId, businessId, isActive, _currentUser.UserId);
             if (!isActive)
                 await _authRepository.RevokeAllSessionsAsync(userId);
-            return await GetUserByIdAsync(userId);
+            var result = await GetUserByIdAsync(userId);
+            await _events.RecordNowAsync(new SystemEventDraft(isActive ? SystemEventTypes.UserActivated : SystemEventTypes.UserDeactivated,
+                $"{result.FullName} was {(isActive ? "given access to" : "removed from")} this business.",
+                EntityType: "User", EntityId: userId, SubjectUserId: userId));
+            return result;
         }
 
         public async Task<UserDto> SetUserLockStatusAsync(Guid userId, bool isLocked)
@@ -328,7 +374,11 @@ namespace UltimatePos.Application.Identity
             await _authRepository.SetUserLockStatusAsync(userId, isLocked, _currentUser.UserId);
             if (isLocked)
                 await _authRepository.RevokeAllSessionsAsync(userId);
-            return await GetUserByIdAsync(userId);
+            var result = await GetUserByIdAsync(userId);
+            await _events.RecordNowAsync(new SystemEventDraft(isLocked ? SystemEventTypes.UserLocked : SystemEventTypes.UserUnlocked,
+                $"{result.FullName}'s account was {(isLocked ? "locked" : "unlocked")} by an administrator.",
+                isLocked ? EventSeverity.Warning : EventSeverity.Info, "User", userId, SubjectUserId: userId));
+            return result;
         }
 
         // ---- Roles of the business signed in to ----
@@ -347,7 +397,9 @@ namespace UltimatePos.Application.Identity
             if (await _authRepository.RoleNameExistsAsync(request.RoleName.Trim()))
                 throw new ValidationException("roleName", $"A role named '{request.RoleName.Trim()}' already exists.");
 
-            var role = new Role { RoleName = request.RoleName.Trim(), Description = request.Description, CreatedBy = _currentUser.UserId };
+            var role = new Role { RoleId = Guid.NewGuid(), RoleName = request.RoleName.Trim(), Description = request.Description, CreatedBy = _currentUser.UserId };
+            _events.Record(new SystemEventDraft(SystemEventTypes.RoleCreated, $"Role '{role.RoleName}' was created.",
+                EntityType: "Role", EntityId: role.RoleId));
             var created = await _authRepository.CreateRoleAsync(role);
             return ToRoleDto(created);
         }
@@ -392,7 +444,11 @@ namespace UltimatePos.Application.Identity
                     $"Platform permissions cannot be given to a business role: {string.Join(", ", platform)}.");
 
             await _authRepository.AssignPermissionsToRoleAsync(roleId, ids);
-            return await GetRoleByIdAsync(roleId);
+            var role = await GetRoleByIdAsync(roleId);
+            await _events.RecordNowAsync(new SystemEventDraft(SystemEventTypes.RolePermissionsChanged,
+                $"Role '{role.RoleName}' now has {role.Permissions.Count()} permission(s). Holders get the change at their next sign-in or token refresh.",
+                EntityType: "Role", EntityId: roleId, Data: new { permissions = role.Permissions }));
+            return role;
         }
 
         /// <summary>The permissions a business role may hold (platform permissions are left out — they cannot be granted here).</summary>

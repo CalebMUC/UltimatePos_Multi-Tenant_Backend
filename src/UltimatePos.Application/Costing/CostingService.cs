@@ -1,12 +1,14 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Costing.Dtos;
 using UltimatePos.Application.Expenses;
 using UltimatePos.Application.Inventory;
+using UltimatePos.Domain.Entities;
 using UltimatePos.Domain.Exceptions;
 using static UltimatePos.Domain.Enums.PosEnums;
 
@@ -23,9 +25,12 @@ namespace UltimatePos.Application.Costing
 
         private readonly IExpenseRepository _expenseRepository;
 
+        private readonly ISystemEventRecorder _events;
+
         public CostingService(ICostingRepository repository, IInventoryRepository inventoryRepository,
-            ICatalogRepository catalogRepository, ICurrentUser currentUser, IExpenseRepository expenseRepository)
+            ICatalogRepository catalogRepository, ICurrentUser currentUser, IExpenseRepository expenseRepository, ISystemEventRecorder events)
         {
+            _events = events;
             _repository = repository;
             _inventoryRepository = inventoryRepository;
             _catalogRepository = catalogRepository;
@@ -178,8 +183,8 @@ namespace UltimatePos.Application.Costing
             if (string.IsNullOrWhiteSpace(request.Reason))
                 throw new InvalidAssignmentException("A reason is required for every revaluation.");
 
-            if (await _catalogRepository.GetProductByIdAsync(request.ProductId) is null)
-                throw new NotFoundException($"Product '{request.ProductId}' not found.");
+            var product = await _catalogRepository.GetProductByIdAsync(request.ProductId)
+                ?? throw new NotFoundException($"Product '{request.ProductId}' not found.");
 
             var factor = await _catalogRepository.GetConversionFactorAsync(request.ProductId, request.UnitOfMeasureId)
                 ?? throw new InvalidAssignmentException("This product has no conversion for the unit given.");
@@ -187,6 +192,10 @@ namespace UltimatePos.Application.Costing
             var perBase = CostingCalculator.ToUnitCostPerBaseUnit(request.UnitCost, factor);
             if (perBase <= 0)
                 throw new InvalidAssignmentException("Unit cost is too small — it rounds to zero per base unit.");
+
+            _events.Record(new SystemEventDraft(SystemEventTypes.StockRevalued,
+                $"{product.Name} was revalued to {perBase:0.####} per {product.BaseUnitOfMeasure?.Symbol ?? "base unit"}: {request.Reason.Trim()}",
+                EventSeverity.Warning, "Product", product.ProductId, new { unitCostPerBaseUnit = perBase, reason = request.Reason.Trim() }));
 
             await _inventoryRepository.RevalueStockAsync(request.ProductId, perBase, request.Reason.Trim(), _currentUser.UserId);
 

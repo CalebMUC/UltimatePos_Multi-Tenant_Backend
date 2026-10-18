@@ -1,0 +1,64 @@
+using UltimatePos.Domain.Entities;
+
+namespace UltimatePos.Application.Notifications
+{
+    public sealed record NotificationRecipient(Guid UserId, string Name, string? Email, string? PhoneNumber);
+
+    public sealed record AuditLogQuery(DateTime? FromUtc, DateTime? ToUtcExclusive, string? EventType, Guid? ActorUserId,
+        string? EntityType, Guid? EntityId, EventSeverity? MinimumSeverity, string? Search);
+
+    /// <summary>
+    /// Storage for events, notifications and deliveries. The dispatcher side works ACROSS businesses (it runs with nobody signed in),
+    /// so those methods take the business explicitly. The user side is scoped to the signed-in user and business.
+    /// </summary>
+    public interface INotificationRepository
+    {
+        // ---- Dispatcher (no business in scope) ----
+        Task<IReadOnlyList<SystemEvent>> GetUnprocessedEventsAsync(int max, int maxAttempts);
+        /// <summary>Saves the notifications and deliveries, opens/closes alerts, and marks the event processed — one transaction.</summary>
+        Task CompleteEventAsync(SystemEvent systemEvent, IEnumerable<Notification> notifications, IEnumerable<NotificationDelivery> deliveries,
+            string? openAlertKey, IEnumerable<string> closeAlertKeys);
+        Task MarkEventFailedAsync(Guid systemEventId, string error);
+        Task<bool> IsAlertOpenAsync(Guid businessId, string alertKey);
+        /// <summary>Active users holding any of the permissions — through a role of the business (as active members) or a platform role.</summary>
+        Task<IReadOnlyList<NotificationRecipient>> GetRecipientsAsync(Guid? businessId, IReadOnlyCollection<string> permissions);
+        /// <summary>The user, if active (and an active member of the business, when one is given).</summary>
+        Task<NotificationRecipient?> GetRecipientAsync(Guid userId, Guid? businessId);
+        Task<string?> GetBusinessNameAsync(Guid businessId);
+
+        Task<IReadOnlyList<NotificationDelivery>> GetDueDeliveriesAsync(int max, DateTime now);
+        Task UpdateDeliveryAsync(NotificationDelivery delivery);
+
+        // ---- Alert sweep (business in scope) ----
+        Task<IReadOnlyList<string>> GetOpenAlertKeysAsync();
+        Task CloseAlertsAsync(IEnumerable<string> alertKeys);
+
+        // ---- Signed-in user ----
+        Task<(IReadOnlyList<Notification> Items, int TotalCount)> GetNotificationsAsync(Guid userId, bool unreadOnly, int page, int pageSize);
+        Task<int> GetUnreadCountAsync(Guid userId);
+        Task<bool> MarkReadAsync(Guid userId, Guid notificationId);
+        Task<int> MarkAllReadAsync(Guid userId);
+
+        // ---- Audit log (business in scope) ----
+        Task<(IReadOnlyList<SystemEvent> Items, int TotalCount)> GetEventsAsync(AuditLogQuery query, int page, int pageSize);
+        Task<Dictionary<Guid, string>> GetUserNamesAsync(IEnumerable<Guid> userIds);
+    }
+
+    // Rows the alert sweep looks at, read with the business in scope.
+    public sealed record LowStockRow(Guid ProductId, string ProductName, string? UnitSymbol, decimal QuantityOnHand, decimal ReorderLevel);
+    public sealed record ExpiringBatchRow(Guid StockBatchId, Guid ProductId, string ProductName, string BatchNumber, DateOnly ExpiryDate,
+        decimal QuantityOnHand, string? UnitSymbol);
+    public sealed record OverdueOrderRow(Guid PurchaseOrderId, string OrderNumber, string SupplierName, DateTime ExpectedDeliveryDate);
+    public sealed record UnmatchedPaymentRow(Guid MpesaTransactionId, string? ReceiptNumber, string PhoneNumber, decimal Amount, DateTime ReceivedAt);
+
+    public interface IAlertSweepRepository
+    {
+        /// <summary>Active products with a reorder level whose stock is at or below it (including out of stock).</summary>
+        Task<IReadOnlyList<LowStockRow>> GetLowStockAsync();
+        /// <summary>Batches with stock that expire on or before <paramref name="horizon"/> (expired ones included).</summary>
+        Task<IReadOnlyList<ExpiringBatchRow>> GetExpiringBatchesAsync(DateOnly horizon);
+        Task<IReadOnlyList<OverdueOrderRow>> GetOverdueOrdersAsync(DateTime nowUtc);
+        Task<IReadOnlyList<UnmatchedPaymentRow>> GetUnmatchedTillPaymentsAsync(DateTime receivedBeforeUtc);
+        Task<IReadOnlyList<Guid>> GetActiveBusinessIdsAsync();
+    }
+}

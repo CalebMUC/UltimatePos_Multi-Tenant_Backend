@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using System;
 using System.Collections.Generic;
@@ -72,6 +72,11 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<SaleReturnLine> SaleReturnLines => Set<SaleReturnLine>();
         public DbSet<CustomerLedgerEntry> CustomerLedgerEntries => Set<CustomerLedgerEntry>();
         public DbSet<CustomerBalance> CustomerBalances => Set<CustomerBalance>();
+
+        public DbSet<SystemEvent> SystemEvents => Set<SystemEvent>();
+        public DbSet<Notification> Notifications => Set<Notification>();
+        public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
+        public DbSet<AlertState> AlertStates => Set<AlertState>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -355,6 +360,38 @@ namespace UltimatePos.Infrastructure.Persistence
                 .HasOne<BusinessProfile>().WithMany()
                 .HasForeignKey(t => t.BusinessId).OnDelete(DeleteBehavior.Restrict);
 
+            // ---- Events, notifications, deliveries, alerts ----
+            modelBuilder.Entity<SystemEvent>().Property(e => e.Severity).HasConversion<string>();
+            modelBuilder.Entity<SystemEvent>().Property(e => e.EventType).HasMaxLength(100);
+            modelBuilder.Entity<SystemEvent>().Property(e => e.Data).HasColumnType("jsonb");
+            modelBuilder.Entity<SystemEvent>().HasIndex(e => new { e.BusinessId, e.OccurredAt });
+            modelBuilder.Entity<SystemEvent>().HasIndex(e => new { e.BusinessId, e.EventType, e.OccurredAt });
+            modelBuilder.Entity<SystemEvent>().HasIndex(e => new { e.EntityType, e.EntityId });
+            // The dispatcher's queue: only unprocessed rows, oldest first.
+            modelBuilder.Entity<SystemEvent>().HasIndex(e => e.OccurredAt).HasFilter("\"ProcessedAt\" IS NULL")
+                .HasDatabaseName("IX_SystemEvents_Unprocessed");
+
+            modelBuilder.Entity<Notification>().Property(n => n.Severity).HasConversion<string>();
+            modelBuilder.Entity<Notification>().HasIndex(n => new { n.UserId, n.IsRead, n.CreatedAt });
+            modelBuilder.Entity<Notification>()
+                .HasOne<SystemEvent>().WithMany()
+                .HasForeignKey(n => n.SystemEventId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Notification>()
+                .HasOne<User>().WithMany()
+                .HasForeignKey(n => n.UserId).OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<NotificationDelivery>().Property(d => d.Channel).HasConversion<string>();
+            modelBuilder.Entity<NotificationDelivery>().Property(d => d.Status).HasConversion<string>();
+            modelBuilder.Entity<NotificationDelivery>().HasIndex(d => new { d.Status, d.NextAttemptAt });
+            modelBuilder.Entity<NotificationDelivery>()
+                .HasOne<SystemEvent>().WithMany()
+                .HasForeignKey(d => d.SystemEventId).OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<AlertState>().HasIndex(a => new { a.BusinessId, a.AlertKey }).IsUnique();
+            modelBuilder.Entity<AlertState>()
+                .HasOne<BusinessProfile>().WithMany()
+                .HasForeignKey(a => a.BusinessId).OnDelete(DeleteBehavior.Restrict);
+
             ConfigureTenantFilters(modelBuilder);
 
             base.OnModelCreating(modelBuilder);
@@ -381,6 +418,13 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<StockBatch>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<SaleReturn>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<MpesaTransaction>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<AlertState>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            // Events and deliveries: the business's own, or platform-level ones when no business is in scope. The dispatcher reads
+            // across businesses with IgnoreQueryFilters.
+            modelBuilder.Entity<SystemEvent>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<NotificationDelivery>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            // Notifications: the business's own plus platform notifications, which show in whichever business the user is in.
+            modelBuilder.Entity<Notification>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId || e.BusinessId == null);
             // Nullable on both sides with C# semantics: in a business, its own roles; with no business in scope, platform roles.
             modelBuilder.Entity<Role>().HasQueryFilter(r => r.BusinessId == CurrentBusinessId);
             // Role assignments and grants follow their role. Sign-in reads them across businesses with IgnoreQueryFilters.

@@ -68,6 +68,9 @@ public sealed class MultiBusinessDatabase : IAsyncLifetime
                 ["JwtSettings:Key"] = "test-signing-key-that-is-long-enough-for-hs256-0123456789",
                 ["JwtSettings:Issuer"] = "test",
                 ["JwtSettings:Audience"] = "test",
+                ["Notifications:EmailEnabled"] = "true",
+                ["Notifications:SmsEnabled"] = "true",
+                ["Notifications:FrontendBaseUrl"] = "https://pos.test",
             })
             .Build();
 

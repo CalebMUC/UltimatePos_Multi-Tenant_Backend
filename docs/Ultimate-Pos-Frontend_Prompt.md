@@ -220,6 +220,7 @@ export enum SupplierLedgerEntryType { Bill = 0, Payment = 1, Reversal = 2 }
 export enum RefundMethod { Cash = 0, Mpesa = 1, CreditNote = 2 }
 export enum BusinessType { Wholesaler = 0, Retailer = 1 }
 export enum BusinessKind { Manufacturer = 0, Trader = 1 }
+export enum EventSeverity { Info = 0, Warning = 1, Critical = 2 }
 export type ExpiryStatus = 'Expired' | 'NearExpiry' | 'Ok' | 'NoExpiry';
 export type StockStatus = 'InStock' | 'LowStock' | 'OutOfStock';
 ```
@@ -283,6 +284,7 @@ Costing:      Costing.View  Costing.Revalue
 Expenses:     ExpenseCategories.Create  ExpenseCategories.View  ExpenseCategories.Update  ExpenseCategories.Deactivate
               Expenses.Create  Expenses.View  Expenses.Update  Expenses.Void
 Reports:      Dashboard.View  SalesReports.View  CustomerReports.View  ProductionReports.View  InventoryReports.View  PurchaseReports.View
+Audit:        AuditLog.View
 ```
 
 - Implement `usePermission`, `<Can permission="…">`, and a `PermissionRoute` that renders a 403 page.
@@ -309,6 +311,7 @@ Follow the DreamsPOS shell. The POS screen uses a full-width layout without the 
 - **Business switcher** (name, logo, Kind/Type badges, a "VAT" badge when the business is VAT-registered)
 - Global search: `Ctrl+K` for navigation commands, plus a product search through `GET /products/get-products?search=`
 - **New Sale** button
+- **Notification bell** (§14.8): unread badge, dropdown of the latest notifications
 - Theme toggle
 - User menu: profile, change password, session, sign out
 
@@ -354,6 +357,8 @@ Administration
     Users                                Users.View
     Roles & Permissions                  Roles.View
     M-Pesa Setup                         Mpesa.Configure
+    Audit Log                            AuditLog.View
+Notifications    (/notifications, every signed-in user)
 Settings         (client preferences, §14.7)
 ```
 
@@ -629,6 +634,52 @@ Settings are client-side preferences only:
 - "Show pharmacy menu"
 
 Business settings (VAT, short code, discount cap) live in **Administration → Business Profile**.
+
+### 14.8 Notifications and the audit log
+
+The API records every significant action as an event. Events that someone should act on become **notifications** for the
+users whose permissions make them responsible, in the business where it happened. Delivery is asynchronous: a background worker
+turns events into notifications within about 5 seconds, so a notification appears shortly after the action, not in its response.
+
+**The bell (every signed-in user):**
+
+| Endpoint | Use |
+|---|---|
+| `GET /notifications/unread-count` | `{ unreadCount }` for the badge. Poll every 30–60 s while the app is open, and on window focus |
+| `GET /notifications?unreadOnly&page&pageSize` | The dropdown (latest 10) and the full `/notifications` page (paged) |
+| `POST /notifications/{id}/read` | When the user opens one. Then navigate to its `link` |
+| `POST /notifications/read-all` | "Mark all as read" |
+
+- `NotificationDto` has `notificationId`, `eventType`, `severity` (a number: `0` Info, `1` Warning, `2` Critical), `title`, `message`, `link`, `isRead`, `readAt`, `createdAt` and `businessId`.
+- Severity sets the icon and colour: Critical is red, Warning amber, Info neutral. When a new **Critical** notification arrives between polls, also show a toast.
+- `link` is a frontend path such as `/inventory?productId=…`, `/sales/{id}` or `/users/{id}`. Make sure those routes exist.
+- Lists only ever contain the signed-in user's notifications for the current business, plus platform notifications. Switching business changes the list, so include `businessId` in the query key.
+- There is no push channel yet. Real-time delivery (SignalR) is planned, so keep the polling behind one hook (`useNotifications`) that can be swapped later.
+
+What users receive, as of today:
+
+| Event | Who | Channels |
+|---|---|---|
+| Low stock (crossing the reorder level) | `PurchaseOrders.Create` or `Stock.Adjust` | In-app |
+| Out of stock | same | In-app + email |
+| Batch expiring within 30 days / expired | `Stock.Adjust` | In-app / in-app + email |
+| Purchase order overdue | `PurchaseOrders.Receive` or `PurchaseOrders.Create` | In-app |
+| Unmatched till payment (after 30 min) | `Mpesa.View` | In-app |
+| STK payment failed | the cashier who made the sale | In-app |
+| Sale voided, credit limit overridden, expense voided, stock revalued | the matching manager permission, not the person who did it | In-app |
+| New user, user deactivated, role permissions changed | `Users.View` / `Roles.View` | In-app; the new user gets a welcome **email** |
+| Account locked (5 failed sign-ins) | `Users.Lock` + the locked user | In-app + email; the user also gets an SMS |
+| Password reset by an admin / changed by the user | the user | Email (+ SMS for a reset) |
+
+Each condition-type alert (low stock, expiry, overdue order, unmatched payment) is sent **once**, and sent again only after it has cleared and come back.
+
+**Audit log (`/admin/audit-log`, `AuditLog.View`):**
+
+- `GET /audit-log?page&pageSize&from&to&utcOffsetMinutes&eventType&actorUserId&entityType&entityId&minimumSeverity&search` returns `AuditLogEntryDto`: `eventType`, `severity`, `summary`, `actorName`, `subjectName`, `entityType`, `entityId`, `data` (JSON text) and `occurredAt`.
+- `eventType` takes an exact type (`Sale.Voided`) or a whole area (`Sale`). `GET /audit-log/event-types` lists them for the filter dropdown.
+- Show a table with columns Time, Severity, Event, Who, Summary. Each row expands to show `data` as formatted JSON.
+- Add an "Activity" tab to the product, sale, user and supplier detail pages, filtered with `entityType` plus `entityId`.
+- The log covers sign-ins and sign-outs, failed sign-ins, user and role changes, sales voided and returned, stock adjustments and revaluations, receipts, payments, and every alert.
 
 ---
 

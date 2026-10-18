@@ -15,6 +15,7 @@ using UltimatePos.Application.Dashboard;
 using UltimatePos.Application.Expenses;
 using UltimatePos.Application.Identity;
 using UltimatePos.Application.Inventory;
+using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Production;
 using UltimatePos.Application.Purchasing;
 using UltimatePos.Application.Reports;
@@ -43,6 +44,12 @@ namespace UltimatePos.Application
             services.AddScoped<ExpenseService>();
             services.AddScoped<ReportsService>();
             services.AddScoped<DashboardService>();
+
+            // Events, notifications and the audit log. The dispatcher, delivery processor and sweep are driven by background workers.
+            services.AddScoped<NotificationDispatcher>();
+            services.AddScoped<DeliveryProcessor>();
+            services.AddScoped<AlertSweepService>();
+            services.AddScoped<NotificationService>();
 
             return services;
         }

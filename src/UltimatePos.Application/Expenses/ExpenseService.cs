@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Expenses.Dtos;
@@ -20,8 +21,11 @@ namespace UltimatePos.Application.Expenses
         private readonly IExpenseRepository _repository;
         private readonly ICurrentUser _currentUser;
 
-        public ExpenseService(IExpenseRepository repository, ICurrentUser currentUser)
+        private readonly ISystemEventRecorder _events;
+
+        public ExpenseService(IExpenseRepository repository, ICurrentUser currentUser, ISystemEventRecorder events)
         {
+            _events = events;
             _repository = repository;
             _currentUser = currentUser;
         }
@@ -186,6 +190,9 @@ namespace UltimatePos.Application.Expenses
                 throw new InvalidAssignmentException("This expense has already been voided.");
 
             var reason = RequireText(request.Reason, "A reason", 300);
+            _events.Record(new SystemEventDraft(SystemEventTypes.ExpenseVoided,
+                $"Expense {existing.ExpenseNumber} of {existing.Amount:0.00} ({existing.Description}) was voided: {reason}",
+                EventSeverity.Warning, "Expense", expenseId, new { existing.ExpenseNumber, existing.Amount, reason }));
             await _repository.VoidExpenseAsync(expenseId, reason, _currentUser.UserId);
             return await GetExpenseByIdAsync(expenseId);
         }
