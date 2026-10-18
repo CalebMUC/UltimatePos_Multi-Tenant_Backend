@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,17 +13,13 @@ namespace UltimatePos.Application.Business
         Task<bool> KraPinExistsAsync(string kraPin, Guid? exceptBusinessId = null);
         Task<bool> MpesaShortCodeExistsAsync(string shortCode, Guid? exceptBusinessId = null);
 
-        /// <summary>
-        /// Creates the business with its Admin role (every business permission), makes <paramref name="creatorUserId"/> a member with
-        /// that role, and seeds the default units and expense categories — all or nothing.
-        /// </summary>
-        Task<BusinessProfile> CreateBusinessAsync(BusinessProfile business, Guid? creatorUserId);
         Task<IEnumerable<BusinessProfile>> GetBusinessesAsync();
         Task<IEnumerable<BusinessProfile>> GetBusinessesForUserAsync(Guid userId);
         Task<BusinessProfile?> GetBusinessByIdAsync(Guid businessId);
         Task<BusinessProfile?> GetBusinessByMpesaShortCodeAsync(string shortCode);
         Task<BusinessProfile> UpdateBusinessAsync(Guid businessId, UpdateBusinessRequestDto request, Guid? updatedBy);
-        Task<BusinessProfile> SetBusinessActiveStatusAsync(Guid businessId, bool isActive, Guid? updatedBy);
+        /// <summary>Licences of the business in scope, newest first.</summary>
+        Task<IReadOnlyList<BusinessLicense>> GetLicensesAsync();
 
         Task<Customer> CreateCustomerAsync(Customer customer);
         /// <summary>Customers of the business in scope.</summary>

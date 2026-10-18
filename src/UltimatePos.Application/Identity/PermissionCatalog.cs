@@ -14,9 +14,15 @@ namespace UltimatePos.Application.Identity
 
         public static readonly IReadOnlyList<(string Name, string Module)> Platform = new[]
         {
-            ("Businesses.Register", "Businesses"),
-            ("Businesses.ViewAll", "Businesses"),
-            ("Businesses.Deactivate", "Businesses"),
+            ("Businesses.Register", "Platform"),
+            ("Businesses.ViewAll", "Platform"),
+            ("Businesses.Deactivate", "Platform"),     // close / reopen a business
+            ("Businesses.Suspend", "Platform"),        // lock / unlock, e.g. for an unpaid licence
+            ("Licenses.View", "Platform"),
+            ("Licenses.Manage", "Platform"),           // create, renew, cancel
+            ("Platform.Dashboard.View", "Platform"),   // performance across businesses
+            ("Platform.Support", "Platform"),          // a business's users and audit log; reset passwords, unlock, add admins
+            ("Platform.Users.Manage", "Platform"),     // create and deactivate other super users
         };
 
         public static readonly IReadOnlyList<(string Name, string Module)> Business = new[]
@@ -76,7 +82,10 @@ namespace UltimatePos.Application.Identity
         /// <summary>Name of the role a newly registered business's creator gets: every business permission.</summary>
         public const string BusinessAdminRole = "Admin";
 
-        /// <summary>Name of the platform role that may register and manage businesses.</summary>
-        public const string PlatformAdminRole = "Platform Admin";
+        /// <summary>
+        /// The platform role: every platform permission, and no business. A super user is never a member of a business — the
+        /// API refuses to add one to a business, and refuses to make a business member a super user.
+        /// </summary>
+        public const string SuperUserRole = "Super User";
     }
 }

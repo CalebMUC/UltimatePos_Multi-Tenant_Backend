@@ -75,8 +75,32 @@ namespace UltimatePos.Application.Notifications
                 SubjectChannels: NotificationChannels.Email),
             new(SystemEventTypes.RolePermissionsChanged, "Role permissions changed", new[] { "Roles.View" }, ExcludeActor: true, Link: "/roles/{entityId}"),
 
-            // Platform
-            new(SystemEventTypes.BusinessRegistered, "New business registered", new[] { "Businesses.ViewAll" }, ExcludeActor: true),
+            // Platform: business status and licences. Business admins (Businesses.Update) hear about their own business;
+            // super users through the platform permissions.
+            new(SystemEventTypes.BusinessRegistered, "New business registered", new[] { "Businesses.ViewAll" }, ExcludeActor: true,
+                Link: "/platform/businesses/{entityId}"),
+            new(SystemEventTypes.BusinessOwnerAdded, "You were added to a business", Array.Empty<string>(),
+                SubjectChannels: NotificationChannels.InApp | NotificationChannels.Email),
+            new(SystemEventTypes.BusinessSuspended, "Business suspended", new[] { "Businesses.Update", "Businesses.Suspend" },
+                NotificationChannels.InApp | NotificationChannels.Email, ExcludeActor: true),
+            new(SystemEventTypes.BusinessReactivated, "Business reactivated", new[] { "Businesses.Update", "Businesses.Suspend" },
+                NotificationChannels.InApp | NotificationChannels.Email, ExcludeActor: true),
+            new(SystemEventTypes.BusinessClosed, "Business closed", new[] { "Businesses.Update", "Businesses.Deactivate" },
+                NotificationChannels.InApp | NotificationChannels.Email, ExcludeActor: true),
+            new(SystemEventTypes.BusinessReopened, "Business reopened", new[] { "Businesses.Update", "Businesses.Deactivate" },
+                NotificationChannels.InApp | NotificationChannels.Email, ExcludeActor: true),
+            new(SystemEventTypes.LicenseIssued, "Licence issued", new[] { "Businesses.Update", "Licenses.View" },
+                NotificationChannels.InApp | NotificationChannels.Email, ExcludeActor: true, Link: "/settings/license"),
+            new(SystemEventTypes.LicenseCancelled, "Licence cancelled", new[] { "Businesses.Update", "Licenses.View" },
+                NotificationChannels.InApp | NotificationChannels.Email, ExcludeActor: true, Link: "/settings/license"),
+            new(SystemEventTypes.LicenseExpiringSoon, "Licence expiring soon", new[] { "Businesses.Update", "Licenses.Manage" },
+                NotificationChannels.InApp | NotificationChannels.Email, Link: "/settings/license"),
+            new(SystemEventTypes.LicenseExpired, "Licence expired", new[] { "Businesses.Update", "Licenses.Manage" },
+                NotificationChannels.InApp | NotificationChannels.Email, Link: "/settings/license"),
+            new(SystemEventTypes.SuperUserCreated, "New super user", new[] { "Platform.Users.Manage" },
+                SubjectChannels: NotificationChannels.Email, ExcludeActor: true),
+            new(SystemEventTypes.SupportPasswordReset, "Your password was reset", Array.Empty<string>(),
+                SubjectChannels: NotificationChannels.InApp | NotificationChannels.Email | NotificationChannels.Sms),
         };
 
         private static readonly Dictionary<string, NotificationRule> ByType = All.ToDictionary(r => r.EventType, StringComparer.Ordinal);

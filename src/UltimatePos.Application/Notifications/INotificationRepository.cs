@@ -2,7 +2,8 @@ using UltimatePos.Domain.Entities;
 
 namespace UltimatePos.Application.Notifications
 {
-    public sealed record NotificationRecipient(Guid UserId, string Name, string? Email, string? PhoneNumber);
+    /// <param name="ViaPlatformRole">Reached only through a platform role (a super user, who belongs to no business).</param>
+    public sealed record NotificationRecipient(Guid UserId, string Name, string? Email, string? PhoneNumber, bool ViaPlatformRole = false);
 
     public sealed record AuditLogQuery(DateTime? FromUtc, DateTime? ToUtcExclusive, string? EventType, Guid? ActorUserId,
         string? EntityType, Guid? EntityId, EventSeverity? MinimumSeverity, string? Search);
@@ -60,5 +61,7 @@ namespace UltimatePos.Application.Notifications
         Task<IReadOnlyList<OverdueOrderRow>> GetOverdueOrdersAsync(DateTime nowUtc);
         Task<IReadOnlyList<UnmatchedPaymentRow>> GetUnmatchedTillPaymentsAsync(DateTime receivedBeforeUtc);
         Task<IReadOnlyList<Guid>> GetActiveBusinessIdsAsync();
+        /// <summary>The business in scope.</summary>
+        Task<BusinessProfile?> GetCurrentBusinessAsync();
     }
 }

@@ -572,19 +572,21 @@ public class ReportPermissionsMigrationTests
     [PostgresFact]
     public async Task A_business_registered_on_a_new_database_gives_its_Admin_every_report_permission()
     {
-        // The seeder makes the platform admin; registering a business creates that business's Admin with every business permission.
+        // The seeder makes the super user; registering a business creates that business's Admin with every business permission.
         await WithFreshDatabaseAsync(async (sp, db) =>
         {
             await DbSeeder.SeedAsync(sp);
-            var adminId = (await db.Users.SingleAsync(u => u.Email == DbSeeder.DevAdminEmail)).UserId;
+            var owner = await db.Users.SingleAsync(u => u.Email == DbSeeder.DevAdminEmail);
             var platform = await db.RolePermissions.IgnoreQueryFilters()
-                .Where(rp => rp.Role.BusinessId == null && rp.Role.RoleName == "Platform Admin").Select(rp => rp.Permission.Name).ToListAsync();
+                .Where(rp => rp.Role.BusinessId == null && rp.Role.RoleName == "Super User").Select(rp => rp.Permission.Name).ToListAsync();
             Assert.Contains("Businesses.Register", platform);
+            Assert.Contains("Licenses.Manage", platform);
 
             var tenant = sp.GetRequiredService<ITenantContext>();
             var business = new BusinessProfile { BusinessId = Guid.NewGuid(), BusinessName = "New Pharmacy", KraPin = "P000000009Z", Kind = BusinessKind.Trader };
             using (tenant.Use(business.BusinessId))
-                await sp.GetRequiredService<UltimatePos.Application.Business.IBusinessRepository>().CreateBusinessAsync(business, adminId);
+                await sp.GetRequiredService<UltimatePos.Application.Platform.IPlatformRepository>().CreateBusinessAsync(business, owner, false, null,
+                    UltimatePos.Application.Licensing.LicensePolicy.Today);
 
             var granted = await AdminPermissionsAsync(db);
             Assert.All(ReportPermissions, p => Assert.Contains(p, granted));

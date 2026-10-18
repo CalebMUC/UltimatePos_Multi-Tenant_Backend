@@ -83,7 +83,7 @@ var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
 {
     if (allowedOrigins.Length > 0)
-        policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
+        policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("X-License-Warning");
 }));
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -125,6 +125,8 @@ app.UseHttpsRedirection();
 
 app.UseCors();
 app.UseAuthentication();
+// A suspended, closed or unlicensed business is refused on every request, not only at sign-in.
+app.UseMiddleware<BusinessAccessMiddleware>();
 
 app.UseAuthorization();
 
@@ -141,6 +143,20 @@ if (app.Environment.IsDevelopment()) {
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
         logger.LogError(ex, "An error occurred while seeding the database.");
+    }
+}
+
+// Every environment: make sure someone can run the platform (the first super user comes from Platform:BootstrapSuperUser).
+using (var scope = app.Services.CreateScope())
+{
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        await PlatformBootstrapper.RunAsync(scope.ServiceProvider, app.Configuration, logger);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Could not check for a super user (is the database migrated?).");
     }
 }
 

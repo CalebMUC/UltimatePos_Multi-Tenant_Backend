@@ -45,7 +45,17 @@ namespace UltimatePos.Domain.Entities
         public string? MpesaShortCode { get; set; }
         /// <summary>Largest discount a cashier may give on one sale, as a percentage of its subtotal. Null = no cap.</summary>
         public decimal? MaxDiscountPercent { get; set; }
+        /// <summary>False = closed by a super user: nobody can sign in to it. Data is kept.</summary>
         public bool IsActive { get; set; } = true;
+        /// <summary>Locked by a super user (typically for an unpaid licence). Reversible; users are refused until it is lifted.</summary>
+        public bool IsSuspended { get; set; }
+        public DateTime? SuspendedAt { get; set; }
+        public Guid? SuspendedBy { get; set; }
+        public string? SuspensionReason { get; set; }
+        /// <summary>Last day covered by an active licence (kept in step with BusinessLicenses). Null = never licensed.</summary>
+        public DateOnly? LicenseEndsOn { get; set; }
+        /// <summary>User limit of the licence covering today. Null = unlimited.</summary>
+        public int? LicenseMaxUsers { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }
         public DateTime? LastUpdatedAt { get; set; }

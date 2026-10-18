@@ -55,6 +55,81 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.ToTable("AlertStates");
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.BusinessLicense", b =>
+                {
+                    b.Property<Guid>("BusinessLicenseId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CancelReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CancelledBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly>("EndsOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LicenseNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("MaxUsers")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PaymentReference")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PlanName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly>("StartsOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("BusinessLicenseId");
+
+                    b.HasIndex("BusinessId", "EndsOn");
+
+                    b.HasIndex("BusinessId", "LicenseNumber")
+                        .IsUnique();
+
+                    b.ToTable("BusinessLicenses");
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.BusinessProfile", b =>
                 {
                     b.Property<Guid>("BusinessId")
@@ -87,6 +162,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsSuspended")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsVatRegistered")
                         .HasColumnType("boolean");
 
@@ -104,6 +182,12 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<Guid?>("LastUpdatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<DateOnly?>("LicenseEndsOn")
+                        .HasColumnType("date");
+
+                    b.Property<int?>("LicenseMaxUsers")
+                        .HasColumnType("integer");
+
                     b.Property<string>("LogoUrl")
                         .HasColumnType("text");
 
@@ -120,6 +204,15 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("RegistrationNumber")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("SuspendedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("SuspendedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SuspensionReason")
                         .HasColumnType("text");
 
                     b.Property<string>("TradingName")
@@ -1932,6 +2025,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<Guid?>("LastUpdatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("boolean");
+
                     b.Property<byte[]>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("bytea");
@@ -2056,6 +2152,15 @@ namespace UltimatePos.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.AlertState", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.BusinessLicense", b =>
                 {
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
                         .WithMany()
