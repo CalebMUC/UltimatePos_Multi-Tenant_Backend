@@ -1,3 +1,4 @@
+using UltimatePos.Application.Licensing;
 using UltimatePos.Application.Reports;
 using UltimatePos.Domain.Entities;
 
@@ -15,10 +16,12 @@ namespace UltimatePos.Application.Notifications
         private readonly INotificationRepository _notifications;
         private readonly ISystemEventRecorder _events;
         private readonly NotificationSettings _settings;
+        private readonly LicensingSettings _licensing;
 
         public AlertSweepService(IAlertSweepRepository sweep, INotificationRepository notifications, ISystemEventRecorder events,
-            NotificationSettings settings)
+            NotificationSettings settings, LicensingSettings licensing)
         {
+            _licensing = licensing;
             _sweep = sweep;
             _notifications = notifications;
             _events = events;
@@ -94,8 +97,26 @@ namespace UltimatePos.Application.Notifications
                     new { payment.ReceiptNumber, payment.Amount, payment.PhoneNumber, payment.ReceivedAt },
                     AlertKey: AlertKeys.TillPaymentUnmatched(payment.MpesaTransactionId)));
 
+            // The business's own licence: warn before it ends, then again once it has.
+            if (await _sweep.GetCurrentBusinessAsync() is { LicenseEndsOn: { } endsOn } business)
+            {
+                var access = LicensePolicy.Evaluate(business, _licensing, today);
+                if (access.Status == "ExpiringSoon")
+                    Raise(new SystemEventDraft(SystemEventTypes.LicenseExpiringSoon,
+                        $"The Ultimate POS licence for {business.BusinessName} ends on {endsOn:yyyy-MM-dd} ({access.DaysRemaining} day(s) left). Renew to avoid interruption.",
+                        EventSeverity.Warning, "Business", business.BusinessId, new { endsOn, access.DaysRemaining },
+                        AlertKey: AlertKeys.LicenseExpiring(endsOn)));
+                else if (access.Status is "GracePeriod" or "Expired")
+                    Raise(new SystemEventDraft(SystemEventTypes.LicenseExpired,
+                        $"The Ultimate POS licence for {business.BusinessName} ended on {endsOn:yyyy-MM-dd}. " +
+                        (access.Allowed ? $"Access stops after {_licensing.GraceDays} days' grace unless it is renewed." : "Access has stopped until it is renewed."),
+                        EventSeverity.Critical, "Business", business.BusinessId, new { endsOn, access.Status },
+                        AlertKey: AlertKeys.LicenseExpired(endsOn)));
+            }
+
             // Everything still open whose condition no longer holds is over: it will be announced again if it recurs.
-            var swept = new[] { "stock-low:", "stock-out:", "batch-expiring:", "batch-expired:", "po-overdue:", "mpesa-unmatched:" };
+            var swept = new[] { "stock-low:", "stock-out:", "batch-expiring:", "batch-expired:", "po-overdue:", "mpesa-unmatched:",
+                "license-expiring:", "license-expired:" };
             var cleared = open.Where(k => swept.Any(p => k.StartsWith(p, StringComparison.Ordinal)) && !stillTrue.Contains(k)).ToList();
             if (cleared.Count > 0)
                 await _notifications.CloseAlertsAsync(cleared);

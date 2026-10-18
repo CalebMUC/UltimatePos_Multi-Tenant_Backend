@@ -17,6 +17,9 @@ namespace UltimatePos.Infrastructure.Notifications
             services.AddScoped<IAlertSweepRepository, AlertSweepRepository>();
 
             services.AddSingleton(configuration.GetSection("Notifications").Get<NotificationSettings>() ?? new NotificationSettings());
+            services.AddSingleton(configuration.GetSection("Licensing").Get<Application.Licensing.LicensingSettings>() ?? new Application.Licensing.LicensingSettings());
+            services.AddScoped<Application.Licensing.IBusinessAccessGate, Persistence.Repositories.BusinessAccessGate>();
+            services.AddScoped<Application.Platform.IPlatformRepository, Persistence.Repositories.PlatformRepository>();
             services.Configure<EmailOptions>(configuration.GetSection("Email"));
             services.Configure<SmsOptions>(configuration.GetSection("Sms"));
 

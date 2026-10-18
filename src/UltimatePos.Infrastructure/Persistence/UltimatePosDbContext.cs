@@ -77,6 +77,7 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<Notification> Notifications => Set<Notification>();
         public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
         public DbSet<AlertState> AlertStates => Set<AlertState>();
+        public DbSet<BusinessLicense> BusinessLicenses => Set<BusinessLicense>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -392,6 +393,16 @@ namespace UltimatePos.Infrastructure.Persistence
                 .HasOne<BusinessProfile>().WithMany()
                 .HasForeignKey(a => a.BusinessId).OnDelete(DeleteBehavior.Restrict);
 
+            // ---- Licences ----
+            modelBuilder.Entity<BusinessLicense>().Property(l => l.Kind).HasConversion<string>();
+            modelBuilder.Entity<BusinessLicense>().Property(l => l.State).HasConversion<string>();
+            modelBuilder.Entity<BusinessLicense>().Property(l => l.PaymentMethod).HasConversion<string>();
+            modelBuilder.Entity<BusinessLicense>().HasIndex(l => new { l.BusinessId, l.LicenseNumber }).IsUnique();
+            modelBuilder.Entity<BusinessLicense>().HasIndex(l => new { l.BusinessId, l.EndsOn });
+            modelBuilder.Entity<BusinessLicense>()
+                .HasOne<BusinessProfile>().WithMany()
+                .HasForeignKey(l => l.BusinessId).OnDelete(DeleteBehavior.Restrict);
+
             ConfigureTenantFilters(modelBuilder);
 
             base.OnModelCreating(modelBuilder);
@@ -419,6 +430,7 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<SaleReturn>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<MpesaTransaction>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<AlertState>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<BusinessLicense>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             // Events and deliveries: the business's own, or platform-level ones when no business is in scope. The dispatcher reads
             // across businesses with IgnoreQueryFilters.
             modelBuilder.Entity<SystemEvent>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);

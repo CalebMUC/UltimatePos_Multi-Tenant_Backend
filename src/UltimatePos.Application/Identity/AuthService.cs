@@ -4,6 +4,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using UltimatePos.Application.Common.Interfaces;
+using UltimatePos.Application.Business;
+using UltimatePos.Application.Licensing;
 using UltimatePos.Application.Notifications;
 using  UltimatePos.Application.Identity.Dtos;
 using UltimatePos.Domain.Entities;
@@ -23,14 +25,20 @@ namespace UltimatePos.Application.Identity
         private readonly ICurrentUser _currentUser;
         private readonly ITenantContext _tenant;
         private readonly ISystemEventRecorder _events;
+        private readonly IBusinessAccessGate _gate;
+        private readonly IBusinessRepository _businesses;
         public AuthService(IAuthRepository authRepository,
             IPasswordHasher hasher,
             ITokenService tokenService,
             ICurrentUser currentUser,
             ITenantContext tenant,
-            ISystemEventRecorder events)
+            ISystemEventRecorder events,
+            IBusinessAccessGate gate,
+            IBusinessRepository businesses)
         {
             _events = events;
+            _gate = gate;
+            _businesses = businesses;
             _authRepository = authRepository;
             _passwordHasher = hasher;
             _tokenService = tokenService;
@@ -104,6 +112,9 @@ namespace UltimatePos.Application.Identity
                 throw new InvalidTokenException("You no longer have access to this business. Sign in again.");
             }
 
+            if (session.BusinessId is { } refreshBusiness)
+                await EnsureAccessibleAsync(refreshBusiness);
+
             await _authRepository.RevokeSessionAsync(session.UserSessionId);
             return await IssueSessionAsync(user, session.BusinessId, memberships, deviceInfo ?? session.DeviceInfo, ipAddress ?? session.IpAddress);
         }
@@ -152,7 +163,8 @@ namespace UltimatePos.Application.Identity
             var permissions = await _authRepository.GetUserPermissionsAsync(userId, businessId);
 
             return new MeDto(new UserDto(user.UserId, user.Email, user.Username, user.PhoneNumber, user.IsActive, user.IsLocked, roles, permissions),
-                businessId, memberships.Select(ToMembershipDto));
+                businessId, await MembershipDtosAsync(memberships), user.MustChangePassword,
+                businessId is { } b ? Platform.PlatformService.ToAccessDto(await _gate.CheckAsync(b)) : null);
         }
 
         public async Task ChangePasswordAsync(ChangePasswordRequest request)
@@ -165,6 +177,7 @@ namespace UltimatePos.Application.Identity
                 throw new ValidationException("currentPassword", "The current password is not correct.");
 
             SetPassword(user, request.NewPassword, userId);
+            user.MustChangePassword = false;
             _events.Record(new SystemEventDraft(SystemEventTypes.UserPasswordChanged,
                 $"The password for {user.Email} was changed. If this wasn't you, contact your administrator now.",
                 EventSeverity.Warning, "User", userId, SubjectUserId: userId));
@@ -173,24 +186,63 @@ namespace UltimatePos.Application.Identity
             await _authRepository.RevokeAllSessionsAsync(userId);
         }
 
+        /// <summary>
+        /// The business to sign in to: the one asked for, else the default, else the first the user can actually use today. A
+        /// suspended, closed or unlicensed business is refused with its reason, so the user knows to call, not retry.
+        /// </summary>
         private async Task<Guid?> ChooseBusinessAsync(Guid userId, IReadOnlyList<UserBusiness> memberships, Guid? requested)
         {
             if (requested is { } wanted)
             {
-                if (memberships.Any(m => m.BusinessId == wanted))
-                    return wanted;
-                throw new ForbiddenException("You do not have access to that business, or it has been deactivated.");
+                if (memberships.All(m => m.BusinessId != wanted))
+                    throw new ForbiddenException("You do not have access to that business, or it has been deactivated.");
+                await EnsureAccessibleAsync(wanted);
+                return wanted;
             }
 
-            var chosen = memberships.FirstOrDefault(m => m.IsDefault) ?? memberships.FirstOrDefault();
-            if (chosen is not null)
-                return chosen.BusinessId;
+            BusinessAccess? firstRefusal = null;
+            foreach (var membership in memberships.OrderByDescending(m => m.IsDefault))
+            {
+                var access = await _gate.CheckAsync(membership.BusinessId);
+                if (access.Allowed)
+                    return membership.BusinessId;
+                firstRefusal ??= access;
+            }
+            if (firstRefusal is not null)
+                throw new BusinessAccessDeniedException(firstRefusal.Code!, firstRefusal.Message!);
 
             // No business: allowed only for platform users (they can register the first business).
             if ((await _authRepository.GetUserPermissionsAsync(userId, null)).Count > 0)
                 return null;
 
             throw new ForbiddenException("Your account is not linked to any active business. Ask an administrator for access.");
+        }
+
+        private async Task EnsureAccessibleAsync(Guid businessId)
+        {
+            var access = await _gate.CheckAsync(businessId);
+            if (!access.Allowed)
+                throw new BusinessAccessDeniedException(access.Code!, access.Message!);
+        }
+
+        /// <summary>The licence's user limit, checked before a member is added or reactivated.</summary>
+        private async Task EnsureSeatAvailableAsync(Guid businessId)
+        {
+            var business = await _businesses.GetBusinessByIdAsync(businessId);
+            if (business?.LicenseMaxUsers is not { } limit)
+                return;
+            var active = (await _authRepository.GetBusinessUsersAsync(businessId)).Count(m => m.MembershipActive && m.User.IsActive);
+            if (active >= limit)
+                throw new BusinessAccessDeniedException("USER_LIMIT_REACHED",
+                    $"The licence allows {limit} active user{(limit == 1 ? "" : "s")}, and {active} are active. Deactivate someone, or ask for a larger licence.");
+        }
+
+        private async Task<IReadOnlyList<BusinessMembershipDto>> MembershipDtosAsync(IReadOnlyList<UserBusiness> memberships)
+        {
+            var result = new List<BusinessMembershipDto>();
+            foreach (var m in memberships)
+                result.Add(ToMembershipDto(m) with { AccessStatus = (await _gate.CheckAsync(m.BusinessId)).Status });
+            return result;
         }
 
         private async Task<LoginResponseDto> IssueSessionAsync(User user, Guid? businessId, IReadOnlyList<UserBusiness> memberships,
@@ -217,7 +269,9 @@ namespace UltimatePos.Application.Identity
             });
 
             var userDto = new UserDto(user.UserId, user.Email, user.Username, user.PhoneNumber, user.IsActive, user.IsLocked, roles, permissions);
-            return new LoginResponseDto(token, expiresAt, userDto, refreshToken, refreshExpiresAt, businessId, memberships.Select(ToMembershipDto));
+            var warning = businessId is { } b ? (await _gate.CheckAsync(b)).Warning : null;
+            return new LoginResponseDto(token, expiresAt, userDto, refreshToken, refreshExpiresAt, businessId, await MembershipDtosAsync(memberships),
+                user.MustChangePassword, warning);
         }
 
         private async Task<UserSession> GetValidSessionAsync(string? refreshToken)
@@ -254,6 +308,7 @@ namespace UltimatePos.Application.Identity
             var existingUser = await _authRepository.GetUserAsync(email);
             if (existingUser != null)
                 throw new UserAlreadyExistsException();
+            await EnsureSeatAvailableAsync(businessId);
             var (passwordHash, passwordSalt) = _passwordHasher.HashPassword(request.Password);
             var newUser = new User
             {
@@ -264,6 +319,7 @@ namespace UltimatePos.Application.Identity
                 PasswordHash = passwordHash,
                 PasswordSalt = passwordSalt,
                 IsActive = true,
+                MustChangePassword = true,
                 CreatedBy = _currentUser.UserId
             };
             var createdUser = await _authRepository.CreateUserAsync(newUser, businessId, request.RoleName.Trim());
@@ -322,6 +378,7 @@ namespace UltimatePos.Application.Identity
             await GetUserByIdAsync(userId);
             var user = (await _authRepository.GetUserForUpdateAsync(userId))!;
             SetPassword(user, request.NewPassword, _currentUser.UserId);
+            user.MustChangePassword = true;
             user.IsLocked = false;
             user.FailedLoginAttempts = 0;
             _events.Record(new SystemEventDraft(SystemEventTypes.UserPasswordReset,
@@ -354,6 +411,8 @@ namespace UltimatePos.Application.Identity
             await GetUserByIdAsync(userId);
             if (!isActive && userId == _currentUser.UserId)
                 throw new InvalidAssignmentException("You cannot deactivate your own access.");
+            if (isActive && !(await GetUserByIdAsync(userId)).IsActive)
+                await EnsureSeatAvailableAsync(businessId);
 
             await _authRepository.SetMembershipActiveAsync(userId, businessId, isActive, _currentUser.UserId);
             if (!isActive)
@@ -481,7 +540,7 @@ namespace UltimatePos.Application.Identity
             user.LastUpdatedAt = DateTime.UtcNow;
         }
 
-        private static string? PasswordError(string? password) =>
+        internal static string? PasswordError(string? password) =>
             string.IsNullOrEmpty(password) || password.Length < MinPasswordLength
                 ? $"Password must be at least {MinPasswordLength} characters."
                 : !password.Any(char.IsLetter) || !password.Any(char.IsDigit)

@@ -97,8 +97,8 @@ namespace UltimatePos.Infrastructure.Notifications
             return rows
                 .Where(r => names.Any(n => Application.Identity.PermissionCatalog.IsPlatform(n) == r.Platform))
                 .GroupBy(r => r.UserId)
-                .Select(g => g.First())
-                .Select(r => new NotificationRecipient(r.UserId, r.Username, r.Email, r.PhoneNumber))
+                .Select(g => new NotificationRecipient(g.Key, g.First().Username, g.First().Email, g.First().PhoneNumber,
+                    ViaPlatformRole: g.All(r => r.Platform)))
                 .ToList();
         }
 
@@ -220,7 +220,34 @@ namespace UltimatePos.Infrastructure.Notifications
     public class AlertSweepRepository : IAlertSweepRepository
     {
         private readonly UltimatePosDbContext _context;
-        public AlertSweepRepository(UltimatePosDbContext context) => _context = context;
+        private readonly ITenantContext _tenant;
+        private readonly Application.Licensing.IBusinessAccessGate _gate;
+
+        public AlertSweepRepository(UltimatePosDbContext context, ITenantContext tenant, Application.Licensing.IBusinessAccessGate gate)
+        {
+            _context = context;
+            _tenant = tenant;
+            _gate = gate;
+        }
+
+        public async Task<BusinessProfile?> GetCurrentBusinessAsync()
+        {
+            var businessId = _tenant.RequireBusinessId();
+            var business = await _context.Businesses.FirstOrDefaultAsync(b => b.BusinessId == businessId);
+            if (business is null)
+                return null;
+
+            var licenses = await _context.BusinessLicenses.AsNoTracking().ToListAsync();
+            var (endsOn, maxUsers) = Application.Licensing.LicensePolicy.Coverage(licenses, Application.Licensing.LicensePolicy.Today);
+            if (business.LicenseEndsOn != endsOn || business.LicenseMaxUsers != maxUsers)
+            {
+                business.LicenseEndsOn = endsOn;
+                business.LicenseMaxUsers = maxUsers;
+                await _context.SaveChangesAsync();
+                _gate.Invalidate(businessId);
+            }
+            return business;
+        }
 
         public async Task<IReadOnlyList<LowStockRow>> GetLowStockAsync() =>
             await _context.StockLevels.AsNoTracking()

@@ -93,17 +93,20 @@ namespace UltimatePos.Application.Notifications
                 Guid? notificationId = null;
                 if (channels.HasFlag(NotificationChannels.InApp))
                 {
+                    // A super user belongs to no business: their copy is a platform notification, linking to the business in the
+                    // platform area, so it shows in their bell and opens somewhere they can go.
+                    var platformCopy = recipient.ViaPlatformRole && systemEvent.BusinessId is not null;
                     var notification = new Notification
                     {
                         NotificationId = Guid.NewGuid(),
-                        BusinessId = systemEvent.BusinessId,
+                        BusinessId = platformCopy ? null : systemEvent.BusinessId,
                         UserId = recipient.UserId,
                         SystemEventId = systemEvent.SystemEventId,
                         EventType = systemEvent.EventType,
                         Severity = systemEvent.Severity,
                         Title = rule.Title,
-                        Message = systemEvent.Summary,
-                        Link = link,
+                        Message = businessName is null || !platformCopy ? systemEvent.Summary : $"{businessName}: {systemEvent.Summary}",
+                        Link = platformCopy ? $"/platform/businesses/{systemEvent.BusinessId}" : link,
                     };
                     notifications.Add(notification);
                     notificationId = notification.NotificationId;

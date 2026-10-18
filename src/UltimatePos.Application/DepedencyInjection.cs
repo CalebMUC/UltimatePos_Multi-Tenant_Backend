@@ -51,6 +51,9 @@ namespace UltimatePos.Application
             services.AddScoped<AlertSweepService>();
             services.AddScoped<NotificationService>();
 
+            // Super users: onboarding, licences, suspension, performance, support.
+            services.AddScoped<Platform.PlatformService>();
+
             return services;
         }
     }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -17,6 +17,8 @@ namespace UltimatePos.Domain.Entities
         public bool IsActive { get; set; } = true;
         public bool IsLocked { get; set; }
         public int FailedLoginAttempts { get; set; }
+        /// <summary>Set when someone else chose the password (a new account, an admin reset). Cleared when the user changes it.</summary>
+        public bool MustChangePassword { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }
         public DateTime? LastUpdatedAt { get; set; }

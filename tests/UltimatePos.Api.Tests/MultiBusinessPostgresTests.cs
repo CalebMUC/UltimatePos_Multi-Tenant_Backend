@@ -49,7 +49,10 @@ public sealed class MultiBusinessDatabase : IAsyncLifetime
 {
     public ServiceProvider Services { get; private set; } = null!;
     public TestCaller Caller { get; } = new();
+    /// <summary>The business owner: Admin of both businesses (a plain account, given them at registration).</summary>
     public Guid AdminUserId { get; private set; }
+    /// <summary>The super user who registered them. Belongs to no business.</summary>
+    public Guid SuperUserId { get; private set; }
     public Guid Alvet { get; private set; }
     public Guid Afya { get; private set; }
 
@@ -86,16 +89,22 @@ public sealed class MultiBusinessDatabase : IAsyncLifetime
             await DbSeeder.SeedAsync(scope.ServiceProvider);
 
         using (var scope = Services.CreateScope())
-            AdminUserId = (await scope.ServiceProvider.GetRequiredService<UltimatePosDbContext>().Users.SingleAsync(u => u.Email == DbSeeder.DevAdminEmail)).UserId;
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UltimatePosDbContext>().Users;
+            AdminUserId = (await users.SingleAsync(u => u.Email == DbSeeder.DevAdminEmail)).UserId;
+            SuperUserId = (await users.SingleAsync(u => u.Email == DbSeeder.DevSuperUserEmail)).UserId;
+        }
 
-        // The platform admin onboards both businesses, signed in to none.
-        Caller.UserId = AdminUserId;
+        // The super user onboards both businesses, signed in to none, and hands each to the same owner.
+        Caller.UserId = SuperUserId;
         Caller.BusinessId = null;
-        Alvet = (await RunAsync(sp => sp.GetRequiredService<BusinessService>().RegisterBusinessAsync(new RegisterBusinessRequestDto(
-            "Alvet Agrochemicals", null, BusinessType.Wholesaler, BusinessKind.Manufacturer, null, "P051000001A", null, null, null, null, null, null)))).BusinessId;
-        Afya = (await RunAsync(sp => sp.GetRequiredService<BusinessService>().RegisterBusinessAsync(new RegisterBusinessRequestDto(
+        var owner = new UltimatePos.Application.Platform.BusinessOwnerRequestDto("admin", DbSeeder.DevAdminEmail, null);
+        Alvet = (await RunAsync(sp => sp.GetRequiredService<UltimatePos.Application.Platform.PlatformService>().RegisterBusinessAsync(new RegisterBusinessRequestDto(
+            "Alvet Agrochemicals", null, BusinessType.Wholesaler, BusinessKind.Manufacturer, null, "P051000001A", null, null, null, null, null, null,
+            Owner: owner)))).Business.BusinessId;
+        Afya = (await RunAsync(sp => sp.GetRequiredService<UltimatePos.Application.Platform.PlatformService>().RegisterBusinessAsync(new RegisterBusinessRequestDto(
             "Afya Pharmacy", null, BusinessType.Retailer, BusinessKind.Trader, null, "P051000002B", null, null, null, null, null, null,
-            IsVatRegistered: true, MpesaShortCode: "600999", MaxDiscountPercent: 10)))).BusinessId;
+            IsVatRegistered: true, MpesaShortCode: "600999", MaxDiscountPercent: 10, Owner: owner)))).Business.BusinessId;
     }
 
     public async Task DisposeAsync()
@@ -450,9 +459,17 @@ public class MultiBusinessPostgresTests : IClassFixture<MultiBusinessDatabase>
         await Assert.ThrowsAsync<InvalidTokenException>(() => _db.RunAsync(sp => sp.GetRequiredService<AuthService>().RefreshAsync(new RefreshTokenRequest(refreshed.RefreshToken))));
         await Assert.ThrowsAsync<ForbiddenException>(() => _db.RunAsync(sp => sp.GetRequiredService<AuthService>().LoginAsync(new LoginRequest(email, "Dawa2026!"))));
 
-        // The platform admin belongs to both businesses and can switch between them.
+        // The owner belongs to both businesses and can switch between them, but has no platform powers.
         var admin = await _db.RunAsync(sp => sp.GetRequiredService<AuthService>().LoginAsync(new LoginRequest(DbSeeder.DevAdminEmail, DbSeeder.DevAdminPassword, _db.Afya)));
         Assert.Equal(2, admin.Businesses.Count());
-        Assert.Contains("Businesses.Register", admin.User.Permissions);
+        Assert.DoesNotContain("Businesses.Register", admin.User.Permissions);
+
+        // The super user signs in to no business and holds only platform permissions.
+        var super = await _db.RunAsync(sp => sp.GetRequiredService<AuthService>().LoginAsync(new LoginRequest(DbSeeder.DevSuperUserEmail, DbSeeder.DevSuperUserPassword)));
+        Assert.Null(super.ActiveBusinessId);
+        Assert.Empty(super.Businesses);
+        Assert.Contains("Businesses.Register", super.User.Permissions);
+        Assert.Contains("Licenses.Manage", super.User.Permissions);
+        Assert.DoesNotContain("Sales.Create", super.User.Permissions);
     }
 }

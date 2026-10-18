@@ -52,6 +52,12 @@ namespace UltimatePos.Application.Notifications
             string? eventType, Guid? actorUserId, string? entityType, Guid? entityId, EventSeverity? minimumSeverity, string? search)
         {
             _tenant.RequireBusinessId();
+            return await QueryAsync(page, pageSize, from, to, utcOffsetMinutes, eventType, actorUserId, entityType, entityId, minimumSeverity, search);
+        }
+
+        private async Task<PagedResult<AuditLogEntryDto>> QueryAsync(int page, int pageSize, DateOnly? from, DateOnly? to, int utcOffsetMinutes,
+            string? eventType, Guid? actorUserId, string? entityType, Guid? entityId, EventSeverity? minimumSeverity, string? search)
+        {
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 200);
             ReportPeriod.ValidateOffset(utcOffsetMinutes);
@@ -75,6 +81,15 @@ namespace UltimatePos.Application.Notifications
                 e.ActorUserId, e.ActorUserId is { } a && names.TryGetValue(a, out var actor) ? actor : null,
                 e.SubjectUserId, e.SubjectUserId is { } s && names.TryGetValue(s, out var subject) ? subject : null,
                 e.EntityType, e.EntityId, e.Data, e.OccurredAt)), page, pageSize, total);
+        }
+
+        /// <summary>The platform's own events (business registrations, super users), for super users. Business events are read per business.</summary>
+        public async Task<PagedResult<AuditLogEntryDto>> GetPlatformAuditLogAsync(int page, int pageSize, DateOnly? from, DateOnly? to,
+            int utcOffsetMinutes, string? eventType, Guid? actorUserId, string? search)
+        {
+            if (_tenant.BusinessId is not null)
+                throw new ForbiddenException("The platform audit log is read without a business selected.");
+            return await QueryAsync(page, pageSize, from, to, utcOffsetMinutes, eventType, actorUserId, null, null, null, search);
         }
 
         private static NotificationDto ToDto(Notification n) =>

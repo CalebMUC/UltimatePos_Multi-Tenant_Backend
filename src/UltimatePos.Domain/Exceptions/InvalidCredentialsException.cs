@@ -80,4 +80,14 @@ namespace UltimatePos.Domain.Exceptions
     {
         public InvalidTokenException(string message) : base(message) { }
     }
+
+    /// <summary>
+    /// The business can't be used right now: suspended, closed, or its licence has run out (HTTP 403). Code is one of
+    /// BUSINESS_SUSPENDED, BUSINESS_CLOSED, LICENSE_EXPIRED, UNLICENSED, USER_LIMIT_REACHED.
+    /// </summary>
+    public class BusinessAccessDeniedException : Exception
+    {
+        public string Code { get; }
+        public BusinessAccessDeniedException(string code, string message) : base(message) => Code = code;
+    }
 }

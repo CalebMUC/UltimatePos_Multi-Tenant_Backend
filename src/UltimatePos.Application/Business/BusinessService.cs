@@ -22,66 +22,19 @@ namespace UltimatePos.Application.Business
         private readonly ICurrentUser _currentUser;
         private readonly ITenantContext _tenant;
         private readonly ISystemEventRecorder _events;
+        private readonly Licensing.LicensingSettings _licensing;
 
-        public BusinessService(IBusinessRepository repository, ICurrentUser currentUser, ITenantContext tenant, ISystemEventRecorder events)
+        public BusinessService(IBusinessRepository repository, ICurrentUser currentUser, ITenantContext tenant, ISystemEventRecorder events,
+            Licensing.LicensingSettings licensing)
         {
             _repository = repository;
             _currentUser = currentUser;
             _tenant = tenant;
             _events = events;
+            _licensing = licensing;
         }
 
         // ---- Businesses ----
-
-        /// <summary>
-        /// Onboards a business. The caller becomes its first member with an Admin role holding every business permission, and can
-        /// switch to it straight away (POST /auth/switch-business).
-        /// </summary>
-        public async Task<BusinessDto> RegisterBusinessAsync(RegisterBusinessRequestDto request)
-        {
-            // Kind decides what the business may purchase, so it must be chosen explicitly — never defaulted.
-            if (request.Kind is not { } kind || !Enum.IsDefined(kind))
-                throw new ValidationException("kind", "Business kind is required (Manufacturer or Trader).");
-
-            ValidateProfile(request.BusinessName, request.KraPin, request.MaxDiscountPercent);
-            var shortCode = NormalizeShortCode(request.MpesaShortCode);
-
-            if (await _repository.KraPinExistsAsync(request.KraPin.Trim()))
-                throw new DuplicateBusinessException($"A business with KRA PIN '{request.KraPin}' is already registered.");
-            if (shortCode is not null && await _repository.MpesaShortCodeExistsAsync(shortCode))
-                throw new ValidationException("mpesaShortCode", $"M-Pesa short code '{shortCode}' is already used by another business.");
-
-            var business = new BusinessProfile
-            {
-                BusinessId = Guid.NewGuid(),
-                BusinessName = request.BusinessName.Trim(),
-                TradingName = request.TradingName,
-                BusinessType = request.BusinessType,
-                Kind = kind,
-                RegistrationNumber = request.RegistrationNumber,
-                KraPin = request.KraPin.Trim(),
-                PhysicalAddress = request.PhysicalAddress,
-                County = request.County,
-                PhoneNumber = PhoneNumberHelper.NormalizePhoneNumber(request.PhoneNumber),
-                Email = request.Email,
-                LogoUrl = request.LogoUrl,
-                BackgroundImageUrl = request.BackgroundImageUrl,
-                IsVatRegistered = request.IsVatRegistered,
-                MpesaShortCode = shortCode,
-                MaxDiscountPercent = request.MaxDiscountPercent,
-                CreatedBy = _currentUser.UserId
-            };
-
-            // Everything the new business starts with is owned by it, so it is written with the new business in scope.
-            using (_tenant.Use(business.BusinessId))
-            {
-                _events.Record(new SystemEventDraft(SystemEventTypes.BusinessRegistered,
-                    $"{business.BusinessName} ({business.Kind}, {business.BusinessType}) was registered.",
-                    EntityType: "Business", EntityId: business.BusinessId, Data: new { business.KraPin, business.Kind, business.BusinessType }));
-                var created = await _repository.CreateBusinessAsync(business, _currentUser.UserId);
-                return ToDto(created);
-            }
-        }
 
         /// <summary>The businesses the caller belongs to — or every business, for platform users with Businesses.ViewAll.</summary>
         public async Task<IEnumerable<BusinessDto>> GetBusinessesAsync()
@@ -125,9 +78,17 @@ namespace UltimatePos.Application.Business
                 _currentUser.UserId));
         }
 
-        /// <summary>Platform action (Businesses.Deactivate). A deactivated business can no longer be signed in to.</summary>
-        public async Task<BusinessDto> SetBusinessActiveStatusAsync(Guid businessId, bool isActive) =>
-            ToDto(await _repository.SetBusinessActiveStatusAsync(businessId, isActive, _currentUser.UserId));
+        /// <summary>The signed-in business's licence position and history, for its own Settings → Licence page.</summary>
+        public async Task<BusinessLicenseStatusDto> GetCurrentLicenseAsync()
+        {
+            var businessId = _tenant.RequireBusinessId();
+            var business = await _repository.GetBusinessByIdAsync(businessId)
+                ?? throw new NotFoundException($"Business '{businessId}' not found.");
+            var licenses = await _repository.GetLicensesAsync();
+            return new BusinessLicenseStatusDto(
+                Platform.PlatformService.ToAccessDto(Licensing.LicensePolicy.Evaluate(business, _licensing, Licensing.LicensePolicy.Today)),
+                business.LicenseMaxUsers, licenses.Select(Platform.PlatformService.ToDto));
+        }
 
         private async Task EnsureCanSeeAsync(Guid businessId)
         {
@@ -139,7 +100,7 @@ namespace UltimatePos.Application.Business
                 throw new NotFoundException($"Business '{businessId}' not found.");
         }
 
-        private static void ValidateProfile(string businessName, string kraPin, decimal? maxDiscountPercent)
+        internal static void ValidateProfile(string businessName, string kraPin, decimal? maxDiscountPercent)
         {
             var errors = new Dictionary<string, string[]>();
             if (string.IsNullOrWhiteSpace(businessName))
@@ -152,7 +113,7 @@ namespace UltimatePos.Application.Business
                 throw new ValidationException(errors);
         }
 
-        private static string? NormalizeShortCode(string? shortCode)
+        internal static string? NormalizeShortCode(string? shortCode)
         {
             if (string.IsNullOrWhiteSpace(shortCode))
                 return null;
@@ -233,10 +194,7 @@ namespace UltimatePos.Application.Business
                 throw new ValidationException(errors);
         }
 
-        private static BusinessDto ToDto(BusinessProfile b) =>
-            new(b.BusinessId, b.BusinessName, b.TradingName, b.BusinessType, b.Kind,b.RegistrationNumber, b.KraPin,
-                b.PhysicalAddress, b.County, b.PhoneNumber, b.Email, b.LogoUrl, b.BackgroundImageUrl, b.IsActive,
-                b.IsVatRegistered, b.MpesaShortCode, b.MaxDiscountPercent);
+        private static BusinessDto ToDto(BusinessProfile b) => Platform.PlatformService.ToBusinessDto(b);
 
         private static CustomerDto ToDto(Customer c) =>
             new(c.CustomerId, c.BusinessId, c.CustomerName, c.KraPin, c.ContactPerson, c.PhoneNumber, c.Email, c.PhysicalAddress, c.IsActive,

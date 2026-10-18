@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -33,6 +33,7 @@ public class ExceptionHandlingMiddleware
                 InvalidCredentialsException => (HttpStatusCode.Unauthorized, "INVALID_CREDENTIALS", ex.Message),
                 InvalidTokenException => (HttpStatusCode.Unauthorized, "INVALID_TOKEN", ex.Message),
                 ForbiddenException => (HttpStatusCode.Forbidden, "FORBIDDEN", ex.Message),
+                BusinessAccessDeniedException denied => (HttpStatusCode.Forbidden, denied.Code, ex.Message),
                 ValidationException => (HttpStatusCode.BadRequest, "VALIDATION_FAILED", ex.Message),
                 UserAlreadyExistsException => (HttpStatusCode.Conflict, "USER_EXISTS", ex.Message),
                 NotFoundException => (HttpStatusCode.NotFound, "NOT_FOUND", ex.Message),
