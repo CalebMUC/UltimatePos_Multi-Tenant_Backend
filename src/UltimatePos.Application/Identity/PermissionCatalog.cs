@@ -62,6 +62,7 @@ namespace UltimatePos.Application.Identity
             ("Expenses.Update", "Expenses"), ("Expenses.Void", "Expenses"),
 
             ("Dashboard.View", "Dashboard"),
+            ("AuditLog.View", "Audit"),
             ("SalesReports.View", "Reports"), ("CustomerReports.View", "Reports"), ("ProductionReports.View", "Reports"),
             ("InventoryReports.View", "Reports"), ("PurchaseReports.View", "Reports"),
         };

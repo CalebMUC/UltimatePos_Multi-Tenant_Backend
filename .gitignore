@@ -4,3 +4,6 @@ obj/
 *.user
 *.suo
 .idea/
+# Local API run logs
+api-dev.log
+api-dev.log.err

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Dtos;
@@ -23,9 +24,11 @@ namespace UltimatePos.Application.Purchasing
         private readonly ICurrentUser _currentUser;
         private readonly IBusinessRepository _businessRepository;
         private readonly ITenantContext _tenant;
+        private readonly ISystemEventRecorder _events;
         public PurchasingService(IPurchasingRepository repository, ICatalogRepository catalogRepository,
-                  IBusinessRepository businessRepository,  ICurrentUser currentUser, ITenantContext tenant)
+                  IBusinessRepository businessRepository,  ICurrentUser currentUser, ITenantContext tenant, ISystemEventRecorder events)
         {
+            _events = events;
             _repository = repository;
             _catalogRepository = catalogRepository;
             _currentUser = currentUser;
@@ -212,7 +215,11 @@ namespace UltimatePos.Application.Purchasing
             if (order.Status is PurchaseOrderStatus.Received or PurchaseOrderStatus.PartiallyReceived)
                 throw new InvalidAssignmentException("Cannot cancel a purchase order that has already received stock — received quantities must be reconciled first.");
 
-            return ToDto(await _repository.SetPurchaseOrderStatusAsync(purchaseOrderId, PurchaseOrderStatus.Cancelled, _currentUser.UserId));
+            _events.Record(new SystemEventDraft(SystemEventTypes.PurchaseOrderCancelled, $"{order.OrderNumber} was cancelled.",
+                EntityType: "PurchaseOrder", EntityId: purchaseOrderId, Data: new { order.OrderNumber },
+                ClearsAlertKeys: new[] { AlertKeys.PurchaseOrderOverdue(purchaseOrderId) }));
+            await _repository.SetPurchaseOrderStatusAsync(purchaseOrderId, PurchaseOrderStatus.Cancelled, _currentUser.UserId);
+            return await GetPurchaseOrderByIdAsync(purchaseOrderId);
         }
 
         //public async Task<PurchaseOrderDto> ReceivePurchaseOrderAsync(Guid purchaseOrderId, ReceivePurchaseOrderRequestDto request)
@@ -358,6 +365,11 @@ namespace UltimatePos.Application.Purchasing
                 CreatedBy = _currentUser.UserId
             };
 
+            _events.Record(new SystemEventDraft(SystemEventTypes.PurchaseOrderReceived,
+                $"Goods received against {order.OrderNumber}: {receiveLines.Count} line(s), {billAmount:0.00} on account. Order is now {newStatus}.",
+                EntityType: "PurchaseOrder", EntityId: purchaseOrderId,
+                Data: new { order.OrderNumber, billAmount, status = newStatus.ToString(), request.SupplierInvoiceNumber },
+                ClearsAlertKeys: newStatus == PurchaseOrderStatus.Received ? new[] { AlertKeys.PurchaseOrderOverdue(purchaseOrderId) } : null));
             var batchId = Guid.NewGuid();
             await _repository.ReceivePurchaseOrderAsync(purchaseOrderId, order.SupplierId, newStatus, lineUpdates, movements, batchId, request.Notes, _currentUser.UserId, bill);
 

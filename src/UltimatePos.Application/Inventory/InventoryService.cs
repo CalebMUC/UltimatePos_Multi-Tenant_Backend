@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Costing;
@@ -21,9 +22,12 @@ namespace UltimatePos.Application.Inventory
         private readonly IInventoryRepository _repository;
         private readonly ICatalogRepository _catalogRepository;
         private readonly ICurrentUser _currentUser;
+        private readonly ISystemEventRecorder _events;
 
-        public InventoryService(IInventoryRepository repository, ICatalogRepository catalogRepository, ICurrentUser currentUser)
+        public InventoryService(IInventoryRepository repository, ICatalogRepository catalogRepository, ICurrentUser currentUser,
+            ISystemEventRecorder events)
         {
+            _events = events;
             _repository = repository;
             _catalogRepository = catalogRepository;
             _currentUser = currentUser;
@@ -100,6 +104,10 @@ namespace UltimatePos.Application.Inventory
             }
 
             var batch = await ResolveBatchAsync(product, request, changeInBaseUnits);
+            _events.Record(new SystemEventDraft(SystemEventTypes.StockAdjusted,
+                $"Stock of {product.Name} adjusted by {changeInBaseUnits:+0.####;-0.####} {product.BaseUnitOfMeasure?.Symbol}: {request.Reason.Trim()}",
+                EntityType: "Product", EntityId: product.ProductId,
+                Data: new { changeInBaseUnits, reason = request.Reason.Trim(), batch?.StockBatchId, batch?.BatchNumber }));
             await _repository.AdjustStockAsync(request.ProductId, changeInBaseUnits, request.Reason.Trim(), _currentUser.UserId, unitCostPerBase, batch);
             return await GetStockLevelAsync(request.ProductId);
         }

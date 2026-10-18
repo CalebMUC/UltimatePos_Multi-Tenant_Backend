@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using UltimatePos.Infrastructure.Notifications;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -78,6 +79,8 @@ namespace UltimatePos.Infrastructure
             services.AddScoped<IExpenseRepository, ExpenseRepository>();
 
             services.AddScoped<IReportsRepository, ReportsRepository>();
+
+            services.AddNotificationChannels(configuration);
 
             return services;
 

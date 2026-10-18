@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Accounting;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
@@ -37,12 +38,14 @@ namespace UltimatePos.Application.Sales
         private readonly IMpesaClient _mpesaClient;
         private readonly ICurrentUser _currentUser;
         private readonly ITenantContext _tenant;
+        private readonly ISystemEventRecorder _events;
 
         public SalesService(
             ISalesRepository repository, ICatalogRepository catalogRepository, IBusinessRepository businessRepository,
             IInventoryRepository inventoryRepository, IAccountingRepository accountingRepository, IMpesaRepository mpesaRepository,
-            IMpesaClient mpesaClient, ICurrentUser currentUser, ITenantContext tenant)
+            IMpesaClient mpesaClient, ICurrentUser currentUser, ITenantContext tenant, ISystemEventRecorder events)
         {
+            _events = events;
             _repository = repository;
             _catalogRepository = catalogRepository;
             _businessRepository = businessRepository;
@@ -87,6 +90,7 @@ namespace UltimatePos.Application.Sales
                     "Not enough unexpired stock for: " +
                     string.Join(", ", shortBatched.Select(l => $"'{l.ProductName}' ({l.AvailableInBaseUnits:0.####} available)")) + ".");
 
+            var overrodeCreditLimit = false;
             if (plan.CreditLimitExceeded(request.PaymentMethod))
             {
                 if (!request.OverrideCreditLimit)
@@ -94,6 +98,7 @@ namespace UltimatePos.Application.Sales
                         $"This sale would take the customer to {plan.CustomerBalance + plan.Total:0.00}, past their credit limit of {plan.CreditLimit:0.00}.");
                 if (!_currentUser.HasPermission(OverrideCreditLimitPermission))
                     throw new ForbiddenException("You do not have permission to override a customer's credit limit.");
+                overrodeCreditLimit = true;
             }
 
             var prescription = BuildPrescription(plan, request.Prescription, userId);
@@ -127,6 +132,12 @@ namespace UltimatePos.Application.Sales
             };
             if (prescription is not null)
                 prescription.SaleId = sale.SaleId;
+
+            // Recorded now, so it commits with the sale. The sale number is assigned in the payment branch, so the summary names the customer.
+            if (overrodeCreditLimit)
+                _events.Record(new SystemEventDraft(SystemEventTypes.SaleCreditLimitOverridden,
+                    $"A credit sale of {plan.Total:0.00} took the customer to {plan.CustomerBalance + plan.Total:0.00}, past their limit of {plan.CreditLimit:0.00}.",
+                    EventSeverity.Warning, "Sale", sale.SaleId, new { request.CustomerId, plan.Total, plan.CustomerBalance, plan.CreditLimit }));
 
             return request.PaymentMethod switch
             {
@@ -186,6 +197,9 @@ namespace UltimatePos.Application.Sales
                 };
             }
 
+            _events.Record(new SystemEventDraft(SystemEventTypes.SaleVoided,
+                $"Sale {sale.SaleNumber} of {sale.TotalAmount:0.00} ({sale.PaymentMethod}) was voided; its stock went back on the shelf.",
+                EventSeverity.Warning, "Sale", saleId, new { sale.SaleNumber, sale.TotalAmount, sale.PaymentMethod, sale.CustomerId }));
             await _repository.VoidSaleAsync(saleId, reversal, userId);
             return await GetSaleByIdAsync(saleId);
         }
@@ -212,6 +226,11 @@ namespace UltimatePos.Application.Sales
             if (sale.Status != SaleStatus.Pending)
                 return await GetSaleByIdAsync(saleId);
 
+            // The cashier who rang it up is told, so they can ask the customer to pay another way.
+            _events.Record(new SystemEventDraft(SystemEventTypes.MpesaStkPaymentFailed,
+                $"The M-Pesa payment for sale {sale.SaleNumber} ({sale.TotalAmount:0.00}) did not go through: {reason}",
+                EventSeverity.Warning, "Sale", saleId, new { sale.SaleNumber, sale.TotalAmount, reason },
+                ActorUserId: null, SubjectUserId: sale.CreatedBy));
             await _repository.FailPendingSaleAsync(saleId, reason);
             return await GetSaleByIdAsync(saleId);
         }
@@ -311,6 +330,10 @@ namespace UltimatePos.Application.Sales
                 };
             }
 
+            _events.Record(new SystemEventDraft(SystemEventTypes.SaleReturned,
+                $"{saleReturn.ReturnNumber}: {saleReturn.TotalAmount:0.00} returned against {sale.SaleNumber} ({saleReturn.RefundMethod}) — {saleReturn.Reason}",
+                EntityType: "Sale", EntityId: saleId,
+                Data: new { saleReturn.ReturnNumber, saleReturn.TotalAmount, saleReturn.RefundMethod, lines = returnLines.Count }));
             await _repository.RecordReturnAsync(saleReturn, creditNote);
             return (await GetReturnsForSaleAsync(saleId)).First(r => r.SaleReturnId == saleReturn.SaleReturnId);
         }

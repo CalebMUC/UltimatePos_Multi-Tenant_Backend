@@ -1,11 +1,13 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Notifications;
 using UltimatePos.Domain.Entities;
 using UltimatePos.Domain.Exceptions;
+using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Infrastructure.Persistence
 {
@@ -25,7 +27,13 @@ namespace UltimatePos.Infrastructure.Persistence
     public class StockLedger
     {
         private readonly UltimatePosDbContext _context;
-        public StockLedger(UltimatePosDbContext context) => _context = context;
+        private readonly ISystemEventRecorder _events;
+
+        public StockLedger(UltimatePosDbContext context, ISystemEventRecorder events)
+        {
+            _context = context;
+            _events = events;
+        }
 
         /// <summary>
         /// Locks the existing stock rows for these products, one at a time, in the SAME order every other operation uses
@@ -54,22 +62,80 @@ namespace UltimatePos.Infrastructure.Persistence
             if (movement.QuantityChange == 0)
                 return;
 
+            LedgerRow after;
             if (movement.QuantityChange > 0)
             {
-                if (movement.UnitCost.HasValue)
-                    await ReceiveAtCostAsync(movement);
-                else
-                    await ReceiveAtCurrentCostAsync(movement);
+                after = movement.UnitCost.HasValue
+                    ? await ReceiveAtCostAsync(movement)
+                    : await ReceiveAtCurrentCostAsync(movement);
             }
             else
             {
-                movement.UnitCost = allowNegative
+                after = allowNegative
                     ? await IssueAllowingNegativeAsync(movement)
                     : await IssueGuardedAsync(movement);
+                movement.UnitCost = after.AverageUnitCost;
             }
 
             _context.StockMovements.Add(movement);
+            await RecordThresholdCrossingAsync(movement, after);
         }
+
+        /// <summary>
+        /// The moment stock crosses its reorder level — down (low or out) or back up (replenished) — an event is recorded in the same
+        /// transaction. Crossings only, so a busy product does not raise an event per sale; the alert sweep covers everything else.
+        /// A reorder level of 0 means "never set" and raises nothing but out-of-stock.
+        /// </summary>
+        private async Task RecordThresholdCrossingAsync(StockMovement movement, LedgerRow after)
+        {
+            var before = after.QuantityOnHand - movement.QuantityChange;
+            var reorder = after.ReorderLevel;
+            var wentOut = before > 0 && after.QuantityOnHand <= 0;
+            var wentLow = reorder > 0 && before > reorder && after.QuantityOnHand <= reorder && after.QuantityOnHand > 0;
+            var recovered = before <= reorder && after.QuantityOnHand > reorder && (reorder > 0 || before <= 0);
+            if (!wentOut && !wentLow && !recovered)
+                return;
+
+            var product = await _context.Products.AsNoTracking()
+                .Where(p => p.ProductId == movement.ProductId)
+                .Select(p => new { p.Name, Unit = p.BaseUnitOfMeasure.Symbol })
+                .FirstAsync();
+            var unit = string.IsNullOrEmpty(product.Unit) ? string.Empty : " " + product.Unit;
+            var data = new { before, after = after.QuantityOnHand, reorderLevel = reorder, movement = movement.MovementType.ToString(), movement.ReferenceId };
+
+            if (wentOut)
+                _events.Record(new SystemEventDraft(SystemEventTypes.StockOutOfStock,
+                    $"{product.Name} is out of stock ({after.QuantityOnHand:0.##}{unit} after {Describe(movement)}).",
+                    EventSeverity.Critical, "Product", movement.ProductId, data,
+                    AlertKey: AlertKeys.StockOut(movement.ProductId), ClearsAlertKeys: new[] { AlertKeys.StockLow(movement.ProductId) }));
+            else if (wentLow)
+                _events.Record(new SystemEventDraft(SystemEventTypes.StockBelowReorderLevel,
+                    $"{product.Name} is down to {after.QuantityOnHand:0.##}{unit} (reorder level {reorder:0.##}{unit}).",
+                    EventSeverity.Warning, "Product", movement.ProductId, data, AlertKey: AlertKeys.StockLow(movement.ProductId)));
+            else
+                _events.Record(new SystemEventDraft(SystemEventTypes.StockReplenished,
+                    $"{product.Name} is back to {after.QuantityOnHand:0.##}{unit}.",
+                    EntityType: "Product", EntityId: movement.ProductId, Data: data,
+                    ClearsAlertKeys: new[] { AlertKeys.StockLow(movement.ProductId), AlertKeys.StockOut(movement.ProductId) }));
+        }
+
+        private static string Describe(StockMovement m) => m.MovementType switch
+        {
+            StockMovementType.Sale => "a sale",
+            StockMovementType.ProductionConsumption => "a production run",
+            StockMovementType.Adjustment => "a stock adjustment",
+            _ => m.MovementType.ToString(),
+        };
+
+        /// <summary>The stock row after a change, and the product's reorder level, from one statement.</summary>
+        private sealed class LedgerRow
+        {
+            public decimal AverageUnitCost { get; set; }
+            public decimal QuantityOnHand { get; set; }
+            public decimal ReorderLevel { get; set; }
+        }
+
+        private Task<List<LedgerRow>> QueryRow(FormattableString sql) => _context.Database.SqlQuery<LedgerRow>(sql).ToListAsync();
 
         // ---------------------------------------------------------------- Batches
         //
@@ -206,9 +272,9 @@ namespace UltimatePos.Infrastructure.Persistence
             return previous[0];
         }
 
-        private async Task ReceiveAtCostAsync(StockMovement movement)
+        private async Task<LedgerRow> ReceiveAtCostAsync(StockMovement movement)
         {
-            await _context.Database.ExecuteSqlInterpolatedAsync($"""
+            var rows = await QueryRow($"""
                 INSERT INTO "StockLevels" ("ProductId", "QuantityOnHand", "AverageUnitCost", "LastUpdatedAt")
                 VALUES ({movement.ProductId}, {movement.QuantityChange}, {movement.UnitCost!.Value}, now())
                 ON CONFLICT ("ProductId") DO UPDATE
@@ -219,48 +285,56 @@ namespace UltimatePos.Infrastructure.Persistence
                                   / ("StockLevels"."QuantityOnHand" + EXCLUDED."QuantityOnHand"), 6) END,
                     "QuantityOnHand" = "StockLevels"."QuantityOnHand" + EXCLUDED."QuantityOnHand",
                     "LastUpdatedAt" = now()
+                RETURNING "AverageUnitCost", "QuantityOnHand",
+                          (SELECT p."ReorderLevel" FROM "Products" p WHERE p."ProductId" = {movement.ProductId}) AS "ReorderLevel"
                 """);
+            return rows.Single();
         }
 
-        private async Task ReceiveAtCurrentCostAsync(StockMovement movement)
+        private async Task<LedgerRow> ReceiveAtCurrentCostAsync(StockMovement movement)
         {
-            await _context.Database.ExecuteSqlInterpolatedAsync($"""
+            var rows = await QueryRow($"""
                 INSERT INTO "StockLevels" ("ProductId", "QuantityOnHand", "AverageUnitCost", "LastUpdatedAt")
                 VALUES ({movement.ProductId}, {movement.QuantityChange}, 0, now())
                 ON CONFLICT ("ProductId") DO UPDATE
                 SET "QuantityOnHand" = "StockLevels"."QuantityOnHand" + EXCLUDED."QuantityOnHand",
                     "LastUpdatedAt" = now()
+                RETURNING "AverageUnitCost", "QuantityOnHand",
+                          (SELECT p."ReorderLevel" FROM "Products" p WHERE p."ProductId" = {movement.ProductId}) AS "ReorderLevel"
                 """);
+            return rows.Single();
         }
 
-        private async Task<decimal> IssueAllowingNegativeAsync(StockMovement movement)
+        private async Task<LedgerRow> IssueAllowingNegativeAsync(StockMovement movement)
         {
-            var cost = await _context.Database.SqlQuery<decimal>($"""
+            var rows = await QueryRow($"""
                 INSERT INTO "StockLevels" ("ProductId", "QuantityOnHand", "AverageUnitCost", "LastUpdatedAt")
                 VALUES ({movement.ProductId}, {movement.QuantityChange}, 0, now())
                 ON CONFLICT ("ProductId") DO UPDATE
                 SET "QuantityOnHand" = "StockLevels"."QuantityOnHand" + EXCLUDED."QuantityOnHand",
                     "LastUpdatedAt" = now()
-                RETURNING "AverageUnitCost" AS "Value"
-                """).ToListAsync();
-            return cost.Single();
+                RETURNING "AverageUnitCost", "QuantityOnHand",
+                          (SELECT p."ReorderLevel" FROM "Products" p WHERE p."ProductId" = {movement.ProductId}) AS "ReorderLevel"
+                """);
+            return rows.Single();
         }
 
-        private async Task<decimal> IssueGuardedAsync(StockMovement movement)
+        private async Task<LedgerRow> IssueGuardedAsync(StockMovement movement)
         {
-            var cost = await _context.Database.SqlQuery<decimal>($"""
+            var rows = await QueryRow($"""
                 UPDATE "StockLevels"
                 SET "QuantityOnHand" = "QuantityOnHand" + {movement.QuantityChange}, "LastUpdatedAt" = now()
                 WHERE "ProductId" = {movement.ProductId}
                   AND "QuantityOnHand" + {movement.QuantityChange} >= 0
-                RETURNING "AverageUnitCost" AS "Value"
-                """).ToListAsync();
+                RETURNING "AverageUnitCost", "QuantityOnHand",
+                          (SELECT p."ReorderLevel" FROM "Products" p WHERE p."ProductId" = {movement.ProductId}) AS "ReorderLevel"
+                """);
 
-            if (cost.Count == 0)
+            if (rows.Count == 0)
                 throw new InsufficientStockException(
                     $"Stock for product '{movement.ProductId}' is no longer sufficient — it changed while this operation was in progress. Review stock and retry.");
 
-            return cost[0];
+            return rows[0];
         }
     }
 }

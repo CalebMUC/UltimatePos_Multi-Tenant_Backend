@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Accounting.Dtos;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Common.Interfaces;
@@ -20,9 +21,12 @@ namespace UltimatePos.Application.Accounting
         private readonly IPurchasingRepository _purchasingRepository;
         private readonly ICurrentUser _currentUser;
 
+        private readonly ISystemEventRecorder _events;
+
         public AccountingService(IAccountingRepository repository, IBusinessRepository businessRepository,
-            IPurchasingRepository purchasingRepository, ICurrentUser currentUser)
+            IPurchasingRepository purchasingRepository, ICurrentUser currentUser, ISystemEventRecorder events)
         {
+            _events = events;
             _repository = repository;
             _businessRepository = businessRepository;
             _purchasingRepository = purchasingRepository;
@@ -56,9 +60,12 @@ namespace UltimatePos.Application.Accounting
         {
             ValidatePayment(request.Amount, request.PaymentMethod, request.PaymentReference);
 
-            if (await _businessRepository.GetCustomerByIdAsync(customerId) is null)
-                throw new NotFoundException($"Customer '{customerId}' not found.");
+            var customer = await _businessRepository.GetCustomerByIdAsync(customerId)
+                ?? throw new NotFoundException($"Customer '{customerId}' not found.");
 
+            _events.Record(new SystemEventDraft(SystemEventTypes.CustomerPaymentRecorded,
+                $"{customer.CustomerName} paid {request.Amount:0.00}{(request.PaymentMethod is { } m ? $" by {m}" : "")}.",
+                EntityType: "Customer", EntityId: customerId, Data: new { request.Amount, request.PaymentMethod, request.PaymentReference }));
             await _repository.RecordPaymentAsync(new CustomerLedgerEntry
             {
                 CustomerId = customerId,
@@ -106,9 +113,12 @@ namespace UltimatePos.Application.Accounting
         {
             ValidatePayment(request.Amount, request.PaymentMethod, request.PaymentReference);
 
-            if (await _purchasingRepository.GetSupplierByIdAsync(supplierId) is null)
-                throw new NotFoundException($"Supplier '{supplierId}' not found.");
+            var supplier = await _purchasingRepository.GetSupplierByIdAsync(supplierId)
+                ?? throw new NotFoundException($"Supplier '{supplierId}' not found.");
 
+            _events.Record(new SystemEventDraft(SystemEventTypes.SupplierPaymentRecorded,
+                $"Paid {supplier.SupplierName} {request.Amount:0.00} by {request.PaymentMethod}.",
+                EntityType: "Supplier", EntityId: supplierId, Data: new { request.Amount, request.PaymentMethod, request.PaymentReference }));
             await _repository.RecordSupplierPaymentAsync(new SupplierLedgerEntry
             {
                 SupplierId = supplierId,

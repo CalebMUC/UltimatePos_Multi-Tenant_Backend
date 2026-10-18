@@ -22,6 +22,39 @@ namespace UltimatePos.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.AlertState", b =>
+                {
+                    b.Property<Guid>("AlertStateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AlertKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ClearedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("RaisedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RaisedByEventId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("AlertStateId");
+
+                    b.HasIndex("BusinessId", "AlertKey")
+                        .IsUnique();
+
+                    b.ToTable("AlertStates");
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.BusinessProfile", b =>
                 {
                     b.Property<Guid>("BusinessId")
@@ -550,6 +583,125 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.HasIndex("SaleId");
 
                     b.ToTable("MpesaTransactions");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.Notification", b =>
+                {
+                    b.Property<Guid>("NotificationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Link")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SystemEventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("NotificationId");
+
+                    b.HasIndex("SystemEventId");
+
+                    b.HasIndex("UserId", "IsRead", "CreatedAt");
+
+                    b.ToTable("Notifications");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.NotificationDelivery", b =>
+                {
+                    b.Property<Guid>("NotificationDeliveryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("HtmlBody")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("NotificationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Recipient")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Subject")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SystemEventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("NotificationDeliveryId");
+
+                    b.HasIndex("SystemEventId");
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.ToTable("NotificationDeliveries");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.Permission", b =>
@@ -1639,6 +1791,76 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.ToTable("SupplierLedgerEntries");
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.SystemEvent", b =>
+                {
+                    b.Property<Guid>("SystemEventId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AlertKey")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ClearsAlertKeys")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Data")
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EntityType")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SubjectUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("SystemEventId");
+
+                    b.HasIndex("OccurredAt")
+                        .HasDatabaseName("IX_SystemEvents_Unprocessed")
+                        .HasFilter("\"ProcessedAt\" IS NULL");
+
+                    b.HasIndex("BusinessId", "OccurredAt");
+
+                    b.HasIndex("EntityType", "EntityId");
+
+                    b.HasIndex("BusinessId", "EventType", "OccurredAt");
+
+                    b.ToTable("SystemEvents");
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.UnitOfMeasure", b =>
                 {
                     b.Property<Guid>("UnitOfMeasureId")
@@ -1833,6 +2055,15 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.ToTable("UserSessions");
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.AlertState", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.Category", b =>
                 {
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
@@ -1980,6 +2211,30 @@ namespace UltimatePos.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Sale");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.Notification", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.SystemEvent", null)
+                        .WithMany()
+                        .HasForeignKey("SystemEventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.NotificationDelivery", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.SystemEvent", null)
+                        .WithMany()
+                        .HasForeignKey("SystemEventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.Product", b =>

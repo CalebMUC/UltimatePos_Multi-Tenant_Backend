@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Business.Dtos;
 using UltimatePos.Application.Common.Helpers;
 using UltimatePos.Application.Common.Interfaces;
@@ -20,12 +21,14 @@ namespace UltimatePos.Application.Business
         private readonly IBusinessRepository _repository;
         private readonly ICurrentUser _currentUser;
         private readonly ITenantContext _tenant;
+        private readonly ISystemEventRecorder _events;
 
-        public BusinessService(IBusinessRepository repository, ICurrentUser currentUser, ITenantContext tenant)
+        public BusinessService(IBusinessRepository repository, ICurrentUser currentUser, ITenantContext tenant, ISystemEventRecorder events)
         {
             _repository = repository;
             _currentUser = currentUser;
             _tenant = tenant;
+            _events = events;
         }
 
         // ---- Businesses ----
@@ -72,6 +75,9 @@ namespace UltimatePos.Application.Business
             // Everything the new business starts with is owned by it, so it is written with the new business in scope.
             using (_tenant.Use(business.BusinessId))
             {
+                _events.Record(new SystemEventDraft(SystemEventTypes.BusinessRegistered,
+                    $"{business.BusinessName} ({business.Kind}, {business.BusinessType}) was registered.",
+                    EntityType: "Business", EntityId: business.BusinessId, Data: new { business.KraPin, business.Kind, business.BusinessType }));
                 var created = await _repository.CreateBusinessAsync(business, _currentUser.UserId);
                 return ToDto(created);
             }
@@ -111,6 +117,9 @@ namespace UltimatePos.Application.Business
             if (shortCode is not null && await _repository.MpesaShortCodeExistsAsync(shortCode, businessId))
                 throw new ValidationException("mpesaShortCode", $"M-Pesa short code '{shortCode}' is already used by another business.");
 
+            _events.Record(new SystemEventDraft(SystemEventTypes.BusinessProfileUpdated, $"The business profile of {request.BusinessName.Trim()} was updated.",
+                EntityType: "Business", EntityId: businessId,
+                Data: new { request.IsVatRegistered, MpesaShortCode = shortCode, request.MaxDiscountPercent, KraPin = request.KraPin.Trim() }));
             return ToDto(await _repository.UpdateBusinessAsync(businessId,
                 request with { KraPin = request.KraPin.Trim(), MpesaShortCode = shortCode, PhoneNumber = PhoneNumberHelper.NormalizePhoneNumber(request.PhoneNumber) },
                 _currentUser.UserId));
