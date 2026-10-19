@@ -5,6 +5,13 @@ namespace UltimatePos.Application.Branches
     public record BranchDto(Guid BranchId, int BranchNumber, string KraBranchId, string Name, string? Code, string? PhysicalAddress, string? County,
         string? PhoneNumber, string? Email, string? MpesaShortCode, bool IsHeadOffice, bool IsActive, DateTime CreatedAt);
 
+    /// <summary>
+    /// Just enough to name a branch: every open branch of the business, whoever asks — for choosing where to send stock, and for
+    /// labelling another branch's documents. No contact details, and no access to the branch's data.
+    /// </summary>
+    public record BranchDirectoryEntryDto(Guid BranchId, int BranchNumber, string KraBranchId, string Name, string? Code, bool IsHeadOffice,
+        bool IsMine);
+
     /// <param name="BranchNumber">Leave out to take the next free number (1, 2, ...). 0 is reserved for the head office.</param>
     public record CreateBranchRequestDto(string Name, string? Code, int? BranchNumber, string? PhysicalAddress, string? County,
         string? PhoneNumber, string? Email, string? MpesaShortCode);

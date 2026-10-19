@@ -52,7 +52,8 @@ Permission `Branches.Manage`. Listing is open to every signed-in member, but mem
 
 | Action | Call |
 |---|---|
-| List | `GET branches?includeInactive=true` → `BranchDto[]` |
+| List | `GET branches?includeInactive=true` → `BranchDto[]` (only the caller's own branches, unless they have `Branches.AccessAll`) |
+| Directory | `GET branches/directory` → `BranchDirectoryEntryDto[]`: **every open branch**, names only, for any member |
 | View | `GET branches/{id}` |
 | Create | `POST branches` `{ name, code?, branchNumber?, physicalAddress?, county?, phoneNumber?, email?, mpesaShortCode? }` |
 | Edit | `PUT branches/{id}` (same fields, minus `branchNumber`) |
@@ -64,6 +65,12 @@ interface BranchDto { branchId: string; branchNumber: number; kraBranchId: strin
   mpesaShortCode: string | null; isHeadOffice: boolean; isActive: boolean; createdAt: string }
 ```
 
+```ts
+interface BranchDirectoryEntryDto { branchId: string; branchNumber: number; kraBranchId: string; name: string; code: string | null;
+  isHeadOffice: boolean; isMine: boolean }   // isMine: the caller works there
+```
+
+- **Which list to use.** `GET branches` is for managing branches and for pickers of places *you* work (transfer **From**, the branch filter). `GET branches/directory` is for naming or choosing **any** open branch: the transfer **To** list, and labels on another branch's documents.
 - **Table columns:** No. (`kraBranchId`), Name, Code, County, Phone, Till, Status. Pin the head office first and label it "Head office".
 - **Create form:**
   - Leave **branch number** empty by default, with the hint "Next free number". Show an "Advanced: choose number (1–99)" field for businesses that already have KRA branch numbers.
@@ -74,7 +81,7 @@ interface BranchDto { branchId: string; branchNumber: number; kraBranchId: strin
 - **Close:**
   - Confirm first. Show the API's message in the dialog when it refuses (`400` `INVALID_ASSIGNMENT`): the head office can't be closed, and a branch still holding stock can't be closed ("Transfer it to another branch or adjust it to zero first").
   - Link to **New transfer** from that message.
-- `GET business/current/license` now includes `maxBranches` (null = unlimited). Show "Branches: 2 of 3 open" on the licence page.
+- `GET businesses/current/license` now includes `maxBranches` (null = unlimited) and `openBranches` (every open branch of the business, whoever asks). Show "Branches: 2 of 3 open" on the licence page.
 
 ## Who works where (Users → user → Branches tab)
 
@@ -112,7 +119,7 @@ export enum StockTransferStatus { Draft = 0, Dispatched = 1, Received = 2, Cance
   - Show this as a three-step status bar on the detail page.
 - **Create screen:**
   - **From** defaults to the active branch. Users who see several branches may pick another source they can see.
-  - **To** lists every other open branch.
+  - **To** lists every other open branch, from `GET branches/directory`. Restricted staff only get their own branches from `GET branches`, so don't use that here.
   - Lines use the same product and unit picker as purchase orders. Next to each line, show the source branch's available stock: `GET stock?branchId={from}`.
 - **Who can act:**
   - **Dispatch** only appears for users who can see the **source** branch.
@@ -156,6 +163,8 @@ All of these fields are optional:
 | `SaleDto` | `branchId`, `kraBranchId`, `branchName`, shown in the list and on receipts |
 | `PurchaseOrderDto` | `branchId`, `kraBranchId`, `branchName` (the delivery branch) |
 | `ExpenseDto` | `branchId` (null = business-wide) |
+| `MpesaTransactionDto` | `branchId`, `kraBranchId`, `branchName` (null = paid to the business short code) |
+| `BusinessLicenseStatusDto` | `maxBranches`, `openBranches` |
 | `BusinessDto` | `licenseMaxBranches` |
 | `BusinessLicenseDto` | `maxBranches` |
 | Platform `BusinessSummaryDto`, `BusinessPerformanceDto` | `activeBranches` |
@@ -175,7 +184,8 @@ Form changes:
 
 - A payment to a **branch's own till** (`mpesaShortCode` on the branch) belongs to that branch. Only its staff, and managers, see it in **Unmatched till payments**.
 - A payment to the **business's short code** has no branch, and any branch can match it to a sale.
-- STK pushes belong to the branch of the sale. No UI change beyond showing the branch in the unmatched list.
+- STK pushes belong to the branch of the sale.
+- `MpesaTransactionDto` (e.g. `GET mpesa/transactions/unmatched`) carries `branchId`, `kraBranchId` and `branchName`, all null for business short-code payments. Show a **Branch** column ("Any branch" when null). The `?branchId=` filter works on this list too.
 
 ## Error codes added
 

@@ -44,6 +44,14 @@ namespace UltimatePos.Application.Branches
 
         public async Task<BranchDto> GetBranchAsync(Guid branchId) => ToDto(await RequireVisibleAsync(branchId));
 
+        /// <summary>Every open branch, for any member: IsMine marks those the caller can work in.</summary>
+        public async Task<IEnumerable<BranchDirectoryEntryDto>> GetDirectoryAsync()
+        {
+            _tenant.RequireBusinessId();
+            return (await _repository.GetBranchesAsync(includeInactive: false))
+                .Select(b => new BranchDirectoryEntryDto(b.BranchId, b.BranchNumber, b.KraBranchId, b.Name, b.Code, b.IsHeadOffice, _branches.CanSee(b.BranchId)));
+        }
+
         public async Task<BranchDto> CreateBranchAsync(CreateBranchRequestDto request)
         {
             var businessId = _tenant.RequireBusinessId();

@@ -242,6 +242,41 @@ public class BranchesPostgresTests : IClassFixture<MultiBusinessDatabase>
         await Assert.ThrowsAsync<NotFoundException>(() => Run(sp => sp.GetRequiredService<BranchService>().GetBranchAsync(head)));
     }
 
+    [PostgresFact]
+    public async Task Restricted_staff_can_name_every_open_branch_and_till_payments_carry_their_branch()
+    {
+        _db.SignInTo(_db.Alvet);
+        var head = _db.HeadOffice[_db.Alvet];
+        var till = $"7{Random.Shared.Next(10000, 99999)}";
+        var kiosk = await Run(sp => sp.GetRequiredService<BranchService>().CreateBranchAsync(
+            new CreateBranchRequestDto("Kiosk", null, null, null, null, null, null, till)));
+        var open = (await Run(sp => sp.GetRequiredService<BranchService>().GetBranchesAsync())).Count();
+
+        // Kiosk staff see only the kiosk in GET /branches, but the directory names every open branch (for the transfer "To" list).
+        _db.SignInTo(_db.Alvet, kiosk.BranchId, BranchStaff);
+        Assert.Equal(kiosk.BranchId, Assert.Single(await Run(sp => sp.GetRequiredService<BranchService>().GetBranchesAsync())).BranchId);
+        var directory = (await Run(sp => sp.GetRequiredService<BranchService>().GetDirectoryAsync())).ToList();
+        Assert.Equal(open, directory.Count);
+        Assert.Equal(new[] { kiosk.BranchId }, directory.Where(b => b.IsMine).Select(b => b.BranchId));
+        Assert.Contains(directory, b => b.BranchId == head && b.IsHeadOffice && b.KraBranchId == "00");
+
+        // The licence page counts every open branch, whoever looks.
+        var license = await Run(sp => sp.GetRequiredService<UltimatePos.Application.Business.BusinessService>().GetCurrentLicenseAsync());
+        Assert.Equal(open, license.OpenBranches);
+
+        // A payment to the kiosk's own till belongs to the kiosk, and says so in the unmatched list.
+        var receipt = "BR" + Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        _db.Caller.UserId = null;
+        _db.Caller.BusinessId = null;
+        _db.Caller.BranchId = null;
+        await _db.RunAsync(sp => sp.GetRequiredService<UltimatePos.Application.Payments.MpesaService>().HandleC2bConfirmationAsync(
+            new UltimatePos.Application.Payments.Dtos.C2bConfirmationPayload(receipt, "20261019101500", "120.00", till, null, "254700000001", null)));
+        _db.SignInTo(_db.Alvet, kiosk.BranchId, BranchStaff);
+        var unmatched = await Run(sp => sp.GetRequiredService<UltimatePos.Application.Payments.MpesaService>().GetUnmatchedTillTransactionsAsync());
+        var payment = Assert.Single(unmatched, t => t.MpesaReceiptNumber == receipt);
+        Assert.Equal((kiosk.BranchId, kiosk.KraBranchId, "Kiosk"), (payment.BranchId!.Value, payment.KraBranchId, payment.BranchName));
+    }
+
     // ---------------------------------------------------------------- Sign-in
 
     [PostgresFact]

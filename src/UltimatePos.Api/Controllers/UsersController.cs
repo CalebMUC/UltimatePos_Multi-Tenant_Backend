@@ -1,146 +1,98 @@
 using Microsoft.AspNetCore.Authorization;
-
 using Microsoft.AspNetCore.Mvc;
-
 using UltimatePos.Application.Branches;
 using UltimatePos.Application.Common.Dtos;
-
 using UltimatePos.Application.Identity;
-
 using UltimatePos.Application.Identity.Dtos;
-
-
 
 namespace UltimatePos.Api.Controllers;
 
-
-
 [ApiController]
-
 [Route("api/v1/users")]
-
 public class UsersController : ControllerBase
-
 {
-
     private readonly AuthService _authService;
+    private readonly BranchService _branchService;
+    public UsersController(AuthService authService, BranchService branchService)
+    {
+        _authService = authService;
+        _branchService = branchService;
+    }
 
-    public UsersController(AuthService authService) => _authService = authService;
+    /// <summary>The branches the user works at, and whether they can use every branch (Branches.AccessAll).</summary>
+    [Authorize(Policy = "PERMISSION:Users.View")]
+    [HttpGet("{id:guid}/branches")]
+    public async Task<IActionResult> GetBranches(Guid id)
+    {
+        var result = await _branchService.GetUserBranchesAsync(id);
+        return Ok(ApiResponse<UserBranchesDto>.Ok(result));
+    }
 
-
+    /// <summary>Replaces the branches the user works at. Applies at their next sign-in or token refresh.</summary>
+    [Authorize(Policy = "PERMISSION:Branches.Manage")]
+    [HttpPut("{id:guid}/branches")]
+    public async Task<IActionResult> AssignBranches(Guid id, AssignUserBranchesRequestDto request)
+    {
+        var result = await _branchService.AssignUserBranchesAsync(id, request);
+        return Ok(ApiResponse<UserBranchesDto>.Ok(result));
+    }
 
     [Authorize(Policy = "PERMISSION:Users.View")]
-
     [HttpGet]
-
     public async Task<IActionResult> GetUsers()
-
     {
-
         var result = await _authService.GetUsersAsync();
-
         return Ok(ApiResponse<IEnumerable<UserDto>>.Ok(result));
-
     }
-
-
 
     [Authorize(Policy = "PERMISSION:Users.View")]
-
     [HttpGet("{id:guid}")]
-
     public async Task<IActionResult> GetUser(Guid id)
-
     {
-
         var result = await _authService.GetUserByIdAsync(id);
-
         return Ok(ApiResponse<UserDto>.Ok(result));
-
     }
-
-
 
     // Assign and reassign are the same call — full replace of the user's role set.
-
     [Authorize(Policy = "PERMISSION:Users.AssignRoles")]
-
     [HttpPut("{id:guid}/roles")]
-
     public async Task<IActionResult> AssignRoles(Guid id, AssignRolesRequestDto request)
-
     {
-
         var result = await _authService.AssignRolesToUserAsync(id, request);
-
         return Ok(ApiResponse<UserDto>.Ok(result));
-
     }
 
-
-
     [Authorize(Policy = "PERMISSION:Users.Deactivate")]
-
     [HttpPost("{id:guid}/activate")]
-
     public async Task<IActionResult> Activate(Guid id)
-
     {
-
         var result = await _authService.SetUserActiveStatusAsync(id, true);
-
         return Ok(ApiResponse<UserDto>.Ok(result));
-
     }
-
-
 
     [Authorize(Policy = "PERMISSION:Users.Deactivate")]
-
     [HttpPost("{id:guid}/deactivate")]
-
     public async Task<IActionResult> Deactivate(Guid id)
-
     {
-
         var result = await _authService.SetUserActiveStatusAsync(id, false);
-
         return Ok(ApiResponse<UserDto>.Ok(result));
-
     }
 
-
-
     [Authorize(Policy = "PERMISSION:Users.Lock")]
-
     [HttpPost("{id:guid}/lock")]
-
     public async Task<IActionResult> Lock(Guid id)
-
     {
-
         var result = await _authService.SetUserLockStatusAsync(id, true);
-
         return Ok(ApiResponse<UserDto>.Ok(result));
-
     }
-
-
 
     [Authorize(Policy = "PERMISSION:Users.Lock")]
-
     [HttpPost("{id:guid}/unlock")]
-
     public async Task<IActionResult> Unlock(Guid id)
-
     {
-
         var result = await _authService.SetUserLockStatusAsync(id, false);
-
         return Ok(ApiResponse<UserDto>.Ok(result));
-
     }
-
 
     /// <summary>Edits a member's name, email and phone.</summary>
     [Authorize(Policy = "PERMISSION:Users.Update")]
