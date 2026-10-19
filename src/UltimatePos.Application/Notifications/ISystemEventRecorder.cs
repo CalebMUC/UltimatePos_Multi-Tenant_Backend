@@ -4,6 +4,7 @@ namespace UltimatePos.Application.Notifications
 {
     /// <param name="BusinessId">Defaults to the business in scope. Give it explicitly for sign-in events, which happen before one is.</param>
     /// <param name="ActorUserId">Defaults to the signed-in user.</param>
+    /// <param name="BranchId">The branch it is about. Branch-restricted recipients hear only about their own branches.</param>
     /// <param name="SubjectUserId">The user the event is about (the user created, the account locked, the cashier whose sale failed).</param>
     /// <param name="Data">Details for the audit log, serialised as JSON.</param>
     public sealed record SystemEventDraft(
@@ -17,7 +18,8 @@ namespace UltimatePos.Application.Notifications
         Guid? ActorUserId = null,
         Guid? SubjectUserId = null,
         string? AlertKey = null,
-        IEnumerable<string>? ClearsAlertKeys = null);
+        IEnumerable<string>? ClearsAlertKeys = null,
+        Guid? BranchId = null);
 
     /// <summary>
     /// Records system events. <see cref="Record"/> adds the event to the current unit of work, so it commits with the change that

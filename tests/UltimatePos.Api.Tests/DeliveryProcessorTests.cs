@@ -38,7 +38,7 @@ public class DeliveryProcessorTests
         public Task CompleteEventAsync(SystemEvent e, IEnumerable<Notification> n, IEnumerable<NotificationDelivery> d, string? o, IEnumerable<string> c) => throw new NotImplementedException();
         public Task MarkEventFailedAsync(Guid id, string error) => throw new NotImplementedException();
         public Task<bool> IsAlertOpenAsync(Guid b, string k) => throw new NotImplementedException();
-        public Task<IReadOnlyList<NotificationRecipient>> GetRecipientsAsync(Guid? b, IReadOnlyCollection<string> p) => throw new NotImplementedException();
+        public Task<IReadOnlyList<NotificationRecipient>> GetRecipientsAsync(Guid? b, IReadOnlyCollection<string> p, Guid? branch) => throw new NotImplementedException();
         public Task<NotificationRecipient?> GetRecipientAsync(Guid u, Guid? b) => throw new NotImplementedException();
         public Task<string?> GetBusinessNameAsync(Guid b) => throw new NotImplementedException();
         public Task<IReadOnlyList<string>> GetOpenAlertKeysAsync() => throw new NotImplementedException();

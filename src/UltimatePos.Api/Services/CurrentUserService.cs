@@ -1,4 +1,4 @@
-﻿using System.IdentityModel.Tokens.Jwt;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Infrastructure.Auth;
@@ -30,6 +30,13 @@ namespace UltimatePos.Api.Services
 
         public Guid? BusinessId =>
             Guid.TryParse(User?.FindFirst(JwtTokenService.BusinessClaim)?.Value, out var businessId) && businessId != Guid.Empty ? businessId : null;
+
+        public Guid? BranchId =>
+            Guid.TryParse(User?.FindFirst(JwtTokenService.BranchClaim)?.Value, out var branchId) && branchId != Guid.Empty ? branchId : null;
+
+        public IReadOnlyList<Guid> BranchIds =>
+            User?.FindAll(JwtTokenService.BranchesClaim).Select(c => Guid.TryParse(c.Value, out var id) ? id : Guid.Empty)
+                .Where(id => id != Guid.Empty).Distinct().ToList() ?? new List<Guid>();
 
         public bool HasPermission(string permission) => User?.HasClaim("Permission", permission) ?? false;
     }

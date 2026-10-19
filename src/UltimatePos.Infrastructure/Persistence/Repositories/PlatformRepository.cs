@@ -50,11 +50,16 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 .Where(e => e.EventType == SystemEventTypes.UserLoggedIn && e.BusinessId != null && (businessId == null || e.BusinessId == businessId))
                 .GroupBy(e => e.BusinessId!.Value).Select(g => new { g.Key, At = g.Max(e => e.OccurredAt) }).ToDictionaryAsync(g => g.Key, g => g.At);
 
-            var ids = members.Keys.Concat(products.Keys).Concat(sales.Keys).Concat(lastSale.Keys).Concat(lastSignIn.Keys).Distinct();
+            var branches = await _context.Branches.IgnoreQueryFilters().AsNoTracking()
+                .Where(b => b.IsActive && (businessId == null || b.BusinessId == businessId))
+                .GroupBy(b => b.BusinessId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count);
+
+            var ids = members.Keys.Concat(products.Keys).Concat(sales.Keys).Concat(lastSale.Keys).Concat(lastSignIn.Keys).Concat(branches.Keys).Distinct();
             return ids.ToDictionary(id => id, id => new BusinessActivityRow(id,
                 members.GetValueOrDefault(id), products.GetValueOrDefault(id),
                 sales.TryGetValue(id, out var s) ? s.Count : 0, s?.Revenue ?? 0m,
-                lastSale.TryGetValue(id, out var ls) ? ls : null, lastSignIn.TryGetValue(id, out var si) ? si : null));
+                lastSale.TryGetValue(id, out var ls) ? ls : null, lastSignIn.TryGetValue(id, out var si) ? si : null,
+                branches.GetValueOrDefault(id)));
         }
 
         public async Task<decimal> GetLicenseIncomeAsync(DateTime fromUtc, DateTime toUtcExclusive) =>
@@ -134,9 +139,10 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         public async Task RefreshCoverageAsync(Guid businessId, DateOnly today)
         {
             var licenses = await _context.BusinessLicenses.IgnoreQueryFilters().AsNoTracking().Where(l => l.BusinessId == businessId).ToListAsync();
-            var (endsOn, maxUsers) = LicensePolicy.Coverage(licenses, today);
+            var (endsOn, maxUsers, maxBranches) = LicensePolicy.Coverage(licenses, today);
             await _context.Businesses.Where(b => b.BusinessId == businessId)
-                .ExecuteUpdateAsync(u => u.SetProperty(b => b.LicenseEndsOn, endsOn).SetProperty(b => b.LicenseMaxUsers, maxUsers));
+                .ExecuteUpdateAsync(u => u.SetProperty(b => b.LicenseEndsOn, endsOn).SetProperty(b => b.LicenseMaxUsers, maxUsers)
+                    .SetProperty(b => b.LicenseMaxBranches, maxBranches));
         }
 
         // ---------------------------------------------------------------- Onboarding
@@ -148,11 +154,27 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
             if (trialLicense is not null)
             {
-                var (endsOn, maxUsers) = LicensePolicy.Coverage(new[] { trialLicense }, today);
+                var (endsOn, maxUsers, maxBranches) = LicensePolicy.Coverage(new[] { trialLicense }, today);
                 business.LicenseEndsOn = endsOn;
                 business.LicenseMaxUsers = maxUsers;
+                business.LicenseMaxBranches = maxBranches;
             }
             _context.Businesses.Add(business);
+
+            // Every business starts with its head office, branch 00 — where the owner works and the first stock is held.
+            var headOffice = new Branch
+            {
+                BranchId = Guid.NewGuid(),
+                BusinessId = business.BusinessId,
+                BranchNumber = 0,
+                Name = "Head Office",
+                PhysicalAddress = business.PhysicalAddress,
+                County = business.County,
+                PhoneNumber = business.PhoneNumber,
+                Email = business.Email,
+                CreatedBy = business.CreatedBy
+            };
+            _context.Branches.Add(headOffice);
 
             var businessPermissionNames = PermissionCatalog.Business.Select(p => p.Name).ToList();
             var permissions = await _context.Permissions.Where(p => businessPermissionNames.Contains(p.Name)).ToListAsync();
@@ -172,6 +194,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             var hasDefault = !ownerIsNew && await _context.UserBusinesses.AnyAsync(m => m.UserId == owner.UserId && m.IsDefault);
             _context.UserBusinesses.Add(new UserBusiness { UserId = owner.UserId, BusinessId = business.BusinessId, IsDefault = !hasDefault, CreatedBy = business.CreatedBy });
             _context.UserRoles.Add(new UserRole { UserId = owner.UserId, RoleId = adminRole.RoleId });
+            _context.UserBranches.Add(new UserBranch { UserId = owner.UserId, BranchId = headOffice.BranchId, IsDefault = true, CreatedBy = business.CreatedBy });
 
             _context.UnitsOfMeasure.AddRange(BusinessDefaults.UnitsOfMeasure.Select(u => new UnitOfMeasure
             {
@@ -216,6 +239,16 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
             if (userIsNew || !await _context.UserRoles.IgnoreQueryFilters().AnyAsync(ur => ur.UserId == user.UserId && ur.RoleId == adminRole.RoleId))
                 _context.UserRoles.Add(new UserRole { UserId = user.UserId, RoleId = adminRole.RoleId });
+
+            // An administrator works at the head office by default (Branches.AccessAll lets them switch to any branch).
+            var headOffice = await _context.Branches.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(b => b.BusinessId == businessId && b.BranchNumber == 0);
+            if (headOffice is not null && (userIsNew || !await _context.UserBranches.AnyAsync(ub => ub.UserId == user.UserId && ub.BranchId == headOffice.BranchId)))
+            {
+                var hasDefaultBranch = !userIsNew && await _context.UserBranches.IgnoreQueryFilters()
+                    .AnyAsync(ub => ub.UserId == user.UserId && ub.IsDefault && ub.Branch.BusinessId == businessId);
+                _context.UserBranches.Add(new UserBranch { UserId = user.UserId, BranchId = headOffice.BranchId, IsDefault = !hasDefaultBranch, CreatedBy = user.CreatedBy });
+            }
 
             await _context.SaveChangesAsync();
             await tx.CommitAsync();

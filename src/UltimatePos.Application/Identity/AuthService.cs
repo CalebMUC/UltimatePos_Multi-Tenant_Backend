@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UltimatePos.Application.Branches;
+using UltimatePos.Application.Common;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Licensing;
@@ -27,6 +29,8 @@ namespace UltimatePos.Application.Identity
         private readonly ISystemEventRecorder _events;
         private readonly IBusinessAccessGate _gate;
         private readonly IBusinessRepository _businesses;
+        private readonly IBranchRepository _branchRepository;
+        private readonly IBranchContext _branches;
         public AuthService(IAuthRepository authRepository,
             IPasswordHasher hasher,
             ITokenService tokenService,
@@ -34,8 +38,12 @@ namespace UltimatePos.Application.Identity
             ITenantContext tenant,
             ISystemEventRecorder events,
             IBusinessAccessGate gate,
-            IBusinessRepository businesses)
+            IBusinessRepository businesses,
+            IBranchRepository branchRepository,
+            IBranchContext branches)
         {
+            _branchRepository = branchRepository;
+            _branches = branches;
             _events = events;
             _gate = gate;
             _businesses = businesses;
@@ -91,7 +99,7 @@ namespace UltimatePos.Application.Identity
             _events.Record(new SystemEventDraft(SystemEventTypes.UserLoggedIn, $"{user.Username} signed in.",
                 EntityType: "User", EntityId: user.UserId, Data: new { ipAddress, deviceInfo }, BusinessId: businessId,
                 ActorUserId: user.UserId, SubjectUserId: user.UserId));
-            return await IssueSessionAsync(user, businessId, memberships, deviceInfo, ipAddress);
+            return await IssueSessionAsync(user, businessId, memberships, deviceInfo, ipAddress, request.BranchId);
         }
 
         /// <summary>Swaps a refresh token for a new pair (rotation). Roles and permissions are re-read, so changes apply without signing in again.</summary>
@@ -116,7 +124,9 @@ namespace UltimatePos.Application.Identity
                 await EnsureAccessibleAsync(refreshBusiness);
 
             await _authRepository.RevokeSessionAsync(session.UserSessionId);
-            return await IssueSessionAsync(user, session.BusinessId, memberships, deviceInfo ?? session.DeviceInfo, ipAddress ?? session.IpAddress);
+            // The same branch while the user may still work there; otherwise their default (branches can be closed or reassigned).
+            return await IssueSessionAsync(user, session.BusinessId, memberships, deviceInfo ?? session.DeviceInfo, ipAddress ?? session.IpAddress,
+                session.BranchId, requestedIsPreference: true);
         }
 
         public async Task<LoginResponseDto> SwitchBusinessAsync(SwitchBusinessRequest request, string? deviceInfo = null, string? ipAddress = null)
@@ -137,7 +147,37 @@ namespace UltimatePos.Application.Identity
 
             _events.Record(new SystemEventDraft(SystemEventTypes.UserSwitchedBusiness, $"{user.Username} switched to this business.",
                 EntityType: "User", EntityId: userId, BusinessId: businessId, ActorUserId: userId, SubjectUserId: userId));
-            return await IssueSessionAsync(user, businessId, memberships, deviceInfo, ipAddress);
+            return await IssueSessionAsync(user, businessId, memberships, deviceInfo, ipAddress, request.BranchId);
+        }
+
+        /// <summary>Moves the user to another branch of the business they are signed in to: new tokens for that branch.</summary>
+        public async Task<LoginResponseDto> SwitchBranchAsync(SwitchBranchRequest request, string? deviceInfo = null, string? ipAddress = null)
+        {
+            var userId = RequireUserId();
+            var businessId = _currentUser.BusinessId
+                ?? throw new ForbiddenException("Sign in to a business before choosing a branch.");
+            var user = await _authRepository.GetUserForUpdateAsync(userId)
+                ?? throw new InvalidTokenException("This session has ended. Sign in again.");
+
+            var memberships = await _authRepository.GetMembershipsAsync(userId);
+            if (memberships.All(m => m.BusinessId != businessId))
+                throw new InvalidTokenException("You no longer have access to this business. Sign in again.");
+            await EnsureAccessibleAsync(businessId);
+
+            if (!string.IsNullOrWhiteSpace(request.RefreshToken))
+            {
+                var old = await _authRepository.GetActiveSessionAsync(_tokenService.HashRefreshToken(request.RefreshToken));
+                if (old is not null && old.UserId == userId)
+                    await _authRepository.RevokeSessionAsync(old.UserSessionId);
+            }
+
+            var response = await IssueSessionAsync(user, businessId, memberships, deviceInfo, ipAddress, request.BranchId);
+            var branch = response.Branches?.FirstOrDefault(b => b.BranchId == response.ActiveBranchId);
+            await _events.RecordNowAsync(new SystemEventDraft(SystemEventTypes.UserSwitchedBranch,
+                $"{user.Username} switched to branch {branch?.KraBranchId} {branch?.Name}.",
+                EntityType: "User", EntityId: userId, BusinessId: businessId, ActorUserId: userId, SubjectUserId: userId,
+                BranchId: response.ActiveBranchId));
+            return response;
         }
 
         public async Task LogoutAsync(LogoutRequest request)
@@ -162,9 +202,11 @@ namespace UltimatePos.Application.Identity
             var roles = await _authRepository.GetUserRolesAsync(userId, businessId);
             var permissions = await _authRepository.GetUserPermissionsAsync(userId, businessId);
 
+            var branches = businessId is { } bid ? await AllowedBranchesAsync(userId, bid, permissions) : new List<BranchMembershipDto>();
             return new MeDto(new UserDto(user.UserId, user.Email, user.Username, user.PhoneNumber, user.IsActive, user.IsLocked, roles, permissions),
                 businessId, await MembershipDtosAsync(memberships), user.MustChangePassword,
-                businessId is { } b ? Platform.PlatformService.ToAccessDto(await _gate.CheckAsync(b)) : null);
+                businessId is { } b ? Platform.PlatformService.ToAccessDto(await _gate.CheckAsync(b)) : null,
+                _currentUser.BranchId, branches);
         }
 
         public async Task ChangePasswordAsync(ChangePasswordRequest request)
@@ -245,13 +287,61 @@ namespace UltimatePos.Application.Identity
             return result;
         }
 
+        /// <summary>
+        /// The branches the user may work at in the business: every open branch with Branches.AccessAll, otherwise the open branches
+        /// they are assigned to. Default first.
+        /// </summary>
+        private async Task<List<BranchMembershipDto>> AllowedBranchesAsync(Guid userId, Guid businessId, IReadOnlyCollection<string> permissions)
+        {
+            var assigned = await _branchRepository.GetUserBranchesAsync(userId, businessId);
+            var defaultId = assigned.FirstOrDefault(a => a.IsDefault)?.BranchId;
+            IEnumerable<Branch> branches = permissions.Contains(BranchContext.AccessAllPermission)
+                ? await _branchRepository.GetActiveBranchesAsync(businessId)
+                : assigned.Select(a => a.Branch);
+            return branches
+                .Select(b => new BranchMembershipDto(b.BranchId, b.BranchNumber, b.KraBranchId, b.Name, b.Code, b.BranchId == defaultId))
+                .OrderByDescending(b => b.IsDefault).ThenBy(b => b.BranchNumber)
+                .ToList();
+        }
+
+        /// <summary>
+        /// The branch to work at: the one asked for, else the default, else the first allowed (the head office first, for those who
+        /// may use every branch). A user with no branch can't work in the business yet.
+        /// </summary>
+        private static Guid ChooseBranch(IReadOnlyList<BranchMembershipDto> allowed, Guid? requested, bool requestedIsPreference)
+        {
+            if (requested is { } wanted)
+            {
+                if (allowed.Any(b => b.BranchId == wanted))
+                    return wanted;
+                if (!requestedIsPreference)
+                    throw new ForbiddenException("You do not work at that branch, or it has been closed.");
+            }
+            if (allowed.Count == 0)
+                throw new BusinessAccessDeniedException("NO_BRANCH",
+                    "You are not assigned to any open branch of this business. Ask an administrator to assign you one.");
+            return (allowed.FirstOrDefault(b => b.IsDefault) ?? allowed[0]).BranchId;
+        }
+
         private async Task<LoginResponseDto> IssueSessionAsync(User user, Guid? businessId, IReadOnlyList<UserBusiness> memberships,
-            string? deviceInfo, string? ipAddress)
+            string? deviceInfo, string? ipAddress, Guid? requestedBranchId = null, bool requestedIsPreference = false)
         {
             var roles = await _authRepository.GetUserRolesAsync(user.UserId, businessId);
             var permissions = await _authRepository.GetUserPermissionsAsync(user.UserId, businessId);
 
-            var (token, expiresAt) = _tokenService.GenerateToken(user, businessId, permissions, roles);
+            List<BranchMembershipDto> branches = new();
+            Guid? branchId = null;
+            if (businessId is { } inBusiness)
+            {
+                branches = await AllowedBranchesAsync(user.UserId, inBusiness, permissions);
+                branchId = ChooseBranch(branches, requestedBranchId, requestedIsPreference);
+            }
+            // Only assigned branches go in the token: with Branches.AccessAll every branch is reachable anyway.
+            var tokenBranches = permissions.Contains(BranchContext.AccessAllPermission)
+                ? Enumerable.Empty<Guid>()
+                : branches.Select(b => b.BranchId);
+
+            var (token, expiresAt) = _tokenService.GenerateToken(user, businessId, branchId, tokenBranches, permissions, roles);
             var (refreshToken, refreshExpiresAt) = _tokenService.GenerateRefreshToken();
 
             await _authRepository.CreateSessionAsync(new UserSession
@@ -259,6 +349,7 @@ namespace UltimatePos.Application.Identity
                 UserSessionId = Guid.NewGuid(),
                 UserId = user.UserId,
                 BusinessId = businessId,
+                BranchId = branchId,
                 SessionToken = _tokenService.HashRefreshToken(refreshToken),
                 DeviceInfo = Truncate(deviceInfo, 500),
                 IpAddress = Truncate(ipAddress, 64),
@@ -271,7 +362,7 @@ namespace UltimatePos.Application.Identity
             var userDto = new UserDto(user.UserId, user.Email, user.Username, user.PhoneNumber, user.IsActive, user.IsLocked, roles, permissions);
             var warning = businessId is { } b ? (await _gate.CheckAsync(b)).Warning : null;
             return new LoginResponseDto(token, expiresAt, userDto, refreshToken, refreshExpiresAt, businessId, await MembershipDtosAsync(memberships),
-                user.MustChangePassword, warning);
+                user.MustChangePassword, warning, branchId, branches);
         }
 
         private async Task<UserSession> GetValidSessionAsync(string? refreshToken)
@@ -309,6 +400,7 @@ namespace UltimatePos.Application.Identity
             if (existingUser != null)
                 throw new UserAlreadyExistsException();
             await EnsureSeatAvailableAsync(businessId);
+            var (branchIds, defaultBranchId) = await ResolveNewUserBranchesAsync(request.BranchIds, request.DefaultBranchId);
             var (passwordHash, passwordSalt) = _passwordHasher.HashPassword(request.Password);
             var newUser = new User
             {
@@ -323,11 +415,27 @@ namespace UltimatePos.Application.Identity
                 CreatedBy = _currentUser.UserId
             };
             var createdUser = await _authRepository.CreateUserAsync(newUser, businessId, request.RoleName.Trim());
+            await _branchRepository.SetUserBranchesAsync(createdUser.UserId, businessId, branchIds, defaultBranchId, _currentUser.UserId);
             await _events.RecordNowAsync(new SystemEventDraft(SystemEventTypes.UserCreated,
                 $"{createdUser.Username} ({createdUser.Email}) was added with the {request.RoleName.Trim()} role. Sign in at Ultimate POS with this email address.",
                 EntityType: "User", EntityId: createdUser.UserId, Data: new { createdUser.Email, role = request.RoleName.Trim() },
                 SubjectUserId: createdUser.UserId));
             return await GetUserByIdAsync(createdUser.UserId);
+        }
+
+        /// <summary>The new user's branches: those asked for (open, and ones the caller can see), else the caller's current branch.</summary>
+        private async Task<(List<Guid> Ids, Guid? DefaultId)> ResolveNewUserBranchesAsync(IEnumerable<Guid>? requested, Guid? requestedDefault)
+        {
+            var ids = (requested ?? Enumerable.Empty<Guid>()).Distinct().ToList();
+            if (ids.Count == 0 && _branches.ActiveBranchId is { } current)
+                ids.Add(current);
+
+            var open = (await _branchRepository.GetBranchesAsync(includeInactive: false)).Select(b => b.BranchId).ToHashSet();
+            if (ids.Any(id => !open.Contains(id) || !_branches.CanSee(id)))
+                throw new ValidationException("branchIds", "One or more branches don't exist in this business, are closed, or aren't yours to assign.");
+            if (requestedDefault is { } d && !ids.Contains(d))
+                throw new ValidationException("defaultBranchId", "The default branch must be one of the user's branches.");
+            return (ids, requestedDefault ?? (ids.Count > 0 ? (Guid?)ids[0] : null));
         }
 
         public async Task<IEnumerable<UserDto>> GetUsersAsync()

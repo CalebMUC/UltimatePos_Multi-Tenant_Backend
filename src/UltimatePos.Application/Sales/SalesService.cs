@@ -455,6 +455,7 @@ namespace UltimatePos.Application.Sales
             {
                 MpesaTransactionId = Guid.NewGuid(),
                 BusinessId = _tenant.RequireBusinessId(),
+                BranchId = sale.BranchId == Guid.Empty ? null : sale.BranchId,
                 TransactionType = MpesaTransactionType.StkPush,
                 Status = MpesaTransactionStatus.Pending,
                 PhoneNumber = phone,
@@ -680,7 +681,8 @@ namespace UltimatePos.Application.Sales
                 s.Customer?.CustomerName, s.CreatedBy,
                 s.CreatedBy is { } by && userNames.TryGetValue(by, out var name) ? name : null,
                 s.Subtotal, s.DiscountTotal, s.TaxTotal, s.ReturnedAmount,
-                s.Prescription is null ? null : ToDto(s.Prescription));
+                s.Prescription is null ? null : ToDto(s.Prescription), s.BranchId,
+                s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name);
 
         private static SalePrescriptionDto ToDto(SalePrescription p) =>
             new(p.PrescriptionNumber, p.PrescriberName, p.PrescriberRegistrationNumber, p.PrescriberFacility, p.PatientName, p.PatientPhoneNumber,

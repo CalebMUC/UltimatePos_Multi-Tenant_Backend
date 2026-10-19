@@ -7,10 +7,12 @@ using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Domain.Entities
 {
-    public class Sale : ITenantEntity
+    public class Sale : ITenantEntity, IBranchEntity
     {
         public Guid SaleId { get; set; }
         public Guid BusinessId { get; set; }
+        /// <summary>Where it was sold; stock left this branch.</summary>
+        public Guid BranchId { get; set; }
         public string SaleNumber { get; set; } = string.Empty;
         public Guid? CustomerId { get; set; }
         public PaymentMethod PaymentMethod { get; set; }
@@ -33,6 +35,7 @@ namespace UltimatePos.Domain.Entities
         public Guid? LastUpdatedBy { get; set; }
 
         public Customer? Customer { get; set; }
+        public Branch Branch { get; set; } = null!;
         public ICollection<SaleLine> Lines { get; set; } = new List<SaleLine>();
         public SalePrescription? Prescription { get; set; }
     }

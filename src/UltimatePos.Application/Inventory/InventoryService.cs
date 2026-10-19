@@ -23,10 +23,12 @@ namespace UltimatePos.Application.Inventory
         private readonly ICatalogRepository _catalogRepository;
         private readonly ICurrentUser _currentUser;
         private readonly ISystemEventRecorder _events;
+        private readonly IBranchContext _branches;
 
         public InventoryService(IInventoryRepository repository, ICatalogRepository catalogRepository, ICurrentUser currentUser,
-            ISystemEventRecorder events)
+            ISystemEventRecorder events, IBranchContext branches)
         {
+            _branches = branches;
             _events = events;
             _repository = repository;
             _catalogRepository = catalogRepository;
@@ -38,22 +40,22 @@ namespace UltimatePos.Application.Inventory
         public async Task<IEnumerable<StockLevelDto>> GetStockLevelsAsync(bool belowReorderOnly)
         {
             var levels = (await _repository.GetStockLevelsAsync(belowReorderOnly)).ToList();
-            var sellable = await _repository.GetSellableQuantitiesAsync(levels.Where(l => l.Product.IsBatchTracked).Select(l => l.ProductId), Today);
-            return levels.Select(s => ToDto(s, sellable));
+            var sellable = await _repository.GetSellableByBranchAsync(levels.Where(l => l.Product.IsBatchTracked).Select(l => l.ProductId), Today);
+            return levels.OrderBy(l => l.Product.Name).ThenBy(l => l.Branch?.BranchNumber).Select(s => ToDto(s, sellable));
         }
 
         public async Task<StockLevelDto> GetStockLevelAsync(Guid productId)
         {
             var level = await _repository.GetStockLevelAsync(productId)
-                ?? throw new NotFoundException($"No stock record for product '{productId}' — nothing has been received, produced or adjusted against it yet.");
-            var sellable = await _repository.GetSellableQuantitiesAsync(new[] { productId }, Today);
+                ?? throw new NotFoundException($"No stock record for product '{productId}' at this branch — nothing has been received, produced or adjusted against it here yet.");
+            var sellable = await _repository.GetSellableByBranchAsync(new[] { productId }, Today);
             return ToDto(level, sellable);
         }
 
-        private static StockLevelDto ToDto(StockLevel s, IReadOnlyDictionary<Guid, decimal> sellable) =>
+        private static StockLevelDto ToDto(StockLevel s, IReadOnlyDictionary<(Guid, Guid), decimal> sellable) =>
             new(s.ProductId, s.Product.Name, s.Product.Sku, s.QuantityOnHand, s.Product.ReorderLevel, s.QuantityOnHand <= s.Product.ReorderLevel,
-                s.Product.IsBatchTracked, s.Product.IsBatchTracked ? sellable.GetValueOrDefault(s.ProductId) : s.QuantityOnHand,
-                s.Product.BaseUnitOfMeasure?.Symbol);
+                s.Product.IsBatchTracked, s.Product.IsBatchTracked ? sellable.GetValueOrDefault((s.ProductId, s.BranchId)) : s.QuantityOnHand,
+                s.Product.BaseUnitOfMeasure?.Symbol, s.BranchId, s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name);
 
         public async Task<IEnumerable<StockMovementDto>> GetStockMovementsAsync(Guid productId)
         {
@@ -61,7 +63,7 @@ namespace UltimatePos.Application.Inventory
             var batchNumbers = (await _repository.GetBatchesAsync(productId, includeEmpty: true)).ToDictionary(b => b.StockBatchId, b => b.BatchNumber);
             return movements.Select(m => new StockMovementDto(m.StockMovementId, m.ProductId, m.MovementType.ToString(), m.QuantityChange, m.ReferenceType,
                 m.ReferenceId, m.BatchId, m.Notes, m.CreatedAt, m.StockBatchId,
-                m.StockBatchId is { } id && batchNumbers.TryGetValue(id, out var number) ? number : null));
+                m.StockBatchId is { } id && batchNumbers.TryGetValue(id, out var number) ? number : null, m.BranchId));
         }
 
         // Opening balances and corrections. Positive or negative; reason is mandatory (audit trail).
@@ -128,6 +130,8 @@ namespace UltimatePos.Application.Inventory
                 var existing = await _repository.GetBatchAsync(batchId);
                 if (existing is null || existing.ProductId != product.ProductId)
                     throw new ValidationException("stockBatchId", "That batch does not belong to this product.");
+                if (existing.BranchId != _branches.RequireActiveBranchId())
+                    throw new ValidationException("stockBatchId", "That batch is held at another branch — switch to that branch to adjust it.");
                 if (changeInBaseUnits < 0 && existing.QuantityOnHand < -changeInBaseUnits)
                     throw new ValidationException("quantityChange", $"Batch '{existing.BatchNumber}' only holds {existing.QuantityOnHand:0.####}.");
                 return new BatchTarget(batchId, null, null, null);
@@ -165,7 +169,8 @@ namespace UltimatePos.Application.Inventory
                 .Select(b => new StockBatchDto(b.StockBatchId, b.ProductId, b.Product.Name, b.Product.Sku, b.BatchNumber, b.ExpiryDate, b.ManufactureDate,
                     b.QuantityOnHand, b.Product.BaseUnitOfMeasure?.Symbol, showCost ? b.UnitCost : null,
                     b.ExpiryDate is { } d ? d.DayNumber - today.DayNumber : null, ExpiryStatus(b.ExpiryDate, today, window),
-                    b.SupplierId, b.PurchaseOrderId, b.CreatedAt));
+                    b.SupplierId, b.PurchaseOrderId, b.CreatedAt, b.BranchId,
+                    b.Branch is null ? null : Branch.FormatKraBranchId(b.Branch.BranchNumber), b.Branch?.Name));
         }
 
         /// <summary>Stock that has expired or will within <paramref name="withinDays"/> days, soonest first — what to sell, return or write off.</summary>
@@ -179,14 +184,17 @@ namespace UltimatePos.Application.Inventory
                 .Where(b => b.ExpiryDate is { } e && e <= today.AddDays(withinDays))
                 .ToList();
             var showCost = _currentUser.HasPermission(CostingViewPermission);
-            var costs = showCost ? await _repository.GetAverageCostsAsync(batches.Select(b => b.ProductId)) : new Dictionary<Guid, decimal>();
+            var costs = showCost
+                ? await _repository.GetAverageCostsByBranchAsync(batches.Select(b => b.ProductId))
+                : new Dictionary<(Guid, Guid), decimal>();
 
             var items = batches
                 .OrderBy(b => b.ExpiryDate).ThenBy(b => b.Product.Name)
                 .Select(b => new ExpiryReportItemDto(b.StockBatchId, b.ProductId, b.Product.Name, b.Product.Sku, b.BatchNumber, b.ExpiryDate!.Value,
                     b.ExpiryDate!.Value.DayNumber - today.DayNumber, ExpiryStatus(b.ExpiryDate, today, withinDays), b.QuantityOnHand,
                     b.Product.BaseUnitOfMeasure?.Symbol,
-                    showCost ? Math.Round(b.QuantityOnHand * costs.GetValueOrDefault(b.ProductId), 2, MidpointRounding.AwayFromZero) : null))
+                    showCost ? Math.Round(b.QuantityOnHand * costs.GetValueOrDefault((b.ProductId, b.BranchId)), 2, MidpointRounding.AwayFromZero) : null,
+                    b.BranchId, b.Branch is null ? null : Branch.FormatKraBranchId(b.Branch.BranchNumber), b.Branch?.Name))
                 .ToList();
 
             var expired = items.Where(i => i.ExpiryStatus == "Expired").ToList();

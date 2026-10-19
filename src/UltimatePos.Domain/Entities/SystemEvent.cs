@@ -15,6 +15,8 @@ namespace UltimatePos.Domain.Entities
         public Guid SystemEventId { get; set; }
         /// <summary>The business it happened in. Null for platform events (a business registered, a sign-in before one is chosen).</summary>
         public Guid? BusinessId { get; set; }
+        /// <summary>The branch it happened in, when it is about one: branch-restricted users hear only about their branches.</summary>
+        public Guid? BranchId { get; set; }
         /// <summary>One of SystemEventTypes, e.g. "Stock.BelowReorderLevel".</summary>
         public string EventType { get; set; } = string.Empty;
         public EventSeverity Severity { get; set; }

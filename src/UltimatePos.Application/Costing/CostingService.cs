@@ -45,12 +45,20 @@ namespace UltimatePos.Application.Costing
                 .Where(s => s.QuantityOnHand != 0 && (!itemType.HasValue || s.Product.ItemType == itemType.Value))
                 .ToList();
 
+            // One row per product over the branches in view: each branch's stock at that branch's own average cost, so the
+            // value is exact; the average shown is the value over the quantity.
             var rows = levels
-                .Select(s => new StockValuationRowDto(
-                    s.ProductId, s.Product.Name, s.Product.Sku, s.Product.ItemType.ToString(),
-                    s.QuantityOnHand, s.AverageUnitCost,
-                    CostingCalculator.LineCost(s.QuantityOnHand, s.AverageUnitCost),
-                    CostMissing: s.QuantityOnHand > 0 && s.AverageUnitCost == 0))
+                .GroupBy(s => s.ProductId)
+                .Select(g =>
+                {
+                    var product = g.First().Product;
+                    var quantity = g.Sum(s => s.QuantityOnHand);
+                    var value = g.Sum(s => CostingCalculator.LineCost(s.QuantityOnHand, s.AverageUnitCost));
+                    var average = quantity != 0 ? Math.Round(value / quantity, 6, MidpointRounding.AwayFromZero) : g.Max(s => s.AverageUnitCost);
+                    return new StockValuationRowDto(product.ProductId, product.Name, product.Sku, product.ItemType.ToString(),
+                        quantity, average, value,
+                        CostMissing: g.Any(s => s.QuantityOnHand > 0 && s.AverageUnitCost == 0));
+                })
                 .OrderByDescending(r => r.StockValue).ThenBy(r => r.ProductName)
                 .ToList();
 
@@ -78,7 +86,8 @@ namespace UltimatePos.Application.Costing
                 return Array.Empty<MarginRowDto>();
 
             var productIds = current.Select(t => t.ProductId).Distinct().ToList();
-            var averageCosts = await _inventoryRepository.GetAverageCostsAsync(productIds);
+            // Prices are shared by every branch; the cost compared with them is the stock-weighted average across the branches in view.
+            var averageCosts = await _inventoryRepository.GetWeightedAverageCostsAsync(productIds);
             var factors = await _repository.GetConversionFactorsAsync(productIds);
 
             var rows = new List<MarginRowDto>();
@@ -200,7 +209,7 @@ namespace UltimatePos.Application.Costing
             await _inventoryRepository.RevalueStockAsync(request.ProductId, perBase, request.Reason.Trim(), _currentUser.UserId);
 
             var level = await _inventoryRepository.GetStockLevelAsync(request.ProductId)
-                ?? throw new NotFoundException($"No stock record for product '{request.ProductId}'.");
+                ?? throw new NotFoundException($"No stock record for product '{request.ProductId}' at this branch.");
             return new StockValuationRowDto(level.ProductId, level.Product.Name, level.Product.Sku, level.Product.ItemType.ToString(),
                 level.QuantityOnHand, level.AverageUnitCost, CostingCalculator.LineCost(level.QuantityOnHand, level.AverageUnitCost),
                 CostMissing: level.QuantityOnHand > 0 && level.AverageUnitCost == 0);

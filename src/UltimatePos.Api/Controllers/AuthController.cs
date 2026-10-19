@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Identity;
@@ -42,6 +42,14 @@ namespace UltimatePos.Api.Controllers
         public async Task<IActionResult> SwitchBusiness(SwitchBusinessRequest request)
         {
             var result = await _authService.SwitchBusinessAsync(request, Device, Ip);
+            return Ok(ApiResponse<LoginResponseDto>.Ok(result));
+        }
+
+        /// <summary>Issues tokens for another branch of the business signed in to (one the user works at, or any with Branches.AccessAll).</summary>
+        [HttpPost("switch-branch")]
+        public async Task<IActionResult> SwitchBranch(SwitchBranchRequest request)
+        {
+            var result = await _authService.SwitchBranchAsync(request, Device, Ip);
             return Ok(ApiResponse<LoginResponseDto>.Ok(result));
         }
 

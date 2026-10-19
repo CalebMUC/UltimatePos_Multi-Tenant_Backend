@@ -15,10 +15,17 @@ namespace UltimatePos.Infrastructure.Persistence
     {
         private readonly ITenantContext _tenant;
 
-        public UltimatePosDbContext(DbContextOptions<UltimatePosDbContext> options, ITenantContext tenant) : base(options)
+        private readonly IBranchContext _branch;
+
+        public UltimatePosDbContext(DbContextOptions<UltimatePosDbContext> options, ITenantContext tenant, IBranchContext branch) : base(options)
         {
             _tenant = tenant;
+            _branch = branch;
         }
+
+        /// <summary>Read by the branch filters at query time: see every branch, or only <see cref="VisibleBranchIds"/>.</summary>
+        private bool BranchUnrestricted => _branch.Unrestricted;
+        private List<Guid> VisibleBranchIds => _branch.VisibleBranchIds.ToList();
 
         /// <summary>
         /// Read by the query filters at query time (EF parameterises a DbContext member), so every query sees only the business
@@ -51,6 +58,11 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<StockLevel> StockLevels => Set<StockLevel>();
         public DbSet<StockMovement> StockMovements => Set<StockMovement>();
         public DbSet<StockBatch> StockBatches => Set<StockBatch>();
+        public DbSet<Branch> Branches => Set<Branch>();
+        public DbSet<UserBranch> UserBranches => Set<UserBranch>();
+        public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
+        public DbSet<StockTransferLine> StockTransferLines => Set<StockTransferLine>();
+        public DbSet<StockTransferLineBatch> StockTransferLineBatches => Set<StockTransferLineBatch>();
 
         public DbSet<Formula> Formulas => Set<Formula>();
         public DbSet<FormulaLine> FormulaLines => Set<FormulaLine>();
@@ -159,7 +171,8 @@ namespace UltimatePos.Infrastructure.Persistence
                 .HasForeignKey(t => t.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
 
 
-            modelBuilder.Entity<StockLevel>().HasKey(s => s.ProductId);
+            // One stock row per (product, branch), each with its own average cost.
+            modelBuilder.Entity<StockLevel>().HasKey(s => new { s.ProductId, s.BranchId });
 
             modelBuilder.Entity<PurchaseOrder>().Property(o => o.Status).HasConversion<string>();
             modelBuilder.Entity<PurchaseOrder>().HasIndex(o => new { o.BusinessId, o.OrderNumber }).IsUnique();
@@ -186,8 +199,11 @@ namespace UltimatePos.Infrastructure.Persistence
                 .HasForeignKey(l => l.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<StockLevel>()
-                .HasOne(s => s.Product).WithOne()
-                .HasForeignKey<StockLevel>(s => s.ProductId).OnDelete(DeleteBehavior.Restrict);
+                .HasOne(s => s.Product).WithMany()
+                .HasForeignKey(s => s.ProductId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<StockLevel>()
+                .HasOne(s => s.Branch).WithMany()
+                .HasForeignKey(s => s.BranchId).OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<StockMovement>()
                 .HasOne(m => m.Product).WithMany()
@@ -196,9 +212,63 @@ namespace UltimatePos.Infrastructure.Persistence
                 .HasOne<StockBatch>().WithMany()
                 .HasForeignKey(m => m.StockBatchId).OnDelete(DeleteBehavior.Restrict);
 
-            // Batches: one row per (product, lot number); FEFO reads them by expiry.
-            modelBuilder.Entity<StockBatch>().HasIndex(b => new { b.ProductId, b.BatchNumber }).IsUnique();
-            modelBuilder.Entity<StockBatch>().HasIndex(b => new { b.ProductId, b.ExpiryDate });
+            // Batches: one row per (branch, product, lot number); FEFO reads them by expiry within the branch.
+            modelBuilder.Entity<StockBatch>().HasIndex(b => new { b.BranchId, b.ProductId, b.BatchNumber }).IsUnique();
+            modelBuilder.Entity<StockBatch>().HasIndex(b => new { b.BranchId, b.ProductId, b.ExpiryDate });
+            modelBuilder.Entity<StockBatch>()
+                .HasOne(b => b.Branch).WithMany()
+                .HasForeignKey(b => b.BranchId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<StockMovement>().HasIndex(m => new { m.BranchId, m.ProductId, m.CreatedAt });
+            modelBuilder.Entity<StockMovement>()
+                .HasOne<Branch>().WithMany()
+                .HasForeignKey(m => m.BranchId).OnDelete(DeleteBehavior.Restrict);
+
+            // ---- Branches ----
+            modelBuilder.Entity<Branch>().HasIndex(b => new { b.BusinessId, b.BranchNumber }).IsUnique();
+            modelBuilder.Entity<Branch>().HasIndex(b => new { b.BusinessId, b.Code }).IsUnique().HasFilter("\"Code\" IS NOT NULL");
+            modelBuilder.Entity<Branch>().HasIndex(b => b.MpesaShortCode).IsUnique().HasFilter("\"MpesaShortCode\" IS NOT NULL");
+            modelBuilder.Entity<Branch>().ToTable(t => t.HasCheckConstraint("CK_Branches_BranchNumber", "\"BranchNumber\" BETWEEN 0 AND 99"));
+            modelBuilder.Entity<Branch>().Ignore(b => b.KraBranchId).Ignore(b => b.IsHeadOffice);
+            modelBuilder.Entity<Branch>()
+                .HasOne<BusinessProfile>().WithMany()
+                .HasForeignKey(b => b.BusinessId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<UserBranch>().HasKey(ub => new { ub.UserId, ub.BranchId });
+            modelBuilder.Entity<UserBranch>()
+                .HasOne(ub => ub.User).WithMany()
+                .HasForeignKey(ub => ub.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<UserBranch>()
+                .HasOne(ub => ub.Branch).WithMany()
+                .HasForeignKey(ub => ub.BranchId).OnDelete(DeleteBehavior.Cascade);
+
+            // Where each business document happened.
+            modelBuilder.Entity<Sale>().HasOne(s => s.Branch).WithMany().HasForeignKey(s => s.BranchId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<Sale>().HasIndex(s => new { s.BranchId, s.CreatedAt });
+            modelBuilder.Entity<SaleReturn>().HasOne<Branch>().WithMany().HasForeignKey(r => r.BranchId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<PurchaseOrder>().HasOne(o => o.Branch).WithMany().HasForeignKey(o => o.BranchId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProductionRun>().HasOne<Branch>().WithMany().HasForeignKey(r => r.BranchId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<Expense>().HasOne<Branch>().WithMany().HasForeignKey(e => e.BranchId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<MpesaTransaction>().HasOne<Branch>().WithMany().HasForeignKey(t => t.BranchId).OnDelete(DeleteBehavior.Restrict);
+
+            // ---- Stock transfers ----
+            modelBuilder.Entity<StockTransfer>().Property(t => t.Status).HasConversion<string>();
+            modelBuilder.Entity<StockTransfer>().HasIndex(t => new { t.BusinessId, t.TransferNumber }).IsUnique();
+            modelBuilder.Entity<StockTransfer>().HasIndex(t => new { t.FromBranchId, t.Status });
+            modelBuilder.Entity<StockTransfer>().HasIndex(t => new { t.ToBranchId, t.Status });
+            modelBuilder.Entity<StockTransfer>()
+                .HasOne(t => t.FromBranch).WithMany().HasForeignKey(t => t.FromBranchId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<StockTransfer>()
+                .HasOne(t => t.ToBranch).WithMany().HasForeignKey(t => t.ToBranchId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<StockTransfer>()
+                .HasOne<BusinessProfile>().WithMany().HasForeignKey(t => t.BusinessId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<StockTransferLine>()
+                .HasOne(l => l.StockTransfer).WithMany(t => t.Lines).HasForeignKey(l => l.StockTransferId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<StockTransferLine>()
+                .HasOne(l => l.Product).WithMany().HasForeignKey(l => l.ProductId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<StockTransferLine>()
+                .HasOne(l => l.UnitOfMeasure).WithMany().HasForeignKey(l => l.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<StockTransferLineBatch>()
+                .HasOne(b => b.Line).WithMany(l => l.Batches).HasForeignKey(b => b.StockTransferLineId).OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<StockBatch>()
                 .HasOne(b => b.Product).WithMany()
                 .HasForeignKey(b => b.ProductId).OnDelete(DeleteBehavior.Restrict);
@@ -420,15 +490,24 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<Product>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<Customer>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<Supplier>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<PurchaseOrder>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<PurchaseOrder>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
             modelBuilder.Entity<Formula>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<ProductionRun>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<Sale>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<Expense>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<ProductionRun>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
+            modelBuilder.Entity<Sale>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
+            // A business-wide expense (no branch) is visible only to those who see every branch.
+            modelBuilder.Entity<Expense>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId
+                && (BranchUnrestricted || (e.BranchId != null && VisibleBranchIds.Contains(e.BranchId.Value))));
             modelBuilder.Entity<ExpenseCategory>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<StockBatch>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<SaleReturn>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<MpesaTransaction>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<StockBatch>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
+            modelBuilder.Entity<SaleReturn>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
+            // A payment to the business's own short code (no branch) can be matched at any branch.
+            modelBuilder.Entity<MpesaTransaction>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId
+                && (BranchUnrestricted || e.BranchId == null || VisibleBranchIds.Contains(e.BranchId.Value)));
+            modelBuilder.Entity<Branch>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            // Transfers involve two branches; who may see one is decided in StockTransferService.
+            modelBuilder.Entity<StockTransfer>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<StockTransferLine>().HasQueryFilter(e => e.StockTransfer.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<StockTransferLineBatch>().HasQueryFilter(e => e.Line.StockTransfer.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<AlertState>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<BusinessLicense>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             // Events and deliveries: the business's own, or platform-level ones when no business is in scope. The dispatcher reads
@@ -443,18 +522,25 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<UserRole>().HasQueryFilter(ur => ur.Role.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<RolePermission>().HasQueryFilter(rp => rp.Role.BusinessId == CurrentBusinessId);
 
-            modelBuilder.Entity<StockLevel>().HasQueryFilter(e => e.Product.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<StockMovement>().HasQueryFilter(e => e.Product.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<StockLevel>().HasQueryFilter(e => e.Product.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
+            modelBuilder.Entity<StockMovement>().HasQueryFilter(e => e.Product.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
             modelBuilder.Entity<ProductPriceTier>().HasQueryFilter(e => e.Product.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<ProductUnitConversion>().HasQueryFilter(e => e.Product.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<PurchaseOrderLine>().HasQueryFilter(e => e.PurchaseOrder.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<PurchaseOrderLine>().HasQueryFilter(e => e.PurchaseOrder.BusinessId == CurrentBusinessId
+                && (BranchUnrestricted || VisibleBranchIds.Contains(e.PurchaseOrder.BranchId)));
             modelBuilder.Entity<FormulaLine>().HasQueryFilter(e => e.Formula.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<ProductionRunInput>().HasQueryFilter(e => e.ProductionRun.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<ProductionRunCost>().HasQueryFilter(e => e.ProductionRun.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<SaleLine>().HasQueryFilter(e => e.Sale.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<SaleLineBatchAllocation>().HasQueryFilter(e => e.StockBatch.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<SalePrescription>().HasQueryFilter(e => e.Sale.BusinessId == CurrentBusinessId);
-            modelBuilder.Entity<SaleReturnLine>().HasQueryFilter(e => e.SaleReturn.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<ProductionRunInput>().HasQueryFilter(e => e.ProductionRun.BusinessId == CurrentBusinessId
+                && (BranchUnrestricted || VisibleBranchIds.Contains(e.ProductionRun.BranchId)));
+            modelBuilder.Entity<ProductionRunCost>().HasQueryFilter(e => e.ProductionRun.BusinessId == CurrentBusinessId
+                && (BranchUnrestricted || VisibleBranchIds.Contains(e.ProductionRun.BranchId)));
+            modelBuilder.Entity<SaleLine>().HasQueryFilter(e => e.Sale.BusinessId == CurrentBusinessId
+                && (BranchUnrestricted || VisibleBranchIds.Contains(e.Sale.BranchId)));
+            modelBuilder.Entity<SaleLineBatchAllocation>().HasQueryFilter(e => e.StockBatch.BusinessId == CurrentBusinessId
+                && (BranchUnrestricted || VisibleBranchIds.Contains(e.StockBatch.BranchId)));
+            modelBuilder.Entity<SalePrescription>().HasQueryFilter(e => e.Sale.BusinessId == CurrentBusinessId
+                && (BranchUnrestricted || VisibleBranchIds.Contains(e.Sale.BranchId)));
+            modelBuilder.Entity<SaleReturnLine>().HasQueryFilter(e => e.SaleReturn.BusinessId == CurrentBusinessId
+                && (BranchUnrestricted || VisibleBranchIds.Contains(e.SaleReturn.BranchId)));
             modelBuilder.Entity<CustomerLedgerEntry>().HasQueryFilter(e => e.Customer.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<CustomerBalance>().HasQueryFilter(e => e.Customer.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<SupplierLedgerEntry>().HasQueryFilter(e => e.Supplier.BusinessId == CurrentBusinessId);
@@ -508,6 +594,24 @@ namespace UltimatePos.Infrastructure.Persistence
                 else if (entry.State is EntityState.Modified or EntityState.Deleted)
                 {
                     GuardOwnership(entry.Property(nameof(ITenantEntity.BusinessId)), businessId);
+                }
+            }
+
+            foreach (var entry in ChangeTracker.Entries<IBranchEntity>())
+            {
+                if (entry.State == EntityState.Added)
+                {
+                    if (entry.Entity.BranchId == Guid.Empty)
+                        entry.Entity.BranchId = _branch.ActiveBranchId
+                            ?? throw new ForbiddenException("No branch is selected — this can't be recorded without one.");
+                    else if (!_branch.CanSee(entry.Entity.BranchId))
+                        throw new ForbiddenException("A record cannot be created in a branch you don't work in.");
+                }
+                else if (entry.State is EntityState.Modified or EntityState.Deleted)
+                {
+                    var branchProperty = entry.Property(nameof(IBranchEntity.BranchId));
+                    if (branchProperty.IsModified && !Equals(branchProperty.OriginalValue, branchProperty.CurrentValue))
+                        throw new ForbiddenException("A record cannot be moved between branches — transfer the stock instead.");
                 }
             }
 

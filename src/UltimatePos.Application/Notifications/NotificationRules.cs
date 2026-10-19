@@ -48,6 +48,14 @@ namespace UltimatePos.Application.Notifications
                 NotificationChannels.InApp | NotificationChannels.Email, Link: "/inventory/batches?batchId={entityId}"),
             new(SystemEventTypes.StockRevalued, "Stock revalued", new[] { "Costing.View" }, ExcludeActor: true, Link: "/inventory/valuation"),
 
+            // Branches and transfers. Transfer events carry the branch that must act: the destination on dispatch, the source on receipt.
+            new(SystemEventTypes.BranchCreated, "New branch", new[] { "Branches.Manage" }, ExcludeActor: true, Link: "/branches/{entityId}"),
+            new(SystemEventTypes.UserBranchesChanged, "Your branches changed", Array.Empty<string>(), SubjectChannels: NotificationChannels.InApp),
+            new(SystemEventTypes.StockTransferDispatched, "Stock on its way", new[] { "StockTransfers.Receive" }, ExcludeActor: true,
+                Link: "/stock-transfers/{entityId}"),
+            new(SystemEventTypes.StockTransferReceived, "Transfer received", new[] { "StockTransfers.Dispatch" }, ExcludeActor: true,
+                Link: "/stock-transfers/{entityId}"),
+
             // Purchasing
             new(SystemEventTypes.PurchaseOrderOverdue, "Purchase order overdue", new[] { "PurchaseOrders.Receive", "PurchaseOrders.Create" },
                 Link: "/purchase-orders/{entityId}"),

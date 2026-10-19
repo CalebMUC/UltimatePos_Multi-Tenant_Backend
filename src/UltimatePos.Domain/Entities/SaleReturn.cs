@@ -7,10 +7,12 @@ namespace UltimatePos.Domain.Entities
     /// Goods brought back against a completed sale. Immutable once recorded: a return is a document of its own, the original
     /// sale stays Completed and only its ReturnedAmount and each line's QuantityReturned move.
     /// </summary>
-    public class SaleReturn : ITenantEntity
+    public class SaleReturn : ITenantEntity, IBranchEntity
     {
         public Guid SaleReturnId { get; set; }
         public Guid BusinessId { get; set; }
+        /// <summary>The sale's branch: returned stock goes back there.</summary>
+        public Guid BranchId { get; set; }
         /// <summary>RET-000001 ...</summary>
         public string ReturnNumber { get; set; } = string.Empty;
         public Guid SaleId { get; set; }

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -136,10 +136,23 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             if (categoryId.HasValue)
                 query = query.Where(s => s.Product.CategoryId == categoryId.Value);
 
-            return await query
+            var rows = await query
                 .Select(s => new StockStatusRow(s.ProductId, s.Product.Name, s.Product.Sku, s.Product.ItemType, s.Product.Category.Name,
                     s.Product.BaseUnitOfMeasure.Symbol, s.QuantityOnHand, s.Product.ReorderLevel, s.AverageUnitCost))
                 .ToListAsync();
+
+            // One row per product over the branches in view (narrow with ?branchId= for one branch). The average is weighted by
+            // what each branch holds, so quantity x average is still the stock's value.
+            return rows.GroupBy(r => r.ProductId)
+                .Select(g =>
+                {
+                    var first = g.First();
+                    var quantity = g.Sum(r => r.QuantityOnHand);
+                    var value = g.Sum(r => r.QuantityOnHand * r.AverageUnitCost);
+                    var average = quantity != 0 ? Math.Round(value / quantity, 6, MidpointRounding.AwayFromZero) : g.Max(r => r.AverageUnitCost);
+                    return first with { QuantityOnHand = quantity, AverageUnitCost = average };
+                })
+                .ToList();
         }
 
         public async Task<IReadOnlyList<ProductUsageRow>> GetStockUsageAsync(DateTime fromUtc, DateTime toUtcExclusive)

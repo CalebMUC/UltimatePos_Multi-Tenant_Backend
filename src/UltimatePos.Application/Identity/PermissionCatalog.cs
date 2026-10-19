@@ -51,6 +51,11 @@ namespace UltimatePos.Application.Identity
             ("PurchaseOrders.Create", "PurchaseOrders"), ("PurchaseOrders.View", "PurchaseOrders"),
             ("PurchaseOrders.Receive", "PurchaseOrders"), ("PurchaseOrders.Cancel", "PurchaseOrders"),
             ("Stock.View", "Stock"), ("Stock.Adjust", "Stock"),
+            ("StockTransfers.View", "Stock"), ("StockTransfers.Create", "Stock"),
+            ("StockTransfers.Dispatch", "Stock"), ("StockTransfers.Receive", "Stock"),
+
+            ("Branches.Manage", "Branches"),          // create, edit, activate, deactivate branches; assign users to them
+            ("Branches.AccessAll", "Branches"),       // work in and see every branch (owners, managers)
 
             ("Formulas.Create", "Formulas"), ("Formulas.View", "Formulas"), ("Formulas.Deactivate", "Formulas"),
             ("Production.Run", "Production"), ("Production.View", "Production"),

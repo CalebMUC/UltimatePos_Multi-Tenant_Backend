@@ -8,10 +8,11 @@ using static UltimatePos.Domain.Enums.PosEnums;
 namespace UltimatePos.Domain.Entities
 {
     // Append-only ledger — no IsActive/LastUpdated*, a correction is a new row, not an edit.
-    public class StockMovement
+    public class StockMovement : IBranchEntity
     {
         public Guid StockMovementId { get; set; }
         public Guid ProductId { get; set; }
+        public Guid BranchId { get; set; }
         public StockMovementType MovementType { get; set; }
         public decimal QuantityChange { get; set; }
 

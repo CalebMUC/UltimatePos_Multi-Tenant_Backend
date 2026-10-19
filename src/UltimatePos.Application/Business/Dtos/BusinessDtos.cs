@@ -48,7 +48,8 @@ namespace UltimatePos.Application.Business.Dtos
         string? RegistrationNumber, string KraPin, string? PhysicalAddress, string? County,
         string? PhoneNumber, string? Email, string? LogoUrl, string? BackgroundImageUrl, bool IsActive,
         bool IsVatRegistered, string? MpesaShortCode, decimal? MaxDiscountPercent,
-        bool IsSuspended = false, string? SuspensionReason = null, DateOnly? LicenseEndsOn = null, int? LicenseMaxUsers = null);
+        bool IsSuspended = false, string? SuspensionReason = null, DateOnly? LicenseEndsOn = null, int? LicenseMaxUsers = null,
+        int? LicenseMaxBranches = null);
 
     /// <param name="BusinessId">Optional. Customers are always registered in the business signed in to; if given it must be that one.</param>
     /// <param name="PriceType">Which price list the customer buys at. Defaults to Wholesale for a wholesaler, Retail for a retailer.</param>
@@ -80,5 +81,5 @@ namespace UltimatePos.Application.Business.Dtos
         string? PhoneNumber, string? Email, string? PhysicalAddress, bool IsActive, PriceType PriceType, decimal? CreditLimit);
 
     public record BusinessLicenseStatusDto(UltimatePos.Application.Platform.BusinessAccessDto Access, int? MaxUsers,
-        IEnumerable<UltimatePos.Application.Platform.BusinessLicenseDto> Licenses);
+        IEnumerable<UltimatePos.Application.Platform.BusinessLicenseDto> Licenses, int? MaxBranches = null);
 }

@@ -127,6 +127,7 @@ app.UseCors();
 app.UseAuthentication();
 // A suspended, closed or unlicensed business is refused on every request, not only at sign-in.
 app.UseMiddleware<BusinessAccessMiddleware>();
+app.UseMiddleware<BranchScopeMiddleware>();
 
 app.UseAuthorization();
 

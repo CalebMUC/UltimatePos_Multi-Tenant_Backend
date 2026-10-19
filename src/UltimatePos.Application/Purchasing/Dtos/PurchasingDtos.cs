@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,11 +13,13 @@ namespace UltimatePos.Application.Purchasing.Dtos
     public record SupplierDto(Guid SupplierId, Guid BusinessId, string SupplierName, string? KraPin, string? ContactPerson, string? PhoneNumber, string? Email, string? PhysicalAddress, int? PaymentTermDays, bool IsActive);
 
     public record CreatePurchaseOrderLineRequestDto(Guid ProductId, Guid UnitOfMeasureId, decimal QuantityOrdered, decimal UnitCost);
-    public record CreatePurchaseOrderRequestDto(Guid SupplierId, DateTime? ExpectedDeliveryDate, string? Notes, IEnumerable<CreatePurchaseOrderLineRequestDto> Lines);
+    /// <param name="BranchId">The branch the goods are delivered to (and received at). Defaults to the branch signed in to.</param>
+    public record CreatePurchaseOrderRequestDto(Guid SupplierId, DateTime? ExpectedDeliveryDate, string? Notes, IEnumerable<CreatePurchaseOrderLineRequestDto> Lines,
+        Guid? BranchId = null);
     public record PurchaseOrderLineDto(Guid PurchaseOrderLineId, Guid ProductId, Guid UnitOfMeasureId, decimal QuantityOrdered, decimal QuantityReceived, decimal UnitCost,
         string? ProductName = null, string? Sku = null, string? UnitSymbol = null, bool IsBatchTracked = false);
     public record PurchaseOrderDto(Guid PurchaseOrderId, string OrderNumber, Guid SupplierId, PurchaseOrderStatus Status, DateTime OrderDate, DateTime? ExpectedDeliveryDate, string? Notes, bool IsActive, IEnumerable<PurchaseOrderLineDto> Lines,
-        string? SupplierName = null);
+        string? SupplierName = null, Guid BranchId = default, string? KraBranchId = null, string? BranchName = null);
 
     /// <param name="QuantityReceived">In the ordered unit.</param>
     /// <param name="BatchNumber">Required for batch-tracked products. A line may appear several times to receive several batches.</param>

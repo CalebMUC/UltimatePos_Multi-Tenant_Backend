@@ -21,6 +21,8 @@ namespace UltimatePos.Domain.Entities
         public string PlanName { get; set; } = string.Empty;
         /// <summary>Most active users the business may have during this period. Null = unlimited.</summary>
         public int? MaxUsers { get; set; }
+        /// <summary>Most active branches (head office included) during this period. Null = unlimited.</summary>
+        public int? MaxBranches { get; set; }
         /// <summary>First and last day covered, both inclusive.</summary>
         public DateOnly StartsOn { get; set; }
         public DateOnly EndsOn { get; set; }

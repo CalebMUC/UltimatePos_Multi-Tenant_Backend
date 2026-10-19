@@ -81,7 +81,24 @@ namespace UltimatePos.Infrastructure.Notifications
         public async Task<bool> IsAlertOpenAsync(Guid businessId, string alertKey) =>
             await _context.AlertStates.IgnoreQueryFilters().AnyAsync(a => a.BusinessId == businessId && a.AlertKey == alertKey && a.IsActive);
 
-        public async Task<IReadOnlyList<NotificationRecipient>> GetRecipientsAsync(Guid? businessId, IReadOnlyCollection<string> permissions)
+        public async Task<IReadOnlyList<NotificationRecipient>> GetRecipientsAsync(Guid? businessId, IReadOnlyCollection<string> permissions, Guid? branchId = null)
+        {
+            var recipients = await RecipientsByPermissionAsync(businessId, permissions);
+            if (branchId is not { } branch || businessId is not { } business)
+                return recipients;
+
+            // Super users (platform role) are told regardless; business users only about branches they can reach.
+            var userIds = recipients.Where(r => !r.ViaPlatformRole).Select(r => r.UserId).ToList();
+            var assigned = await _context.UserBranches.AsNoTracking()
+                .Where(ub => ub.BranchId == branch && userIds.Contains(ub.UserId)).Select(ub => ub.UserId).ToListAsync();
+            var accessAll = await _context.UserRoles.IgnoreQueryFilters().AsNoTracking()
+                .Where(ur => userIds.Contains(ur.UserId) && ur.Role.IsActive && ur.Role.BusinessId == business
+                             && ur.Role.RolePermissions.Any(rp => rp.IsActive && rp.Permission.Name == Application.Common.BranchContext.AccessAllPermission))
+                .Select(ur => ur.UserId).Distinct().ToListAsync();
+            return recipients.Where(r => r.ViaPlatformRole || assigned.Contains(r.UserId) || accessAll.Contains(r.UserId)).ToList();
+        }
+
+        private async Task<IReadOnlyList<NotificationRecipient>> RecipientsByPermissionAsync(Guid? businessId, IReadOnlyCollection<string> permissions)
         {
             var names = permissions.ToList();
             var rows = await _context.UserRoles.IgnoreQueryFilters().AsNoTracking()
@@ -238,9 +255,10 @@ namespace UltimatePos.Infrastructure.Notifications
                 return null;
 
             var licenses = await _context.BusinessLicenses.AsNoTracking().ToListAsync();
-            var (endsOn, maxUsers) = Application.Licensing.LicensePolicy.Coverage(licenses, Application.Licensing.LicensePolicy.Today);
-            if (business.LicenseEndsOn != endsOn || business.LicenseMaxUsers != maxUsers)
+            var (endsOn, maxUsers, maxBranches) = Application.Licensing.LicensePolicy.Coverage(licenses, Application.Licensing.LicensePolicy.Today);
+            if (business.LicenseEndsOn != endsOn || business.LicenseMaxUsers != maxUsers || business.LicenseMaxBranches != maxBranches)
             {
+                business.LicenseMaxBranches = maxBranches;
                 business.LicenseEndsOn = endsOn;
                 business.LicenseMaxUsers = maxUsers;
                 await _context.SaveChangesAsync();
@@ -251,29 +269,30 @@ namespace UltimatePos.Infrastructure.Notifications
 
         public async Task<IReadOnlyList<LowStockRow>> GetLowStockAsync() =>
             await _context.StockLevels.AsNoTracking()
-                .Where(s => s.Product.IsActive && s.Product.ReorderLevel > 0 && s.QuantityOnHand <= s.Product.ReorderLevel)
-                .Select(s => new LowStockRow(s.ProductId, s.Product.Name, s.Product.BaseUnitOfMeasure.Symbol, s.QuantityOnHand, s.Product.ReorderLevel))
+                .Where(s => s.Product.IsActive && s.Product.ReorderLevel > 0 && s.QuantityOnHand <= s.Product.ReorderLevel && s.Branch.IsActive)
+                .Select(s => new LowStockRow(s.ProductId, s.Product.Name, s.Product.BaseUnitOfMeasure.Symbol, s.QuantityOnHand, s.Product.ReorderLevel,
+                    s.BranchId, s.Branch.BranchNumber, s.Branch.Name))
                 .ToListAsync();
 
         public async Task<IReadOnlyList<ExpiringBatchRow>> GetExpiringBatchesAsync(DateOnly horizon) =>
             await _context.StockBatches.AsNoTracking()
                 .Where(b => b.QuantityOnHand > 0 && b.ExpiryDate != null && b.ExpiryDate <= horizon)
                 .Select(b => new ExpiringBatchRow(b.StockBatchId, b.ProductId, b.Product.Name, b.BatchNumber, b.ExpiryDate!.Value,
-                    b.QuantityOnHand, b.Product.BaseUnitOfMeasure.Symbol))
+                    b.QuantityOnHand, b.Product.BaseUnitOfMeasure.Symbol, b.BranchId, b.Branch.BranchNumber, b.Branch.Name))
                 .ToListAsync();
 
         public async Task<IReadOnlyList<OverdueOrderRow>> GetOverdueOrdersAsync(DateTime nowUtc) =>
             await _context.PurchaseOrders.AsNoTracking()
                 .Where(o => o.IsActive && o.ExpectedDeliveryDate != null && o.ExpectedDeliveryDate < nowUtc
                             && (o.Status == PurchaseOrderStatus.Ordered || o.Status == PurchaseOrderStatus.PartiallyReceived))
-                .Select(o => new OverdueOrderRow(o.PurchaseOrderId, o.OrderNumber, o.Supplier.SupplierName, o.ExpectedDeliveryDate!.Value))
+                .Select(o => new OverdueOrderRow(o.PurchaseOrderId, o.OrderNumber, o.Supplier.SupplierName, o.ExpectedDeliveryDate!.Value, o.BranchId))
                 .ToListAsync();
 
         public async Task<IReadOnlyList<UnmatchedPaymentRow>> GetUnmatchedTillPaymentsAsync(DateTime receivedBeforeUtc) =>
             await _context.MpesaTransactions.AsNoTracking()
                 .Where(t => t.TransactionType == MpesaTransactionType.C2B && t.Status == MpesaTransactionStatus.Received
                             && t.CreatedAt < receivedBeforeUtc)
-                .Select(t => new UnmatchedPaymentRow(t.MpesaTransactionId, t.MpesaReceiptNumber, t.PhoneNumber, t.Amount, t.CreatedAt))
+                .Select(t => new UnmatchedPaymentRow(t.MpesaTransactionId, t.MpesaReceiptNumber, t.PhoneNumber, t.Amount, t.CreatedAt, t.BranchId))
                 .ToListAsync();
 
         public async Task<IReadOnlyList<Guid>> GetActiveBusinessIdsAsync() =>

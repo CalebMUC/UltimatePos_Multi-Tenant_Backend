@@ -23,11 +23,13 @@ namespace UltimatePos.Application.Payments
         private readonly SalesService _salesService;
         private readonly IBusinessRepository _businessRepository;
         private readonly ITenantContext _tenant;
+        private readonly Branches.IBranchRepository _branchRepository;
         private readonly ILogger _logger = Log.ForContext<MpesaService>();
 
         public MpesaService(IMpesaRepository repository, IMpesaClient client, SalesService salesService,
-            IBusinessRepository businessRepository, ITenantContext tenant)
+            IBusinessRepository businessRepository, ITenantContext tenant, Branches.IBranchRepository branchRepository)
         {
+            _branchRepository = branchRepository;
             _repository = repository;
             _client = client;
             _salesService = salesService;
@@ -69,26 +71,29 @@ namespace UltimatePos.Application.Payments
         }
 
         /// <summary>
-        /// A customer paid a till or paybill. The short code routes it to the business that owns it; a payment to a short code no
-        /// business has claimed is stored unassigned (visible to nobody) and logged. Safaricom retries, so a receipt seen before is ignored.
+        /// A customer paid a till or paybill. The short code routes it: a branch's own till to that branch, else the business's short
+        /// code to the business (matchable at any branch). A payment to a short code nobody has claimed is stored unassigned (visible
+        /// to nobody) and logged. Safaricom retries, so a receipt seen before is ignored.
         /// </summary>
         public async Task HandleC2bConfirmationAsync(C2bConfirmationPayload payload)
         {
             if (!string.IsNullOrWhiteSpace(payload.TransID) && await _repository.ReceiptExistsAnyBusinessAsync(payload.TransID))
                 return;
 
-            var business = string.IsNullOrWhiteSpace(payload.BusinessShortCode)
-                ? null
-                : await _businessRepository.GetBusinessByMpesaShortCodeAsync(payload.BusinessShortCode.Trim());
-            if (business is null)
+            var shortCode = payload.BusinessShortCode?.Trim();
+            var branch = string.IsNullOrEmpty(shortCode) ? null : await _branchRepository.GetBranchByMpesaShortCodeAsync(shortCode);
+            var businessId = branch?.BusinessId
+                ?? (string.IsNullOrEmpty(shortCode) ? null : (await _businessRepository.GetBusinessByMpesaShortCodeAsync(shortCode))?.BusinessId);
+            if (businessId is null)
                 _logger.Warning("C2B payment {TransId} to short code {ShortCode} matches no business — stored unassigned",
                     payload.TransID, payload.BusinessShortCode);
 
-            using var scope = business is null ? null : _tenant.Use(business.BusinessId);
+            using var scope = businessId is { } b ? _tenant.Use(b) : null;
             await _repository.CreateAsync(new MpesaTransaction
             {
                 MpesaTransactionId = Guid.NewGuid(),
-                BusinessId = business?.BusinessId,
+                BusinessId = businessId,
+                BranchId = branch?.BranchId,
                 TransactionType = MpesaTransactionType.C2B,
                 Status = MpesaTransactionStatus.Received,
                 MpesaReceiptNumber = payload.TransID,

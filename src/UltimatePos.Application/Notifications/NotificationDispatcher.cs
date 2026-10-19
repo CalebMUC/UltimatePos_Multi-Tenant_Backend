@@ -69,7 +69,7 @@ namespace UltimatePos.Application.Notifications
             var targets = new Dictionary<Guid, (NotificationRecipient Recipient, NotificationChannels Channels)>();
             if (rule.RecipientPermissions.Count > 0)
             {
-                foreach (var recipient in await _repository.GetRecipientsAsync(systemEvent.BusinessId, rule.RecipientPermissions))
+                foreach (var recipient in await _repository.GetRecipientsAsync(systemEvent.BusinessId, rule.RecipientPermissions, systemEvent.BranchId))
                 {
                     if (rule.ExcludeActor && recipient.UserId == systemEvent.ActorUserId)
                         continue;

@@ -21,8 +21,11 @@ namespace UltimatePos.Application.Notifications
             string? openAlertKey, IEnumerable<string> closeAlertKeys);
         Task MarkEventFailedAsync(Guid systemEventId, string error);
         Task<bool> IsAlertOpenAsync(Guid businessId, string alertKey);
-        /// <summary>Active users holding any of the permissions — through a role of the business (as active members) or a platform role.</summary>
-        Task<IReadOnlyList<NotificationRecipient>> GetRecipientsAsync(Guid? businessId, IReadOnlyCollection<string> permissions);
+        /// <summary>
+        /// Active users holding any of the permissions — through a role of the business (as active members) or a platform role. With a
+        /// branch, business users must also reach it: assigned to it, or holding Branches.AccessAll.
+        /// </summary>
+        Task<IReadOnlyList<NotificationRecipient>> GetRecipientsAsync(Guid? businessId, IReadOnlyCollection<string> permissions, Guid? branchId = null);
         /// <summary>The user, if active (and an active member of the business, when one is given).</summary>
         Task<NotificationRecipient?> GetRecipientAsync(Guid userId, Guid? businessId);
         Task<string?> GetBusinessNameAsync(Guid businessId);
@@ -45,16 +48,18 @@ namespace UltimatePos.Application.Notifications
         Task<Dictionary<Guid, string>> GetUserNamesAsync(IEnumerable<Guid> userIds);
     }
 
-    // Rows the alert sweep looks at, read with the business in scope.
-    public sealed record LowStockRow(Guid ProductId, string ProductName, string? UnitSymbol, decimal QuantityOnHand, decimal ReorderLevel);
+    // Rows the alert sweep looks at, read with the business in scope. Stock conditions are per branch.
+    public sealed record LowStockRow(Guid ProductId, string ProductName, string? UnitSymbol, decimal QuantityOnHand, decimal ReorderLevel,
+        Guid BranchId, int BranchNumber, string BranchName);
     public sealed record ExpiringBatchRow(Guid StockBatchId, Guid ProductId, string ProductName, string BatchNumber, DateOnly ExpiryDate,
-        decimal QuantityOnHand, string? UnitSymbol);
-    public sealed record OverdueOrderRow(Guid PurchaseOrderId, string OrderNumber, string SupplierName, DateTime ExpectedDeliveryDate);
-    public sealed record UnmatchedPaymentRow(Guid MpesaTransactionId, string? ReceiptNumber, string PhoneNumber, decimal Amount, DateTime ReceivedAt);
+        decimal QuantityOnHand, string? UnitSymbol, Guid BranchId, int BranchNumber, string BranchName);
+    public sealed record OverdueOrderRow(Guid PurchaseOrderId, string OrderNumber, string SupplierName, DateTime ExpectedDeliveryDate, Guid BranchId);
+    public sealed record UnmatchedPaymentRow(Guid MpesaTransactionId, string? ReceiptNumber, string PhoneNumber, decimal Amount, DateTime ReceivedAt,
+        Guid? BranchId);
 
     public interface IAlertSweepRepository
     {
-        /// <summary>Active products with a reorder level whose stock is at or below it (including out of stock).</summary>
+        /// <summary>Active products with a reorder level whose stock at a branch is at or below it (including out of stock), per branch.</summary>
         Task<IReadOnlyList<LowStockRow>> GetLowStockAsync();
         /// <summary>Batches with stock that expire on or before <paramref name="horizon"/> (expired ones included).</summary>
         Task<IReadOnlyList<ExpiringBatchRow>> GetExpiringBatchesAsync(DateOnly horizon);

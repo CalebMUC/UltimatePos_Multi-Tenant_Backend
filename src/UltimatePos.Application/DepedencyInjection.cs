@@ -30,6 +30,10 @@ namespace UltimatePos.Application
             // Feature services and validators register here as each area is built.
             // The business every query is scoped to — from the caller's token, or entered explicitly by webhooks and onboarding.
             services.AddScoped<ITenantContext, TenantContext>();
+            // The branch the caller works at, and the branches they can see — from the token, or entered explicitly.
+            services.AddScoped<IBranchContext, BranchContext>();
+            services.AddScoped<Branches.BranchService>();
+            services.AddScoped<StockTransferService>();
 
             services.AddScoped<AuthService>();
             services.AddScoped<BusinessService>();

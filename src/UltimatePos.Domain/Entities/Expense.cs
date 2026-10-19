@@ -17,6 +17,8 @@ namespace UltimatePos.Domain.Entities
     {
         public Guid ExpenseId { get; set; }
         public Guid BusinessId { get; set; }
+        /// <summary>The branch the cost belongs to (its rent, its power). Null = a business-wide cost (head office, shared services).</summary>
+        public Guid? BranchId { get; set; }
         /// <summary>EXP-000001 ...</summary>
         public string ExpenseNumber { get; set; } = string.Empty;
         /// <summary>The calendar day the cost was incurred (a date, not an instant — no time zone ambiguity).</summary>

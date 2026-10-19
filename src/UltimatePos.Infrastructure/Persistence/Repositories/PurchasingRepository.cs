@@ -89,6 +89,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         {
             var query = _context.PurchaseOrders.AsNoTracking()
                 .Include(o => o.Supplier)
+                .Include(o => o.Branch)
                 .Include(o => o.Lines).ThenInclude(l => l.Product)
                 .Include(o => o.Lines).ThenInclude(l => l.UnitOfMeasure)
                 .AsSplitQuery()
@@ -108,6 +109,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         public async Task<PurchaseOrder?> GetPurchaseOrderByIdAsync(Guid purchaseOrderId) =>
             await _context.PurchaseOrders.AsNoTracking()
                 .Include(o => o.Supplier)
+                .Include(o => o.Branch)
                 .Include(o => o.Lines).ThenInclude(l => l.Product)
                 .Include(o => o.Lines).ThenInclude(l => l.UnitOfMeasure)
                 .AsSplitQuery()
@@ -154,6 +156,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 var movement = new StockMovement
                 {
                     ProductId = receipt.ProductId,
+                    BranchId = order.BranchId, // delivered to the branch the order is for
                     MovementType = StockMovementType.PurchaseReceipt,
                     QuantityChange = receipt.QuantityInBaseUnits,
                     UnitCost = receipt.UnitCostPerBaseUnit,
