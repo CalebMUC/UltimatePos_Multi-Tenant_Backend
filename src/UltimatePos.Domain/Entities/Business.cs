@@ -56,6 +56,8 @@ namespace UltimatePos.Domain.Entities
         public DateOnly? LicenseEndsOn { get; set; }
         /// <summary>User limit of the licence covering today. Null = unlimited.</summary>
         public int? LicenseMaxUsers { get; set; }
+        /// <summary>Branch limit of the licence covering today. Null = unlimited.</summary>
+        public int? LicenseMaxBranches { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }
         public DateTime? LastUpdatedAt { get; set; }

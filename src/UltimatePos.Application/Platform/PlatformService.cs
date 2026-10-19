@@ -192,7 +192,8 @@ namespace UltimatePos.Application.Platform
         {
             var businesses = await _repository.GetBusinessesAsync();
             var activity = await _repository.GetActivityAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
-            return businesses.Select(b => Summary(b, activity.GetValueOrDefault(b.BusinessId)?.ActiveUsers ?? 0));
+            return businesses.Select(b => Summary(b, activity.GetValueOrDefault(b.BusinessId)?.ActiveUsers ?? 0,
+                activity.GetValueOrDefault(b.BusinessId)?.ActiveBranches ?? 0));
         }
 
         public async Task<BusinessDetailDto> GetBusinessAsync(Guid businessId)
@@ -203,7 +204,7 @@ namespace UltimatePos.Application.Platform
             var licenses = await _repository.GetLicensesAsync(businessId);
             var members = await _auth.GetBusinessUsersAsync(businessId);
 
-            return new BusinessDetailDto(Summary(business, activity?.ActiveUsers ?? 0), licenses.Select(ToDto),
+            return new BusinessDetailDto(Summary(business, activity?.ActiveUsers ?? 0, activity?.ActiveBranches ?? 0), licenses.Select(ToDto),
                 members.Select(m => new UserDto(m.User.UserId, m.User.Email, m.User.Username, m.User.PhoneNumber, m.User.IsActive && m.MembershipActive,
                     m.User.IsLocked, m.User.UserRoles.Select(r => r.Role.RoleName), Array.Empty<string>())),
                 Performance(business, activity));
@@ -325,6 +326,8 @@ namespace UltimatePos.Application.Platform
                 errors["paymentReference"] = new[] { "Give the payment reference (M-Pesa code, bank reference or cheque number)." };
             if (request.MaxUsers is < 1 or > 10000)
                 errors["maxUsers"] = new[] { "Max users must be between 1 and 10000, or left out for unlimited." };
+            if (request.MaxBranches is < 1 or > Branch.MaxBranchNumber + 1)
+                errors["maxBranches"] = new[] { $"Max branches must be between 1 and {Branch.MaxBranchNumber + 1}, or left out for unlimited." };
             if (request.Months is not null && request.EndsOn is not null)
                 errors["months"] = new[] { "Give either months or an end date, not both." };
             else if (request.Months is null && request.EndsOn is null)
@@ -354,6 +357,7 @@ namespace UltimatePos.Application.Platform
                 Kind = request.Kind,
                 PlanName = request.PlanName.Trim(),
                 MaxUsers = request.MaxUsers,
+                MaxBranches = request.MaxBranches,
                 StartsOn = startsOn,
                 EndsOn = endsOn,
                 Amount = request.Amount,
@@ -369,7 +373,7 @@ namespace UltimatePos.Application.Platform
                     $"{business.BusinessName}: {license.Kind} licence ({license.PlanName}) from {startsOn:yyyy-MM-dd} to {endsOn:yyyy-MM-dd}" +
                     (license.Amount > 0 ? $", {license.Amount:0.00} {license.Currency} paid." : "."),
                     EntityType: "Business", EntityId: businessId,
-                    Data: new { license.Kind, license.PlanName, startsOn, endsOn, license.Amount, license.MaxUsers, license.PaymentReference },
+                    Data: new { license.Kind, license.PlanName, startsOn, endsOn, license.Amount, license.MaxUsers, license.MaxBranches, license.PaymentReference },
                     ClearsAlertKeys: business.LicenseEndsOn is { } previous
                         ? new[] { AlertKeys.LicenseExpiring(previous), AlertKeys.LicenseExpired(previous) } : null));
                 var saved = await _repository.AddLicenseAsync(license, Today);
@@ -537,25 +541,26 @@ namespace UltimatePos.Application.Platform
             : reason.Trim().Length > 300 ? throw new ValidationException("reason", "The reason cannot exceed 300 characters.")
             : reason.Trim();
 
-        private BusinessSummaryDto Summary(BusinessProfile b, int activeUsers) =>
-            new(ToBusinessDto(b), ToAccessDto(LicensePolicy.Evaluate(b, _licensing, Today)), activeUsers, b.CreatedAt);
+        private BusinessSummaryDto Summary(BusinessProfile b, int activeUsers, int activeBranches = 0) =>
+            new(ToBusinessDto(b), ToAccessDto(LicensePolicy.Evaluate(b, _licensing, Today)), activeUsers, b.CreatedAt, activeBranches);
 
         private BusinessPerformanceDto Performance(BusinessProfile b, BusinessActivityRow? a) =>
             new(b.BusinessId, b.TradingName ?? b.BusinessName, b.Kind, b.BusinessType, LicensePolicy.Evaluate(b, _licensing, Today).Status, b.LicenseEndsOn,
                 a?.ActiveUsers ?? 0, a?.ActiveProducts ?? 0, a?.SaleCount ?? 0, a?.Revenue ?? 0m,
                 a is { SaleCount: > 0 } ? Math.Round(a.Revenue / a.SaleCount, 2, MidpointRounding.AwayFromZero) : 0m,
-                a?.LastSaleAt, a?.LastSignInAt, b.CreatedAt);
+                a?.LastSaleAt, a?.LastSignInAt, b.CreatedAt, a?.ActiveBranches ?? 0);
 
         internal static BusinessAccessDto ToAccessDto(BusinessAccess a) => new(a.Status, a.Allowed, a.Code, a.Message, a.LicenseEndsOn, a.DaysRemaining);
 
         internal static BusinessDto ToBusinessDto(BusinessProfile b) =>
             new(b.BusinessId, b.BusinessName, b.TradingName, b.BusinessType, b.Kind, b.RegistrationNumber, b.KraPin,
                 b.PhysicalAddress, b.County, b.PhoneNumber, b.Email, b.LogoUrl, b.BackgroundImageUrl, b.IsActive,
-                b.IsVatRegistered, b.MpesaShortCode, b.MaxDiscountPercent, b.IsSuspended, b.SuspensionReason, b.LicenseEndsOn, b.LicenseMaxUsers);
+                b.IsVatRegistered, b.MpesaShortCode, b.MaxDiscountPercent, b.IsSuspended, b.SuspensionReason, b.LicenseEndsOn, b.LicenseMaxUsers,
+                b.LicenseMaxBranches);
 
         internal static BusinessLicenseDto ToDto(BusinessLicense l) =>
             new(l.BusinessLicenseId, l.BusinessId, l.LicenseNumber, l.Kind, l.PlanName, l.MaxUsers, l.StartsOn, l.EndsOn, l.Amount, l.Currency,
-                l.PaymentMethod, l.PaymentReference, l.Notes, l.State, l.CreatedAt, l.CreatedBy, l.CancelledAt, l.CancelReason);
+                l.PaymentMethod, l.PaymentReference, l.Notes, l.State, l.CreatedAt, l.CreatedBy, l.CancelledAt, l.CancelReason, l.MaxBranches);
 
         private static UserDto ToUserDto((User User, bool MembershipActive) member, User current) =>
             new(current.UserId, current.Email, current.Username, current.PhoneNumber, current.IsActive && member.MembershipActive, current.IsLocked,

@@ -41,6 +41,18 @@ namespace UltimatePos.Application.Notifications
         public const string SupportPasswordReset = "Platform.SupportPasswordReset";
         public const string SupportUserUnlocked = "Platform.SupportUserUnlocked";
 
+        // Branches and transfers
+        public const string BranchCreated = "Branch.Created";
+        public const string BranchUpdated = "Branch.Updated";
+        public const string BranchActivated = "Branch.Activated";
+        public const string BranchDeactivated = "Branch.Deactivated";
+        public const string UserBranchesChanged = "User.BranchesChanged";
+        public const string UserSwitchedBranch = "User.SwitchedBranch";
+        public const string StockTransferCreated = "StockTransfer.Created";
+        public const string StockTransferDispatched = "StockTransfer.Dispatched";
+        public const string StockTransferReceived = "StockTransfer.Received";
+        public const string StockTransferCancelled = "StockTransfer.Cancelled";
+
         // Stock
         public const string StockBelowReorderLevel = "Stock.BelowReorderLevel";
         public const string StockOutOfStock = "Stock.OutOfStock";
@@ -69,8 +81,8 @@ namespace UltimatePos.Application.Notifications
     /// <summary>Alert keys: one open alert per condition, so it is announced once until it clears.</summary>
     public static class AlertKeys
     {
-        public static string StockLow(Guid productId) => $"stock-low:{productId}";
-        public static string StockOut(Guid productId) => $"stock-out:{productId}";
+        public static string StockLow(Guid productId, Guid branchId) => $"stock-low:{productId}:{branchId}";
+        public static string StockOut(Guid productId, Guid branchId) => $"stock-out:{productId}:{branchId}";
         public static string BatchExpiring(Guid batchId) => $"batch-expiring:{batchId}";
         public static string BatchExpired(Guid batchId) => $"batch-expired:{batchId}";
         public static string PurchaseOrderOverdue(Guid purchaseOrderId) => $"po-overdue:{purchaseOrderId}";

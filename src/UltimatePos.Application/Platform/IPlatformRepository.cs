@@ -3,7 +3,7 @@ using UltimatePos.Domain.Entities;
 namespace UltimatePos.Application.Platform
 {
     public sealed record BusinessActivityRow(Guid BusinessId, int ActiveUsers, int ActiveProducts, int SaleCount, decimal Revenue,
-        DateTime? LastSaleAt, DateTime? LastSignInAt);
+        DateTime? LastSaleAt, DateTime? LastSignInAt, int ActiveBranches = 0);
 
     /// <summary>Super-user data access. Works ACROSS businesses (no business is in scope for a super user), so it reads past the tenant filters.</summary>
     public interface IPlatformRepository

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -53,7 +53,7 @@ namespace UltimatePos.Application.Sales.Dtos
         decimal TotalAmount, decimal? AmountTendered, decimal? ChangeDue, string? Notes, DateTime CreatedAt, IEnumerable<SaleLineDto> Lines,
         string? CustomerName = null, Guid? CreatedBy = null, string? CreatedByName = null,
         decimal Subtotal = 0, decimal DiscountTotal = 0, decimal TaxTotal = 0, decimal ReturnedAmount = 0,
-        SalePrescriptionDto? Prescription = null);
+        SalePrescriptionDto? Prescription = null, Guid BranchId = default, string? KraBranchId = null, string? BranchName = null);
 
     /// <summary>Filters for the sales list. from/to are local calendar days (inclusive), resolved with utcOffsetMinutes.</summary>
     public record SaleQuery(Guid? CustomerId = null, SaleStatus? Status = null, DateOnly? From = null, DateOnly? To = null,

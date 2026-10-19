@@ -16,32 +16,87 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         private readonly UltimatePosDbContext _context;
         private readonly StockLedger _stockLedger;
         private readonly ITenantContext _tenant;
+        private readonly IBranchContext _branches;
 
-        public InventoryRepository(UltimatePosDbContext context, StockLedger stockLedger, ITenantContext tenant)
+        public InventoryRepository(UltimatePosDbContext context, StockLedger stockLedger, ITenantContext tenant, IBranchContext branches)
         {
             _context = context;
             _stockLedger = stockLedger;
             _tenant = tenant;
+            _branches = branches;
         }
 
         public async Task<IEnumerable<StockLevel>> GetStockLevelsAsync(bool belowReorderOnly)
         {
-            var query = _context.StockLevels.AsNoTracking().Include(s => s.Product).ThenInclude(p => p.BaseUnitOfMeasure).AsQueryable();
+            var query = _context.StockLevels.AsNoTracking().Include(s => s.Product).ThenInclude(p => p.BaseUnitOfMeasure)
+                .Include(s => s.Branch).AsQueryable();
             if (belowReorderOnly)
                 query = query.Where(s => s.QuantityOnHand <= s.Product.ReorderLevel);
             return await query.ToListAsync();
         }
 
-        public async Task<StockLevel?> GetStockLevelAsync(Guid productId) =>
-            await _context.StockLevels.AsNoTracking().Include(s => s.Product).ThenInclude(p => p.BaseUnitOfMeasure)
-                .FirstOrDefaultAsync(s => s.ProductId == productId);
+        public async Task<StockLevel?> GetStockLevelAsync(Guid productId)
+        {
+            var branchId = _branches.RequireActiveBranchId();
+            return await _context.StockLevels.AsNoTracking().Include(s => s.Product).ThenInclude(p => p.BaseUnitOfMeasure).Include(s => s.Branch)
+                .FirstOrDefaultAsync(s => s.ProductId == productId && s.BranchId == branchId);
+        }
 
         public async Task<Dictionary<Guid, decimal>> GetQuantitiesOnHandAsync(IEnumerable<Guid> productIds)
         {
             var ids = productIds.Distinct().ToList();
+            var branchId = _branches.RequireActiveBranchId();
             return await _context.StockLevels.AsNoTracking()
-                .Where(s => ids.Contains(s.ProductId))
+                .Where(s => ids.Contains(s.ProductId) && s.BranchId == branchId)
                 .ToDictionaryAsync(s => s.ProductId, s => s.QuantityOnHand);
+        }
+
+        public async Task<Dictionary<(Guid ProductId, Guid BranchId), decimal>> GetSellableByBranchAsync(IEnumerable<Guid> productIds, DateOnly today)
+        {
+            var ids = productIds.Distinct().ToList();
+            if (ids.Count == 0)
+                return new Dictionary<(Guid, Guid), decimal>();
+
+            var levels = await _context.StockLevels.AsNoTracking()
+                .Where(s => ids.Contains(s.ProductId))
+                .Select(s => new { s.ProductId, s.BranchId, s.QuantityOnHand, s.Product.IsBatchTracked })
+                .ToListAsync();
+            var inLots = (await _context.StockBatches.AsNoTracking()
+                    .Where(b => ids.Contains(b.ProductId) && b.QuantityOnHand > 0 && (b.ExpiryDate == null || b.ExpiryDate >= today))
+                    .GroupBy(b => new { b.ProductId, b.BranchId })
+                    .Select(g => new { g.Key.ProductId, g.Key.BranchId, Quantity = g.Sum(b => b.QuantityOnHand) })
+                    .ToListAsync())
+                .ToDictionary(g => (g.ProductId, g.BranchId), g => g.Quantity);
+
+            return levels.ToDictionary(l => (l.ProductId, l.BranchId),
+                l => l.IsBatchTracked ? inLots.GetValueOrDefault((l.ProductId, l.BranchId)) : l.QuantityOnHand);
+        }
+
+        public async Task<Dictionary<(Guid ProductId, Guid BranchId), decimal>> GetAverageCostsByBranchAsync(IEnumerable<Guid> productIds)
+        {
+            var ids = productIds.Distinct().ToList();
+            return (await _context.StockLevels.AsNoTracking()
+                    .Where(s => ids.Contains(s.ProductId))
+                    .Select(s => new { s.ProductId, s.BranchId, s.AverageUnitCost })
+                    .ToListAsync())
+                .ToDictionary(s => (s.ProductId, s.BranchId), s => s.AverageUnitCost);
+        }
+
+        public async Task<Dictionary<Guid, decimal>> GetWeightedAverageCostsAsync(IEnumerable<Guid> productIds)
+        {
+            var ids = productIds.Distinct().ToList();
+            var rows = await _context.StockLevels.AsNoTracking()
+                .Where(s => ids.Contains(s.ProductId))
+                .Select(s => new { s.ProductId, s.QuantityOnHand, s.AverageUnitCost })
+                .ToListAsync();
+            return rows.GroupBy(r => r.ProductId).ToDictionary(g => g.Key, g =>
+            {
+                var held = g.Where(r => r.QuantityOnHand > 0).ToList();
+                var quantity = held.Sum(r => r.QuantityOnHand);
+                return quantity > 0
+                    ? Math.Round(held.Sum(r => r.QuantityOnHand * r.AverageUnitCost) / quantity, 6, MidpointRounding.AwayFromZero)
+                    : g.Max(r => r.AverageUnitCost);
+            });
         }
 
         public async Task<Dictionary<Guid, decimal>> GetSellableQuantitiesAsync(IEnumerable<Guid> productIds, DateOnly today)
@@ -49,9 +104,10 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             var ids = productIds.Distinct().ToList();
             if (ids.Count == 0)
                 return new Dictionary<Guid, decimal>();
+            var branchId = _branches.RequireActiveBranchId();
 
             var levels = await _context.StockLevels.AsNoTracking()
-                .Where(s => ids.Contains(s.ProductId))
+                .Where(s => ids.Contains(s.ProductId) && s.BranchId == branchId)
                 .Select(s => new { s.ProductId, s.QuantityOnHand, s.Product.IsBatchTracked })
                 .ToListAsync();
 
@@ -59,7 +115,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             var inLots = batchTrackedIds.Count == 0
                 ? new Dictionary<Guid, decimal>()
                 : await _context.StockBatches.AsNoTracking()
-                    .Where(b => batchTrackedIds.Contains(b.ProductId) && b.QuantityOnHand > 0 && (b.ExpiryDate == null || b.ExpiryDate >= today))
+                    .Where(b => batchTrackedIds.Contains(b.ProductId) && b.BranchId == branchId && b.QuantityOnHand > 0
+                                && (b.ExpiryDate == null || b.ExpiryDate >= today))
                     .GroupBy(b => b.ProductId)
                     .Select(g => new { g.Key, Quantity = g.Sum(b => b.QuantityOnHand) })
                     .ToDictionaryAsync(g => g.Key, g => g.Quantity);
@@ -72,7 +129,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
         public async Task<IEnumerable<StockBatch>> GetBatchesAsync(Guid? productId, bool includeEmpty)
         {
-            var query = _context.StockBatches.AsNoTracking().Include(b => b.Product).ThenInclude(p => p.BaseUnitOfMeasure).AsQueryable();
+            var query = _context.StockBatches.AsNoTracking().Include(b => b.Product).ThenInclude(p => p.BaseUnitOfMeasure)
+                .Include(b => b.Branch).AsQueryable();
             if (productId.HasValue)
                 query = query.Where(b => b.ProductId == productId.Value);
             if (!includeEmpty)
@@ -89,8 +147,9 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         public async Task<Dictionary<Guid, decimal>> GetAverageCostsAsync(IEnumerable<Guid> productIds)
         {
             var ids = productIds.Distinct().ToList();
+            var branchId = _branches.RequireActiveBranchId();
             return await _context.StockLevels.AsNoTracking()
-                .Where(s => ids.Contains(s.ProductId))
+                .Where(s => ids.Contains(s.ProductId) && s.BranchId == branchId)
                 .ToDictionaryAsync(s => s.ProductId, s => s.AverageUnitCost);
         }
 

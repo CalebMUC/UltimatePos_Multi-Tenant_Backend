@@ -25,9 +25,14 @@ namespace UltimatePos.Application.Purchasing
         private readonly IBusinessRepository _businessRepository;
         private readonly ITenantContext _tenant;
         private readonly ISystemEventRecorder _events;
+        private readonly IBranchContext _branches;
+        private readonly Branches.IBranchRepository _branchRepository;
         public PurchasingService(IPurchasingRepository repository, ICatalogRepository catalogRepository,
-                  IBusinessRepository businessRepository,  ICurrentUser currentUser, ITenantContext tenant, ISystemEventRecorder events)
+                  IBusinessRepository businessRepository,  ICurrentUser currentUser, ITenantContext tenant, ISystemEventRecorder events,
+                  IBranchContext branches, Branches.IBranchRepository branchRepository)
         {
+            _branches = branches;
+            _branchRepository = branchRepository;
             _events = events;
             _repository = repository;
             _catalogRepository = catalogRepository;
@@ -168,11 +173,20 @@ namespace UltimatePos.Application.Purchasing
                         "add one via POST /products/{id}/unit-conversions first.");
             }
 
+            // Delivered to (and received at) one branch: the caller's own, or another open branch they can see.
+            var branchId = request.BranchId ?? _branches.RequireActiveBranchId();
+            var branch = await _branchRepository.GetBranchAsync(branchId);
+            if (branch is null || !_branches.CanSee(branchId))
+                throw new ValidationException("branchId", "Branch not found.");
+            if (!branch.IsActive)
+                throw new ValidationException("branchId", $"Branch {branch.KraBranchId} {branch.Name} is closed.");
+
             var number = await _repository.GetNextDocumentNumberAsync("PO");
 
             var order = new PurchaseOrder
             {
                 OrderNumber = $"PO-{number:D6}",
+                BranchId = branchId,
                 SupplierId = request.SupplierId,
                 Status = PurchaseOrderStatus.Ordered,
                 ExpectedDeliveryDate = request.ExpectedDeliveryDate,
@@ -418,6 +432,6 @@ namespace UltimatePos.Application.Purchasing
             new(o.PurchaseOrderId, o.OrderNumber, o.SupplierId, o.Status, o.OrderDate, o.ExpectedDeliveryDate, o.Notes, o.IsActive,
                 o.Lines.Select(l => new PurchaseOrderLineDto(l.PurchaseOrderLineId, l.ProductId, l.UnitOfMeasureId, l.QuantityOrdered, l.QuantityReceived, l.UnitCost,
                     l.Product?.Name, l.Product?.Sku, l.UnitOfMeasure?.Symbol, l.Product?.IsBatchTracked ?? false)),
-                o.Supplier?.SupplierName);
+                o.Supplier?.SupplierName, o.BranchId, o.Branch is null ? null : Branch.FormatKraBranchId(o.Branch.BranchNumber), o.Branch?.Name);
     }
 }

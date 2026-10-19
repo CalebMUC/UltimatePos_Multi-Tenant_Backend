@@ -55,6 +55,74 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.ToTable("AlertStates");
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.Branch", b =>
+                {
+                    b.Property<Guid>("BranchId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("BranchNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .HasColumnType("text");
+
+                    b.Property<string>("County")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MpesaShortCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PhysicalAddress")
+                        .HasColumnType("text");
+
+                    b.HasKey("BranchId");
+
+                    b.HasIndex("MpesaShortCode")
+                        .IsUnique()
+                        .HasFilter("\"MpesaShortCode\" IS NOT NULL");
+
+                    b.HasIndex("BusinessId", "BranchNumber")
+                        .IsUnique();
+
+                    b.HasIndex("BusinessId", "Code")
+                        .IsUnique()
+                        .HasFilter("\"Code\" IS NOT NULL");
+
+                    b.ToTable("Branches", t =>
+                        {
+                            t.HasCheckConstraint("CK_Branches_BranchNumber", "\"BranchNumber\" BETWEEN 0 AND 99");
+                        });
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.BusinessLicense", b =>
                 {
                     b.Property<Guid>("BusinessLicenseId")
@@ -96,6 +164,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<string>("LicenseNumber")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int?>("MaxBranches")
+                        .HasColumnType("integer");
 
                     b.Property<int?>("MaxUsers")
                         .HasColumnType("integer");
@@ -184,6 +255,9 @@ namespace UltimatePos.Infrastructure.Migrations
 
                     b.Property<DateOnly?>("LicenseEndsOn")
                         .HasColumnType("date");
+
+                    b.Property<int?>("LicenseMaxBranches")
+                        .HasColumnType("integer");
 
                     b.Property<int?>("LicenseMaxUsers")
                         .HasColumnType("integer");
@@ -401,6 +475,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<decimal>("Amount")
                         .HasColumnType("numeric");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
 
@@ -469,6 +546,8 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("ExpenseId");
+
+                    b.HasIndex("BranchId");
 
                     b.HasIndex("ExpenseCategoryId");
 
@@ -628,6 +707,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<decimal>("Amount")
                         .HasColumnType("numeric");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("BusinessId")
                         .HasColumnType("uuid");
 
@@ -668,6 +750,8 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("MpesaTransactionId");
+
+                    b.HasIndex("BranchId");
 
                     b.HasIndex("BusinessId");
 
@@ -1018,6 +1102,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<decimal>("AdditionalCost")
                         .HasColumnType("numeric");
 
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
 
@@ -1059,6 +1146,8 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("ProductionRunId");
+
+                    b.HasIndex("BranchId");
 
                     b.HasIndex("FormulaId");
 
@@ -1154,6 +1243,9 @@ namespace UltimatePos.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
 
@@ -1193,6 +1285,8 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("PurchaseOrderId");
+
+                    b.HasIndex("BranchId");
 
                     b.HasIndex("SupplierId");
 
@@ -1335,6 +1429,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<decimal?>("AmountTendered")
                         .HasColumnType("numeric");
 
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
 
@@ -1389,6 +1486,8 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.HasKey("SaleId");
 
                     b.HasIndex("CustomerId");
+
+                    b.HasIndex("BranchId", "CreatedAt");
 
                     b.HasIndex("BusinessId", "CreatedAt");
 
@@ -1540,6 +1639,9 @@ namespace UltimatePos.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
 
@@ -1574,6 +1676,8 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasColumnType("numeric");
 
                     b.HasKey("SaleReturnId");
+
+                    b.HasIndex("BranchId");
 
                     b.HasIndex("SaleId");
 
@@ -1653,6 +1757,9 @@ namespace UltimatePos.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
 
@@ -1690,10 +1797,12 @@ namespace UltimatePos.Infrastructure.Migrations
 
                     b.HasIndex("BusinessId");
 
-                    b.HasIndex("ProductId", "BatchNumber")
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("BranchId", "ProductId", "BatchNumber")
                         .IsUnique();
 
-                    b.HasIndex("ProductId", "ExpiryDate");
+                    b.HasIndex("BranchId", "ProductId", "ExpiryDate");
 
                     b.ToTable("StockBatches");
                 });
@@ -1701,6 +1810,9 @@ namespace UltimatePos.Infrastructure.Migrations
             modelBuilder.Entity("UltimatePos.Domain.Entities.StockLevel", b =>
                 {
                     b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
                         .HasColumnType("uuid");
 
                     b.Property<decimal>("AverageUnitCost")
@@ -1712,7 +1824,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<decimal>("QuantityOnHand")
                         .HasColumnType("numeric");
 
-                    b.HasKey("ProductId");
+                    b.HasKey("ProductId", "BranchId");
+
+                    b.HasIndex("BranchId");
 
                     b.ToTable("StockLevels");
                 });
@@ -1724,6 +1838,9 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
@@ -1764,7 +1881,147 @@ namespace UltimatePos.Infrastructure.Migrations
 
                     b.HasIndex("StockBatchId");
 
+                    b.HasIndex("BranchId", "ProductId", "CreatedAt");
+
                     b.ToTable("StockMovements");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.StockTransfer", b =>
+                {
+                    b.Property<Guid>("StockTransferId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CancelledBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DispatchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DispatchedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("FromBranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReceiveNotes")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReceivedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ToBranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TransferNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("StockTransferId");
+
+                    b.HasIndex("BusinessId", "TransferNumber")
+                        .IsUnique();
+
+                    b.HasIndex("FromBranchId", "Status");
+
+                    b.HasIndex("ToBranchId", "Status");
+
+                    b.ToTable("StockTransfers");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.StockTransferLine", b =>
+                {
+                    b.Property<Guid>("StockTransferLineId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("QuantityInBaseUnits")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("QuantityReceivedInBaseUnits")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("StockTransferId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("UnitCost")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("UnitOfMeasureId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("StockTransferLineId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("StockTransferId");
+
+                    b.HasIndex("UnitOfMeasureId");
+
+                    b.ToTable("StockTransferLines");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.StockTransferLineBatch", b =>
+                {
+                    b.Property<Guid>("StockTransferLineBatchId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BatchNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly?>("ExpiryDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("ManufactureDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("QuantityInBaseUnits")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("QuantityReceivedInBaseUnits")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("SourceStockBatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StockTransferLineId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("StockTransferLineBatchId");
+
+                    b.HasIndex("StockTransferLineId");
+
+                    b.ToTable("StockTransferLineBatches");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.Supplier", b =>
@@ -1898,6 +2155,9 @@ namespace UltimatePos.Infrastructure.Migrations
 
                     b.Property<int>("Attempts")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("BusinessId")
                         .HasColumnType("uuid");
@@ -2051,6 +2311,30 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.UserBranch", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("UserId", "BranchId");
+
+                    b.HasIndex("BranchId");
+
+                    b.ToTable("UserBranches");
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.UserBusiness", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -2105,6 +2389,9 @@ namespace UltimatePos.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("BusinessId")
                         .HasColumnType("uuid");
 
@@ -2152,6 +2439,15 @@ namespace UltimatePos.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.AlertState", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.Branch", b =>
                 {
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
                         .WithMany()
@@ -2220,6 +2516,11 @@ namespace UltimatePos.Infrastructure.Migrations
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.Expense", b =>
                 {
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
                         .WithMany()
                         .HasForeignKey("BusinessId")
@@ -2305,6 +2606,11 @@ namespace UltimatePos.Infrastructure.Migrations
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.MpesaTransaction", b =>
                 {
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
                         .WithMany()
                         .HasForeignKey("BusinessId")
@@ -2407,6 +2713,12 @@ namespace UltimatePos.Infrastructure.Migrations
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.ProductionRun", b =>
                 {
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
                         .WithMany()
                         .HasForeignKey("BusinessId")
@@ -2478,6 +2790,12 @@ namespace UltimatePos.Infrastructure.Migrations
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.PurchaseOrder", b =>
                 {
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
                         .WithMany()
                         .HasForeignKey("BusinessId")
@@ -2489,6 +2807,8 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasForeignKey("SupplierId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Branch");
 
                     b.Navigation("Supplier");
                 });
@@ -2549,6 +2869,12 @@ namespace UltimatePos.Infrastructure.Migrations
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.Sale", b =>
                 {
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
                         .WithMany()
                         .HasForeignKey("BusinessId")
@@ -2559,6 +2885,8 @@ namespace UltimatePos.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CustomerId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Branch");
 
                     b.Navigation("Customer");
                 });
@@ -2622,6 +2950,12 @@ namespace UltimatePos.Infrastructure.Migrations
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.SaleReturn", b =>
                 {
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
                         .WithMany()
                         .HasForeignKey("BusinessId")
@@ -2666,6 +3000,12 @@ namespace UltimatePos.Infrastructure.Migrations
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.StockBatch", b =>
                 {
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
                         .WithMany()
                         .HasForeignKey("BusinessId")
@@ -2678,22 +3018,38 @@ namespace UltimatePos.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Branch");
+
                     b.Navigation("Product");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.StockLevel", b =>
                 {
-                    b.HasOne("UltimatePos.Domain.Entities.Product", "Product")
-                        .WithOne()
-                        .HasForeignKey("UltimatePos.Domain.Entities.StockLevel", "ProductId")
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
 
                     b.Navigation("Product");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.StockMovement", b =>
                 {
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("UltimatePos.Domain.Entities.Product", "Product")
                         .WithMany()
                         .HasForeignKey("ProductId")
@@ -2706,6 +3062,69 @@ namespace UltimatePos.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.StockTransfer", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", "FromBranch")
+                        .WithMany()
+                        .HasForeignKey("FromBranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", "ToBranch")
+                        .WithMany()
+                        .HasForeignKey("ToBranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FromBranch");
+
+                    b.Navigation("ToBranch");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.StockTransferLine", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.StockTransfer", "StockTransfer")
+                        .WithMany("Lines")
+                        .HasForeignKey("StockTransferId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.UnitOfMeasure", "UnitOfMeasure")
+                        .WithMany()
+                        .HasForeignKey("UnitOfMeasureId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("StockTransfer");
+
+                    b.Navigation("UnitOfMeasure");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.StockTransferLineBatch", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.StockTransferLine", "Line")
+                        .WithMany("Batches")
+                        .HasForeignKey("StockTransferLineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Line");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.Supplier", b =>
@@ -2748,6 +3167,25 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasForeignKey("BusinessId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.UserBranch", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.UserBusiness", b =>
@@ -2862,6 +3300,16 @@ namespace UltimatePos.Infrastructure.Migrations
             modelBuilder.Entity("UltimatePos.Domain.Entities.SaleReturn", b =>
                 {
                     b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.StockTransfer", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.StockTransferLine", b =>
+                {
+                    b.Navigation("Batches");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.Supplier", b =>

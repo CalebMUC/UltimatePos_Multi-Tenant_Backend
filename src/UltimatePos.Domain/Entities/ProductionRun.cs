@@ -7,10 +7,12 @@ using System.Threading.Tasks;
 namespace UltimatePos.Domain.Entities
 {
     // A completed production fact — immutable, no IsActive/LastUpdated*. Corrections go through stock adjustments.
-    public class ProductionRun : ITenantEntity
+    public class ProductionRun : ITenantEntity, IBranchEntity
     {
         public Guid ProductionRunId { get; set; }
         public Guid BusinessId { get; set; }
+        /// <summary>The branch (factory) the ingredients came from and the output went into.</summary>
+        public Guid BranchId { get; set; }
         public string RunNumber { get; set; } = string.Empty;
         public Guid FormulaId { get; set; }
         public Guid ProductId { get; set; }

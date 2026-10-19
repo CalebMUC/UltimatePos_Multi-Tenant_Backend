@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System;
 using System.Collections.Generic;
@@ -18,11 +18,15 @@ namespace UltimatePos.Infrastructure.Auth
     {
         /// <summary>Claim carrying the business the token is for. Read by CurrentUserService.</summary>
         public const string BusinessClaim = "business_id";
+        /// <summary>The branch the user is working at.</summary>
+        public const string BranchClaim = "branch_id";
+        /// <summary>One per branch the user is assigned to (users with Branches.AccessAll reach every branch without them).</summary>
+        public const string BranchesClaim = "branch";
 
         private readonly JwtSettings _settings;
         public JwtTokenService(IOptions<JwtSettings> settings) => _settings = settings.Value;
 
-        public (string Token, DateTime ExpiresAt) GenerateToken(User user, Guid? businessId, IEnumerable<string> permissions, IEnumerable<string> roles)
+        public (string Token, DateTime ExpiresAt) GenerateToken(User user, Guid? businessId, Guid? branchId, IEnumerable<Guid> branchIds, IEnumerable<string> permissions, IEnumerable<string> roles)
         {
             var claims = new List<Claim>
             {
@@ -33,6 +37,9 @@ namespace UltimatePos.Infrastructure.Auth
             };
             if (businessId.HasValue)
                 claims.Add(new Claim(BusinessClaim, businessId.Value.ToString()));
+            if (branchId.HasValue)
+                claims.Add(new Claim(BranchClaim, branchId.Value.ToString()));
+            claims.AddRange(branchIds.Distinct().Select(b => new Claim(BranchesClaim, b.ToString())));
             claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
             claims.AddRange(permissions.Select(p => new Claim("Permission", p)));
 

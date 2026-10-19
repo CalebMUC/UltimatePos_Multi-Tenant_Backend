@@ -35,6 +35,9 @@ public sealed class TestCaller : ICurrentUser
 {
     public Guid? UserId { get; set; }
     public Guid? BusinessId { get; set; }
+    public Guid? BranchId { get; set; }
+    public List<Guid> BranchIds { get; set; } = new();
+    IReadOnlyList<Guid> ICurrentUser.BranchIds => BranchIds;
     public bool IsAuthenticated => UserId.HasValue;
     /// <summary>Null = every permission.</summary>
     public HashSet<string>? Permissions { get; set; }
@@ -55,6 +58,8 @@ public sealed class MultiBusinessDatabase : IAsyncLifetime
     public Guid SuperUserId { get; private set; }
     public Guid Alvet { get; private set; }
     public Guid Afya { get; private set; }
+    /// <summary>Each business's head office (branch 00), created with it.</summary>
+    public Dictionary<Guid, Guid> HeadOffice { get; } = new();
 
     public async Task InitializeAsync()
     {
@@ -105,6 +110,13 @@ public sealed class MultiBusinessDatabase : IAsyncLifetime
         Afya = (await RunAsync(sp => sp.GetRequiredService<UltimatePos.Application.Platform.PlatformService>().RegisterBusinessAsync(new RegisterBusinessRequestDto(
             "Afya Pharmacy", null, BusinessType.Retailer, BusinessKind.Trader, null, "P051000002B", null, null, null, null, null, null,
             IsVatRegistered: true, MpesaShortCode: "600999", MaxDiscountPercent: 10, Owner: owner)))).Business.BusinessId;
+
+        using (var scope = Services.CreateScope())
+        {
+            var branches = scope.ServiceProvider.GetRequiredService<UltimatePosDbContext>().Branches.IgnoreQueryFilters();
+            foreach (var businessId in new[] { Alvet, Afya })
+                HeadOffice[businessId] = (await branches.SingleAsync(b => b.BusinessId == businessId && b.BranchNumber == 0)).BranchId;
+        }
     }
 
     public async Task DisposeAsync()
@@ -119,11 +131,18 @@ public sealed class MultiBusinessDatabase : IAsyncLifetime
         await Services.DisposeAsync();
     }
 
-    /// <summary>Signs the caller in to <paramref name="businessId"/> with every permission, or only <paramref name="permissions"/>.</summary>
-    public void SignInTo(Guid businessId, params string[] permissions)
+    /// <summary>
+    /// Signs the caller in to <paramref name="businessId"/>'s head office with every permission, or only <paramref name="permissions"/>.
+    /// </summary>
+    public void SignInTo(Guid businessId, params string[] permissions) => SignInTo(businessId, HeadOffice[businessId], permissions);
+
+    /// <summary>Signs the caller in to one branch, assigned to that branch only (they see others only with Branches.AccessAll).</summary>
+    public void SignInTo(Guid businessId, Guid branchId, params string[] permissions)
     {
         Caller.UserId = AdminUserId;
         Caller.BusinessId = businessId;
+        Caller.BranchId = branchId;
+        Caller.BranchIds = new List<Guid> { branchId };
         Caller.Permissions = permissions.Length == 0 ? null : permissions.ToHashSet();
     }
 

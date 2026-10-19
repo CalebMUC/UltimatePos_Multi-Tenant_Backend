@@ -61,22 +61,23 @@ namespace UltimatePos.Application.Licensing
         /// <summary>
         /// What the business's licences add up to today: the last day of the unbroken run of periods covering today (renewals start
         /// the day after the previous one ends), and that licence's user limit. With nothing covering today, the most recent period
-        /// that has ended — so its grace period applies. A licence that only starts later does not cover today.
+        /// that has ended — so its grace period applies. A licence that only starts later does not cover today. The user and branch
+        /// limits are those of the licence in force today.
         /// </summary>
-        public static (DateOnly? EndsOn, int? MaxUsers) Coverage(IEnumerable<BusinessLicense> licenses, DateOnly today)
+        public static (DateOnly? EndsOn, int? MaxUsers, int? MaxBranches) Coverage(IEnumerable<BusinessLicense> licenses, DateOnly today)
         {
             var active = licenses.Where(l => l.State == LicenseState.Active).OrderBy(l => l.StartsOn).ThenBy(l => l.EndsOn).ToList();
             var current = active.FirstOrDefault(l => l.StartsOn <= today && l.EndsOn >= today);
             if (current is null)
             {
                 var lapsed = active.Where(l => l.EndsOn < today).MaxBy(l => l.EndsOn);
-                return (lapsed?.EndsOn, lapsed?.MaxUsers);
+                return (lapsed?.EndsOn, lapsed?.MaxUsers, lapsed?.MaxBranches);
             }
 
             var endsOn = current.EndsOn;
             for (var next = Next(endsOn); next is not null; next = Next(endsOn))
                 endsOn = next.EndsOn;
-            return (endsOn, current.MaxUsers);
+            return (endsOn, current.MaxUsers, current.MaxBranches);
 
             BusinessLicense? Next(DateOnly end) => active.FirstOrDefault(l => l.StartsOn <= end.AddDays(1) && l.EndsOn > end);
         }

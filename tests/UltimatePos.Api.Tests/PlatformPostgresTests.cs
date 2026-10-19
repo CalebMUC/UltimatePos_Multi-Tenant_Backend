@@ -32,6 +32,8 @@ public class PlatformPostgresTests : IClassFixture<MultiBusinessDatabase>
     {
         _db.Caller.UserId = _db.SuperUserId;
         _db.Caller.BusinessId = null;
+        _db.Caller.BranchId = null;
+        _db.Caller.BranchIds = new List<Guid>();
         _db.Caller.Permissions = null;
     }
 
@@ -39,6 +41,18 @@ public class PlatformPostgresTests : IClassFixture<MultiBusinessDatabase>
     {
         _db.Caller.UserId = null;
         _db.Caller.BusinessId = null;
+        _db.Caller.BranchId = null;
+        _db.Caller.BranchIds = new List<Guid>();
+    }
+
+    /// <summary>As the user's token would after signing in: the business, and its head office.</summary>
+    private async Task SignInAsync(Guid userId, Guid businessId)
+    {
+        var headOffice = await _db.RunAsync(sp => sp.GetRequiredService<UltimatePos.Application.Branches.IBranchRepository>().GetHeadOfficeAsync(businessId));
+        _db.Caller.UserId = userId;
+        _db.Caller.BusinessId = businessId;
+        _db.Caller.BranchId = headOffice!.BranchId;
+        _db.Caller.BranchIds = new List<Guid> { headOffice.BranchId };
     }
 
     private Task<T> Platform<T>(Func<PlatformService, Task<T>> call) => _db.RunAsync(sp => call(sp.GetRequiredService<PlatformService>()));
@@ -89,8 +103,7 @@ public class PlatformPostgresTests : IClassFixture<MultiBusinessDatabase>
         var login = await LoginAsync(ownerEmail, result.Owner.TemporaryPassword!);
         Assert.Equal(businessId, login.ActiveBusinessId);
         Assert.True(login.MustChangePassword);
-        _db.Caller.UserId = login.User.Id;
-        _db.Caller.BusinessId = businessId;
+        await SignInAsync(login.User.Id, businessId);
         await _db.RunAsync(sp => sp.GetRequiredService<AuthService>().ChangePasswordAsync(new ChangePasswordRequest(result.Owner.TemporaryPassword!, "MyOwn2026!")));
         SignedOut();
         Assert.False((await LoginAsync(ownerEmail, "MyOwn2026!")).MustChangePassword);
@@ -180,8 +193,7 @@ public class PlatformPostgresTests : IClassFixture<MultiBusinessDatabase>
             SettlementMethod.Cash, null, null)));
 
         var owner = (await Platform(p => p.GetBusinessAsync(id))).Members.Single();
-        _db.Caller.UserId = owner.Id;
-        _db.Caller.BusinessId = id;
+        await SignInAsync(owner.Id, id);
         _db.Caller.Permissions = null;
         await _db.RunAsync(sp => sp.GetRequiredService<AuthService>().RegisterAsync(new RegisterRequest($"second-{Guid.NewGuid():N}@t.test", "Pass1234!", "Second", "0700", "Admin")));
         var full = await Assert.ThrowsAsync<BusinessAccessDeniedException>(() => _db.RunAsync(sp => sp.GetRequiredService<AuthService>().RegisterAsync(
@@ -199,8 +211,7 @@ public class PlatformPostgresTests : IClassFixture<MultiBusinessDatabase>
         var owner = (await Platform(p => p.GetBusinessAsync(id))).Members.Single();
 
         // One cash sale of 3 x 50.
-        _db.Caller.UserId = owner.Id;
-        _db.Caller.BusinessId = id;
+        await SignInAsync(owner.Id, id);
         var pcs = await _db.RunAsync(async sp => (await sp.GetRequiredService<CatalogService>().GetUnitsOfMeasureAsync()).Single(u => u.Symbol == "pcs").UnitOfMeasureId);
         var category = await _db.RunAsync(sp => sp.GetRequiredService<CatalogService>().CreateCategoryAsync(new CreateCategoryRequestDto("General", "GEN", null)));
         var product = await _db.RunAsync(sp => sp.GetRequiredService<CatalogService>().CreateProductAsync(new CreateProductRequestDto(

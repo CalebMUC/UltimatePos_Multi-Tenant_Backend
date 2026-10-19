@@ -187,8 +187,14 @@ public class CatalogRepository : ICatalogRepository
         return (await GetProductByIdAsync(productId))!;
     }
 
+    /// <summary>
+    /// Stock held at ANY branch, including ones the caller can't see (the product, already checked to be this business's, is shared by every branch). Absolute values, so
+    /// a negative balance at one branch can't hide stock at another.
+    /// </summary>
     public async Task<decimal> GetQuantityOnHandAsync(Guid productId) =>
-        await _context.StockLevels.Where(s => s.ProductId == productId).Select(s => (decimal?)s.QuantityOnHand).FirstOrDefaultAsync() ?? 0m;
+        await _context.StockLevels.IgnoreQueryFilters()
+            .Where(s => s.ProductId == productId)
+            .SumAsync(s => (decimal?)Math.Abs(s.QuantityOnHand)) ?? 0m;
 
     public async Task<Product> UpdateProductAsync(Guid productId, UpdateProductRequestDto request, Guid? updatedBy)
     {

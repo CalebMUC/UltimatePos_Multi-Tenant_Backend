@@ -22,9 +22,11 @@ namespace UltimatePos.Application.Expenses
         private readonly ICurrentUser _currentUser;
 
         private readonly ISystemEventRecorder _events;
+        private readonly IBranchContext _branches;
 
-        public ExpenseService(IExpenseRepository repository, ICurrentUser currentUser, ISystemEventRecorder events)
+        public ExpenseService(IExpenseRepository repository, ICurrentUser currentUser, ISystemEventRecorder events, IBranchContext branches)
         {
+            _branches = branches;
             _events = events;
             _repository = repository;
             _currentUser = currentUser;
@@ -111,6 +113,7 @@ namespace UltimatePos.Application.Expenses
 
             var supplier = await ResolveSupplierAsync(request.SupplierId, requireActive: true);
             await EnsureNotDuplicateAsync(request.PaymentMethod, reference, supplier, details.SupplierInvoiceNumber, null);
+            var branchId = ResolveBranch(request.BranchId, request.BusinessWide);
 
             var number = await _repository.GetNextDocumentNumberAsync("EXP");
             var created = await _repository.CreateExpenseAsync(new Expense
@@ -129,6 +132,7 @@ namespace UltimatePos.Application.Expenses
                 ReceiptUrl = details.ReceiptUrl,
                 Notes = details.Notes,
                 Status = ExpenseStatus.Posted,
+                BranchId = branchId,
                 CreatedBy = _currentUser.UserId
             });
 
@@ -344,10 +348,27 @@ namespace UltimatePos.Application.Expenses
         private static ExpenseCategoryDto ToDto(ExpenseCategory c) =>
             new(c.ExpenseCategoryId, c.Code, c.Name, c.Description, c.IsActive);
 
+        /// <summary>The branch an expense is charged to, or null for a business-wide one (only those who see every branch may post it).</summary>
+        private Guid? ResolveBranch(Guid? requested, bool businessWide)
+        {
+            if (businessWide)
+            {
+                if (requested is not null)
+                    throw new ValidationException("branchId", "A business-wide expense isn't charged to a branch — leave branchId out.");
+                if (!_currentUser.HasPermission(Common.BranchContext.AccessAllPermission))
+                    throw new ForbiddenException("Only users who see every branch can post a business-wide expense.");
+                return null;
+            }
+            var branchId = requested ?? _branches.RequireActiveBranchId();
+            if (!_branches.CanSee(branchId))
+                throw new ValidationException("branchId", "Branch not found.");
+            return branchId;
+        }
+
         private static ExpenseDto ToDto(Expense e) =>
             new(e.ExpenseId, e.ExpenseNumber, e.ExpenseDate, e.ExpenseCategoryId, e.Category.Code, e.Category.Name, e.Description,
                 e.Amount, e.PaymentMethod.ToString(), e.PaymentReference, e.SupplierId, e.Supplier?.SupplierName, e.PayeeName,
                 e.SupplierInvoiceNumber, e.EtimsControlNumber, e.ReceiptUrl, e.Notes, e.Status.ToString(), e.CreatedAt,
-                e.VoidedAt, e.VoidReason);
+                e.VoidedAt, e.VoidReason, e.BranchId);
     }
 }

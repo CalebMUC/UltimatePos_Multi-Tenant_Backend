@@ -87,7 +87,7 @@ namespace UltimatePos.Application.Business
             var licenses = await _repository.GetLicensesAsync();
             return new BusinessLicenseStatusDto(
                 Platform.PlatformService.ToAccessDto(Licensing.LicensePolicy.Evaluate(business, _licensing, Licensing.LicensePolicy.Today)),
-                business.LicenseMaxUsers, licenses.Select(Platform.PlatformService.ToDto));
+                business.LicenseMaxUsers, licenses.Select(Platform.PlatformService.ToDto), business.LicenseMaxBranches);
         }
 
         private async Task EnsureCanSeeAsync(Guid businessId)

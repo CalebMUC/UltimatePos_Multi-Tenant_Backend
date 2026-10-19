@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -6,12 +6,14 @@ using System.Threading.Tasks;
 
 namespace UltimatePos.Application.Inventory.Dtos
 {
+    /// <summary>The stock of one product at one branch.</summary>
     /// <param name="SellableQuantity">For batch-tracked products, only what is in unexpired batches; otherwise the quantity on hand.</param>
     public record StockLevelDto(Guid ProductId, string ProductName, string Sku, decimal QuantityOnHand, decimal ReorderLevel, bool BelowReorderLevel,
-        bool IsBatchTracked = false, decimal? SellableQuantity = null, string? BaseUnitSymbol = null);
+        bool IsBatchTracked = false, decimal? SellableQuantity = null, string? BaseUnitSymbol = null,
+        Guid BranchId = default, string? KraBranchId = null, string? BranchName = null);
     public record StockMovementDto(Guid StockMovementId, Guid ProductId, string MovementType, decimal QuantityChange,
         string ReferenceType, Guid ReferenceId, Guid BatchId, string? Notes, DateTime CreatedAt,
-        Guid? StockBatchId = null, string? BatchNumber = null);
+        Guid? StockBatchId = null, string? BatchNumber = null, Guid BranchId = default);
 
     /// <param name="QuantityChange">Signed, in UnitOfMeasureId. Positive adds stock, negative removes it.</param>
     /// <param name="StockBatchId">Batch-tracked products: the lot being adjusted. Required to remove stock (e.g. writing off an
@@ -23,10 +25,12 @@ namespace UltimatePos.Application.Inventory.Dtos
     /// <param name="ExpiryStatus">Expired, NearExpiry (within the window asked for), Ok, or NoExpiry.</param>
     public record StockBatchDto(Guid StockBatchId, Guid ProductId, string ProductName, string Sku, string BatchNumber,
         DateOnly? ExpiryDate, DateOnly? ManufactureDate, decimal QuantityOnHand, string? BaseUnitSymbol, decimal? UnitCost,
-        int? DaysToExpiry, string ExpiryStatus, Guid? SupplierId, Guid? PurchaseOrderId, DateTime CreatedAt);
+        int? DaysToExpiry, string ExpiryStatus, Guid? SupplierId, Guid? PurchaseOrderId, DateTime CreatedAt,
+        Guid BranchId = default, string? KraBranchId = null, string? BranchName = null);
 
     public record ExpiryReportItemDto(Guid StockBatchId, Guid ProductId, string ProductName, string Sku, string BatchNumber, DateOnly ExpiryDate,
-        int DaysToExpiry, string ExpiryStatus, decimal QuantityOnHand, string? BaseUnitSymbol, decimal? Value);
+        int DaysToExpiry, string ExpiryStatus, decimal QuantityOnHand, string? BaseUnitSymbol, decimal? Value,
+        Guid BranchId = default, string? KraBranchId = null, string? BranchName = null);
     /// <param name="ExpiredValue">At the products' average cost. Null without Costing.View.</param>
     public record ExpiryReportDto(DateOnly AsOf, int WithinDays, int ExpiredBatchCount, decimal? ExpiredValue, int NearExpiryBatchCount,
         decimal? NearExpiryValue, IEnumerable<ExpiryReportItemDto> Items);

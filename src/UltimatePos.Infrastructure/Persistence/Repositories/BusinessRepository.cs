@@ -15,8 +15,9 @@ public class BusinessRepository : IBusinessRepository
     public async Task<bool> KraPinExistsAsync(string kraPin, Guid? exceptBusinessId = null) =>
         await _context.Businesses.AnyAsync(b => b.KraPin == kraPin && (exceptBusinessId == null || b.BusinessId != exceptBusinessId));
 
-    public async Task<bool> MpesaShortCodeExistsAsync(string shortCode, Guid? exceptBusinessId = null) =>
-        await _context.Businesses.AnyAsync(b => b.MpesaShortCode == shortCode && (exceptBusinessId == null || b.BusinessId != exceptBusinessId));
+    public async Task<bool> MpesaShortCodeExistsAsync(string shortCode, Guid? exceptBusinessId = null, bool includeBranches = true) =>
+        await _context.Businesses.AnyAsync(b => b.MpesaShortCode == shortCode && (exceptBusinessId == null || b.BusinessId != exceptBusinessId))
+        || (includeBranches && await _context.Branches.IgnoreQueryFilters().AnyAsync(b => b.MpesaShortCode == shortCode));
 
     public async Task<IEnumerable<BusinessProfile>> GetBusinessesAsync() =>
         await _context.Businesses.AsNoTracking().OrderBy(b => b.BusinessName).ToListAsync();

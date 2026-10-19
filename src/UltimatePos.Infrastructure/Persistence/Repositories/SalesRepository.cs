@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Sales;
 using UltimatePos.Application.Sales.Dtos;
 using UltimatePos.Domain.Entities;
@@ -12,9 +13,11 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         private readonly UltimatePosDbContext _context;
         private readonly StockLedger _stockLedger;
         private readonly CustomerLedger _customerLedger;
+        private readonly IBranchContext _branches;
 
-        public SalesRepository(UltimatePosDbContext context, StockLedger stockLedger, CustomerLedger customerLedger)
+        public SalesRepository(UltimatePosDbContext context, StockLedger stockLedger, CustomerLedger customerLedger, IBranchContext branches)
         {
+            _branches = branches;
             _context = context;
             _stockLedger = stockLedger;
             _customerLedger = customerLedger;
@@ -74,6 +77,9 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         /// </summary>
         private async Task IssueLinesAsync(Sale sale, DateOnly today, bool strictBatches)
         {
+            // Stock leaves the branch the sale is rung up at (an M-Pesa confirmation has no signed-in branch: the sale carries it).
+            if (sale.BranchId == Guid.Empty)
+                sale.BranchId = _branches.RequireActiveBranchId();
             var productIds = sale.Lines.Select(l => l.ProductId).Distinct().ToList();
             var batchTracked = (await _context.Products.AsNoTracking()
                     .Where(p => productIds.Contains(p.ProductId) && p.IsBatchTracked)
@@ -85,6 +91,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 var template = new StockMovement
                 {
                     ProductId = line.ProductId,
+                    BranchId = sale.BranchId,
                     MovementType = StockMovementType.Sale,
                     QuantityChange = -line.QuantityInBaseUnits,
                     ReferenceType = "Sale",
@@ -109,7 +116,9 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 {
                     // The customer has already paid: issue what the lots hold and record the rest against the product total.
                     var available = await _context.StockBatches
-                        .Where(b => b.ProductId == line.ProductId && b.QuantityOnHand > 0 && (b.ExpiryDate == null || b.ExpiryDate >= today))
+                        .IgnoreQueryFilters()
+                        .Where(b => b.ProductId == line.ProductId && b.BranchId == sale.BranchId && b.QuantityOnHand > 0
+                                    && (b.ExpiryDate == null || b.ExpiryDate >= today))
                         .SumAsync(b => (decimal?)b.QuantityOnHand) ?? 0m;
                     var fromLots = Math.Min(available, line.QuantityInBaseUnits);
                     issued = fromLots > 0
@@ -138,6 +147,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         private static StockMovement Clone(StockMovement m, decimal quantityChange) => new()
         {
             ProductId = m.ProductId,
+            BranchId = m.BranchId,
             MovementType = m.MovementType,
             QuantityChange = quantityChange,
             UnitCost = m.UnitCost,
@@ -192,6 +202,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             var totalCount = await query.CountAsync();
             var items = await query
                 .Include(s => s.Customer)
+                .Include(s => s.Branch)
                 .Include(s => s.Prescription)
                 .Include(s => s.Lines).ThenInclude(l => l.Product)
                 .Include(s => s.Lines).ThenInclude(l => l.UnitOfMeasure)
@@ -206,6 +217,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         public async Task<Sale?> GetSaleByIdAsync(Guid saleId) =>
             await _context.Sales.AsNoTracking()
                 .Include(s => s.Customer)
+                .Include(s => s.Branch)
                 .Include(s => s.Prescription)
                 .Include(s => s.Lines).ThenInclude(l => l.Product)
                 .Include(s => s.Lines).ThenInclude(l => l.UnitOfMeasure)
@@ -239,7 +251,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             sale.LastUpdatedAt = DateTime.UtcNow;
 
             foreach (var line in sale.Lines.OrderBy(l => l.ProductId))
-                await RestockAsync(line, line.QuantityInBaseUnits, StockMovementType.SaleVoid, "Sale", saleId, "Sale voided", updatedBy, markReturned: false);
+                await RestockAsync(sale.BranchId, line, line.QuantityInBaseUnits, StockMovementType.SaleVoid, "Sale", saleId, "Sale voided", updatedBy,
+                    markReturned: false);
 
             if (reversalLedgerEntry is not null)
                 await _customerLedger.ApplyAsync(reversalLedgerEntry);
@@ -252,7 +265,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         /// Puts <paramref name="quantityInBase"/> of a sale line back on the shelf at the cost it left at — into the lots it came from
         /// (latest-expiring first, never more than each lot gave), anything left over against the product total.
         /// </summary>
-        private async Task RestockAsync(SaleLine line, decimal quantityInBase, StockMovementType type, string referenceType, Guid referenceId,
+        private async Task RestockAsync(Guid branchId, SaleLine line, decimal quantityInBase, StockMovementType type, string referenceType, Guid referenceId,
             string notes, Guid? userId, bool markReturned)
         {
             decimal? unitCost = line.UnitCost > 0 ? line.UnitCost : null; // unknown cost leaves the average alone
@@ -268,7 +281,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 remaining -= part;
                 await _stockLedger.ApplyToBatchAsync(new StockMovement
                 {
-                    ProductId = line.ProductId, MovementType = type, QuantityChange = part, UnitCost = unitCost,
+                    ProductId = line.ProductId, BranchId = branchId, MovementType = type, QuantityChange = part, UnitCost = unitCost,
                     ReferenceType = referenceType, ReferenceId = referenceId, BatchId = referenceId, Notes = notes, CreatedBy = userId
                 }, allocation.StockBatchId);
                 if (markReturned)
@@ -278,7 +291,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             if (remaining > 0)
                 await _stockLedger.ApplyAsync(new StockMovement
                 {
-                    ProductId = line.ProductId, MovementType = type, QuantityChange = remaining, UnitCost = unitCost,
+                    ProductId = line.ProductId, BranchId = branchId, MovementType = type, QuantityChange = remaining, UnitCost = unitCost,
                     ReferenceType = referenceType, ReferenceId = referenceId, BatchId = referenceId, Notes = notes, CreatedBy = userId
                 }, allowNegative: true);
         }
@@ -305,6 +318,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             if (sale.Status != SaleStatus.Completed)
                 throw new InvalidAssignmentException($"Goods can only be returned against a Completed sale — this one is {sale.Status}.");
 
+            // Returned goods go back into the stock of the branch that sold them.
+            saleReturn.BranchId = sale.BranchId;
             foreach (var returned in saleReturn.Lines.OrderBy(l => l.ProductId))
             {
                 var line = sale.Lines.First(l => l.SaleLineId == returned.SaleLineId);
@@ -313,7 +328,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
                 line.QuantityReturned += returned.Quantity;
                 if (returned.Restock)
-                    await RestockAsync(line, returned.QuantityInBaseUnits, StockMovementType.SaleReturn, "SaleReturn", saleReturn.SaleReturnId,
+                    await RestockAsync(sale.BranchId, line, returned.QuantityInBaseUnits, StockMovementType.SaleReturn, "SaleReturn", saleReturn.SaleReturnId,
                         $"Returned: {saleReturn.Reason}", saleReturn.CreatedBy, markReturned: true);
             }
 

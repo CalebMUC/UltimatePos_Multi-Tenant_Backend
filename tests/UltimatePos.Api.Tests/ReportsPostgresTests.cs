@@ -113,6 +113,8 @@ public sealed class ReportsDatabase : IAsyncLifetime
         public Guid? UserId => null;
         public bool IsAuthenticated => true;
         public Guid? BusinessId => ReportsSeed.Active ? ReportsSeed.BusinessId : null;
+        public Guid? BranchId => ReportsSeed.Active ? ReportsSeed.HeadOfficeId : null;
+        public IReadOnlyList<Guid> BranchIds => ReportsSeed.Active ? new[] { ReportsSeed.HeadOfficeId } : Array.Empty<Guid>();
         public bool HasPermission(string permission) => true;
     }
 }
@@ -128,6 +130,8 @@ public sealed class ReportsSeed
 
     /// <summary>The seeded business. Fixed, so the test current user can be signed in to it from any scope.</summary>
     public static readonly Guid BusinessId = Guid.Parse("7e57b00c-0000-4000-8000-000000000001");
+    /// <summary>Its head office: everything in the seed happens there (the caller's active branch stamps it).</summary>
+    public static readonly Guid HeadOfficeId = Guid.Parse("7e57b00c-0000-4000-8000-0000000000b0");
     public static volatile bool Active;
 
     public static DateTime Utc(int month, int day, int hour = 9, int minute = 0, int second = 0) =>
@@ -138,6 +142,7 @@ public sealed class ReportsSeed
         var s = new ReportsSeed { AdminUserId = (await db.Users.SingleAsync(u => u.Username == "admin")).UserId };
 
         var business = new BusinessProfile { BusinessId = BusinessId, BusinessName = "Test Mill", KraPin = "P000000001X" };
+        db.Add(new Branch { BranchId = HeadOfficeId, BusinessId = BusinessId, BranchNumber = 0, Name = "Head Office" });
         var category = new Category { CategoryId = Guid.NewGuid(), Name = "Flour", Code = "FLR" };
         var kg = new UnitOfMeasure { UnitOfMeasureId = s.Kg = Guid.NewGuid(), Name = "Kilogram", Symbol = "kg" };
         var bag = new UnitOfMeasure { UnitOfMeasureId = s.Bag = Guid.NewGuid(), Name = "50kg bag", Symbol = "bag50" };

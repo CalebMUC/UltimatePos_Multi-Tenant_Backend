@@ -43,6 +43,7 @@ namespace UltimatePos.Infrastructure.Notifications
         {
             SystemEventId = Guid.NewGuid(),
             BusinessId = draft.BusinessId ?? _tenant.BusinessId,
+            BranchId = draft.BranchId,
             EventType = draft.EventType,
             Severity = draft.Severity,
             Summary = draft.Summary.Length <= 1000 ? draft.Summary : draft.Summary[..1000],

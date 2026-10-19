@@ -48,16 +48,17 @@ namespace UltimatePos.Application.Notifications
             foreach (var row in await _sweep.GetLowStockAsync())
             {
                 var unit = row.UnitSymbol is null ? string.Empty : " " + row.UnitSymbol;
+                var at = $"at {Branch.FormatKraBranchId(row.BranchNumber)} {row.BranchName}";
                 if (row.QuantityOnHand <= 0)
                     Raise(new SystemEventDraft(SystemEventTypes.StockOutOfStock,
-                        $"{row.ProductName} is out of stock (reorder level {row.ReorderLevel:0.##}{unit}).",
-                        EventSeverity.Critical, "Product", row.ProductId, new { row.QuantityOnHand, row.ReorderLevel },
-                        AlertKey: AlertKeys.StockOut(row.ProductId)));
+                        $"{row.ProductName} is out of stock {at} (reorder level {row.ReorderLevel:0.##}{unit}).",
+                        EventSeverity.Critical, "Product", row.ProductId, new { row.QuantityOnHand, row.ReorderLevel, row.BranchId },
+                        AlertKey: AlertKeys.StockOut(row.ProductId, row.BranchId), BranchId: row.BranchId));
                 else
                     Raise(new SystemEventDraft(SystemEventTypes.StockBelowReorderLevel,
-                        $"{row.ProductName} is down to {row.QuantityOnHand:0.##}{unit} (reorder level {row.ReorderLevel:0.##}{unit}).",
-                        EventSeverity.Warning, "Product", row.ProductId, new { row.QuantityOnHand, row.ReorderLevel },
-                        AlertKey: AlertKeys.StockLow(row.ProductId)));
+                        $"{row.ProductName} is down to {row.QuantityOnHand:0.##}{unit} {at} (reorder level {row.ReorderLevel:0.##}{unit}).",
+                        EventSeverity.Warning, "Product", row.ProductId, new { row.QuantityOnHand, row.ReorderLevel, row.BranchId },
+                        AlertKey: AlertKeys.StockLow(row.ProductId, row.BranchId), BranchId: row.BranchId));
             }
 
             // Batches expired, or expiring within the warning window.
@@ -68,17 +69,18 @@ namespace UltimatePos.Application.Notifications
                 var days = batch.ExpiryDate.DayNumber - today.DayNumber;
                 if (days < 0)
                     Raise(new SystemEventDraft(SystemEventTypes.BatchExpired,
-                        $"Batch {batch.BatchNumber} of {batch.ProductName} expired on {batch.ExpiryDate:yyyy-MM-dd}; {quantity} still in stock — write it off.",
+                        $"Batch {batch.BatchNumber} of {batch.ProductName} expired on {batch.ExpiryDate:yyyy-MM-dd}; {quantity} still in stock at " +
+                        $"{Branch.FormatKraBranchId(batch.BranchNumber)} {batch.BranchName} — write it off.",
                         EventSeverity.Critical, "StockBatch", batch.StockBatchId,
-                        new { batch.ProductId, batch.BatchNumber, batch.ExpiryDate, batch.QuantityOnHand },
-                        AlertKey: AlertKeys.BatchExpired(batch.StockBatchId)));
+                        new { batch.ProductId, batch.BatchNumber, batch.ExpiryDate, batch.QuantityOnHand, batch.BranchId },
+                        AlertKey: AlertKeys.BatchExpired(batch.StockBatchId), BranchId: batch.BranchId));
                 else
                     Raise(new SystemEventDraft(SystemEventTypes.BatchExpiringSoon,
                         $"Batch {batch.BatchNumber} of {batch.ProductName} expires {(days == 0 ? "today" : $"in {days} day{(days == 1 ? "" : "s")}")} " +
-                        $"({batch.ExpiryDate:yyyy-MM-dd}); {quantity} in stock.",
+                        $"({batch.ExpiryDate:yyyy-MM-dd}); {quantity} in stock at {Branch.FormatKraBranchId(batch.BranchNumber)} {batch.BranchName}.",
                         EventSeverity.Warning, "StockBatch", batch.StockBatchId,
-                        new { batch.ProductId, batch.BatchNumber, batch.ExpiryDate, batch.QuantityOnHand, DaysToExpiry = days },
-                        AlertKey: AlertKeys.BatchExpiring(batch.StockBatchId)));
+                        new { batch.ProductId, batch.BatchNumber, batch.ExpiryDate, batch.QuantityOnHand, DaysToExpiry = days, batch.BranchId },
+                        AlertKey: AlertKeys.BatchExpiring(batch.StockBatchId), BranchId: batch.BranchId));
             }
 
             // Purchase orders past their expected delivery date.
@@ -86,7 +88,7 @@ namespace UltimatePos.Application.Notifications
                 Raise(new SystemEventDraft(SystemEventTypes.PurchaseOrderOverdue,
                     $"{order.OrderNumber} from {order.SupplierName} was due on {order.ExpectedDeliveryDate:yyyy-MM-dd} and is not fully received.",
                     EventSeverity.Warning, "PurchaseOrder", order.PurchaseOrderId, new { order.OrderNumber, order.ExpectedDeliveryDate },
-                    AlertKey: AlertKeys.PurchaseOrderOverdue(order.PurchaseOrderId)));
+                    AlertKey: AlertKeys.PurchaseOrderOverdue(order.PurchaseOrderId), BranchId: order.BranchId));
 
             // Till payments nobody has matched to a sale.
             var cutoff = DateTime.UtcNow.AddMinutes(-_settings.TillUnmatchedMinutes);
@@ -95,7 +97,7 @@ namespace UltimatePos.Application.Notifications
                     $"M-Pesa payment {payment.ReceiptNumber} of {payment.Amount:0.00} from {payment.PhoneNumber} has not been matched to a sale.",
                     EventSeverity.Warning, "MpesaTransaction", payment.MpesaTransactionId,
                     new { payment.ReceiptNumber, payment.Amount, payment.PhoneNumber, payment.ReceivedAt },
-                    AlertKey: AlertKeys.TillPaymentUnmatched(payment.MpesaTransactionId)));
+                    AlertKey: AlertKeys.TillPaymentUnmatched(payment.MpesaTransactionId), BranchId: payment.BranchId));
 
             // The business's own licence: warn before it ends, then again once it has.
             if (await _sweep.GetCurrentBusinessAsync() is { LicenseEndsOn: { } endsOn } business)
