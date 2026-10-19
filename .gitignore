@@ -6,4 +6,5 @@ obj/
 .idea/
 # Local API run logs
 api-dev.log
+api-dev.err.log
 api-dev.log.err
