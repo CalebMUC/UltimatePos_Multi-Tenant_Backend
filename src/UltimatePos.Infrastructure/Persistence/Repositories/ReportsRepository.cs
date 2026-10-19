@@ -23,7 +23,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 .Where(s => s.Status != SaleStatus.Failed && s.CreatedAt >= fromUtc && s.CreatedAt < toUtcExclusive)
                 .OrderBy(s => s.CreatedAt)
                 .Select(s => new SaleReportRow(s.SaleId, s.SaleNumber, s.CreatedAt, s.Status, s.PaymentMethod, s.CustomerId,
-                    s.Customer != null ? s.Customer.CustomerName : null, s.TotalAmount))
+                    s.Customer != null ? s.Customer.CustomerName : null, s.TotalAmount, s.CreatedBy,
+                    _context.Users.Where(u => u.UserId == s.CreatedBy).Select(u => u.Username).FirstOrDefault()))
                 .ToListAsync();
 
         // ---------------------------------------------------------------- Customers

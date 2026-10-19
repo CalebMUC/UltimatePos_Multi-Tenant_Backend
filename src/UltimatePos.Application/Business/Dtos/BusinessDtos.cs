@@ -24,9 +24,11 @@ namespace UltimatePos.Application.Business.Dtos
     bool IsVatRegistered = false,
     string? MpesaShortCode = null,
     decimal? MaxDiscountPercent = null,
-    UltimatePos.Application.Platform.BusinessOwnerRequestDto? Owner = null);
+    UltimatePos.Application.Platform.BusinessOwnerRequestDto? Owner = null,
+    bool AllowNegativeStock = true);
 
     /// <summary>Full replace of the editable profile. Kind cannot change: it decides what the business may purchase.</summary>
+    /// <param name="AllowNegativeStock">Null keeps the current setting (older clients do not send it).</param>
     public record UpdateBusinessRequestDto(
         string BusinessName,
         string? TradingName,
@@ -41,7 +43,8 @@ namespace UltimatePos.Application.Business.Dtos
         string? BackgroundImageUrl,
         bool IsVatRegistered = false,
         string? MpesaShortCode = null,
-        decimal? MaxDiscountPercent = null);
+        decimal? MaxDiscountPercent = null,
+        bool? AllowNegativeStock = null);
 
     public record BusinessDto(
         Guid BusinessId, string BusinessName, string? TradingName, BusinessType BusinessType, BusinessKind Kind,
@@ -49,7 +52,7 @@ namespace UltimatePos.Application.Business.Dtos
         string? PhoneNumber, string? Email, string? LogoUrl, string? BackgroundImageUrl, bool IsActive,
         bool IsVatRegistered, string? MpesaShortCode, decimal? MaxDiscountPercent,
         bool IsSuspended = false, string? SuspensionReason = null, DateOnly? LicenseEndsOn = null, int? LicenseMaxUsers = null,
-        int? LicenseMaxBranches = null);
+        int? LicenseMaxBranches = null, bool AllowNegativeStock = true);
 
     /// <param name="BusinessId">Optional. Customers are always registered in the business signed in to; if given it must be that one.</param>
     /// <param name="PriceType">Which price list the customer buys at. Defaults to Wholesale for a wholesaler, Retail for a retailer.</param>

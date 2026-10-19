@@ -84,9 +84,23 @@ namespace UltimatePos.Application.Reports
                 .Take(top)
                 .ToList();
 
+            var topProductUnits = completedSaleLines.GroupBy(l => (l.ProductId, l.UnitOfMeasureId))
+                .Select(g => new SalesByProductUnitDto(g.Key.ProductId, g.First().ProductName, g.First().Sku, g.Key.UnitOfMeasureId,
+                    g.First().UnitSymbol ?? string.Empty, g.Sum(l => l.Quantity), g.Sum(l => l.QuantityInBaseUnits), g.Sum(l => l.LineTotal),
+                    Percent(g.Sum(l => l.LineTotal), lineRevenue)))
+                .OrderByDescending(p => p.Revenue).ThenBy(p => p.ProductName).ThenBy(p => p.UnitSymbol)
+                .Take(top)
+                .ToList();
+
+            var byCashier = completed.GroupBy(s => s.CreatedBy)
+                .Select(g => new SalesByCashierDto(g.Key, g.First().CashierName, g.Count(), g.Sum(s => s.TotalAmount),
+                    Percent(g.Sum(s => s.TotalAmount), revenue)))
+                .OrderByDescending(c => c.Total).ThenBy(c => c.CashierName)
+                .ToList();
+
             return new SalesReportDto(period.From, period.To, completed.Count, revenue, Average(revenue, completed.Count),
                 voided.Count, voided.Sum(s => s.TotalAmount), pending.Count, pending.Sum(s => s.TotalAmount),
-                byDay, byMethod, topCustomers, topProducts);
+                byDay, byMethod, topCustomers, topProducts, topProductUnits, byCashier);
         }
 
         // =====================================================================

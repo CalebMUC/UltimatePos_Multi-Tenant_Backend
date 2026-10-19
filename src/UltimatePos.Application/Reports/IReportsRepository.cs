@@ -5,9 +5,10 @@ using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Application.Reports
 {
-    /// <summary>One sale reduced to what the sales report and dashboard need. CustomerName is null for walk-in sales.</summary>
+    /// <summary>One sale reduced to what the sales report and dashboard need. CustomerName is null for walk-in sales.
+    /// CreatedBy / CashierName are the user who rang the sale up (null on sales recorded without a user).</summary>
     public record SaleReportRow(Guid SaleId, string SaleNumber, DateTime CreatedAt, SaleStatus Status, PaymentMethod PaymentMethod,
-        Guid? CustomerId, string? CustomerName, decimal TotalAmount);
+        Guid? CustomerId, string? CustomerName, decimal TotalAmount, Guid? CreatedBy = null, string? CashierName = null);
 
     public record CustomerBalanceRow(Guid CustomerId, string CustomerName, decimal OutstandingBalance);
 

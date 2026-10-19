@@ -28,17 +28,32 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             return await _context.NextSequenceNumberAsync(prefix);
         }
 
-        public async Task RecordCompletedSaleAsync(Sale sale, CustomerLedgerEntry? ledgerEntry, DateOnly today)
+        public async Task RecordCompletedSaleAsync(Sale sale, CustomerLedgerEntry? ledgerEntry, DateOnly today, bool allowNegativeStock,
+            Guid? tillTransactionId = null)
         {
             await using var tx = await _context.Database.BeginTransactionAsync();
 
             _context.Sales.Add(sale);
-            await IssueLinesAsync(sale, today, strictBatches: true);
+            await IssueLinesAsync(sale, today, strictBatches: true, allowNegativeStock);
 
             if (ledgerEntry is not null)
                 await _customerLedger.ApplyAsync(ledgerEntry);
 
             await _context.SaveChangesAsync();
+
+            // Claimed in the same transaction, and only while still unmatched: two cashiers ringing up sales against one till payment
+            // at the same moment get one sale, and the other is rolled back with its stock.
+            if (tillTransactionId is { } transactionId)
+            {
+                var claimed = await _context.Database.ExecuteSqlInterpolatedAsync($"""
+                    UPDATE "MpesaTransactions"
+                    SET "Status" = {MpesaTransactionStatus.Matched.ToString()}, "SaleId" = {sale.SaleId}, "LastUpdatedAt" = now()
+                    WHERE "MpesaTransactionId" = {transactionId} AND "Status" = {MpesaTransactionStatus.Received.ToString()} AND "SaleId" IS NULL
+                    """);
+                if (claimed == 0)
+                    throw new InvalidAssignmentException("This M-Pesa transaction has just been matched to another sale.");
+            }
+
             await tx.CommitAsync();
         }
 
@@ -52,17 +67,24 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         {
             await using var tx = await _context.Database.BeginTransactionAsync();
 
+            // A callback and a reconciliation (or two callbacks) can arrive together: lock the sale and settle it only while it is
+            // still Pending, so its stock leaves once.
+            await _context.Database.ExecuteSqlInterpolatedAsync($"""SELECT 1 FROM "Sales" WHERE "SaleId" = {saleId} FOR UPDATE""");
             var sale = await _context.Sales.Include(s => s.Lines).ThenInclude(l => l.BatchAllocations)
                            .FirstOrDefaultAsync(s => s.SaleId == saleId)
                      ?? throw new NotFoundException($"Sale '{saleId}' not found.");
+            if (sale.Status != SaleStatus.Pending)
+                return;
 
             sale.Status = SaleStatus.Completed;
             sale.LastUpdatedAt = DateTime.UtcNow;
             if (mpesaReceiptNumber is not null)
                 AppendNote(sale, $"M-Pesa receipt: {mpesaReceiptNumber}");
 
-            // Cost is fixed when stock actually leaves (at confirmation), not when the prompt was sent.
-            await IssueLinesAsync(sale, today, strictBatches: false);
+            // Cost is fixed when stock actually leaves (at confirmation), not when the prompt was sent. The customer has already paid,
+            // so stock is issued even if it has run out since the prompt was sent (a batch shortfall is noted on the sale; any product
+            // driven to zero or below raises the usual out-of-stock alert).
+            await IssueLinesAsync(sale, today, strictBatches: false, allowNegativeStock: true);
 
             if (ledgerEntry is not null)
                 await _customerLedger.ApplyAsync(ledgerEntry);
@@ -73,9 +95,10 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
         /// <summary>
         /// Takes each line's stock out, in product order so concurrent sales lock rows in the same sequence. Batch-tracked products
-        /// come out first-expiry-first-out; the cost each line left stock at is stamped on it.
+        /// come out first-expiry-first-out; the cost each line left stock at is stamped on it. Other products may go negative only when
+        /// <paramref name="allowNegativeStock"/>; otherwise the issue is guarded in SQL, so two sales at once cannot oversell between them.
         /// </summary>
-        private async Task IssueLinesAsync(Sale sale, DateOnly today, bool strictBatches)
+        private async Task IssueLinesAsync(Sale sale, DateOnly today, bool strictBatches, bool allowNegativeStock)
         {
             // Stock leaves the branch the sale is rung up at (an M-Pesa confirmation has no signed-in branch: the sale carries it).
             if (sale.BranchId == Guid.Empty)
@@ -102,7 +125,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
                 if (!batchTracked.Contains(line.ProductId))
                 {
-                    await _stockLedger.ApplyAsync(template, allowNegative: true);
+                    await _stockLedger.ApplyAsync(template, allowNegative: allowNegativeStock);
                     line.UnitCost = template.UnitCost;
                     continue;
                 }
@@ -163,14 +186,21 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
         public async Task FailPendingSaleAsync(Guid saleId, string reason)
         {
+            await using var tx = await _context.Database.BeginTransactionAsync();
+
+            // Never fail a sale a concurrent confirmation has just completed: its stock has left and the customer has paid.
+            await _context.Database.ExecuteSqlInterpolatedAsync($"""SELECT 1 FROM "Sales" WHERE "SaleId" = {saleId} FOR UPDATE""");
             var sale = await _context.Sales.FirstOrDefaultAsync(s => s.SaleId == saleId)
                 ?? throw new NotFoundException($"Sale '{saleId}' not found.");
+            if (sale.Status != SaleStatus.Pending)
+                return;
 
             sale.Status = SaleStatus.Failed;
             AppendNote(sale, reason);
             sale.LastUpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+            await tx.CommitAsync();
         }
 
         // ---- Reading ----
@@ -242,9 +272,16 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         {
             await using var tx = await _context.Database.BeginTransactionAsync();
 
+            // Serialise against a second void or a return, then re-check: the service validated against a snapshot, and a sale voided
+            // twice would put its stock back twice.
+            await _context.Database.ExecuteSqlInterpolatedAsync($"""SELECT 1 FROM "Sales" WHERE "SaleId" = {saleId} FOR UPDATE""");
             var sale = await _context.Sales.Include(s => s.Lines).ThenInclude(l => l.BatchAllocations).ThenInclude(a => a.StockBatch)
                            .FirstOrDefaultAsync(s => s.SaleId == saleId)
                        ?? throw new NotFoundException($"Sale '{saleId}' not found.");
+            if (sale.Status != SaleStatus.Completed)
+                throw new InvalidAssignmentException($"Only a Completed sale can be voided — this one is {sale.Status}.");
+            if (sale.ReturnedAmount > 0)
+                throw new InvalidAssignmentException("Goods have already been returned against this sale. Return the rest instead of voiding it.");
 
             sale.Status = SaleStatus.Voided;
             sale.LastUpdatedBy = updatedBy;

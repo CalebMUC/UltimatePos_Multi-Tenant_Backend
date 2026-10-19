@@ -45,6 +45,13 @@ namespace UltimatePos.Domain.Entities
         public string? MpesaShortCode { get; set; }
         /// <summary>Largest discount a cashier may give on one sale, as a percentage of its subtotal. Null = no cap.</summary>
         public decimal? MaxDiscountPercent { get; set; }
+        /// <summary>
+        /// True = a sale may take a product that is not batch-tracked below zero (the cashier is never stopped; a count corrects it
+        /// later). False = such a sale is refused, so the business never sells more than it holds (e.g. a refill station's water).
+        /// Batch-tracked stock is never oversold either way. An M-Pesa STK sale is checked when the prompt is sent; once the customer
+        /// has paid, the confirmation always completes.
+        /// </summary>
+        public bool AllowNegativeStock { get; set; } = true;
         /// <summary>False = closed by a super user: nobody can sign in to it. Data is kept.</summary>
         public bool IsActive { get; set; } = true;
         /// <summary>Locked by a super user (typically for an unpaid licence). Reversible; users are refused until it is lifted.</summary>

@@ -132,12 +132,20 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             Guid purchaseOrderId, Guid supplierId, PurchaseOrderStatus newStatus,
             IEnumerable<(Guid PurchaseOrderLineId, decimal NewQuantityReceived)> lineUpdates,
             IEnumerable<ReceiptMovement> movements,
-            Guid batchId, string? notes, Guid? updatedBy, SupplierLedgerEntry? bill)
+            Guid batchId, string? notes, Guid? updatedBy, SupplierLedgerEntry? bill,
+            IReadOnlyDictionary<Guid, decimal> quantitiesReceivedAsRead)
         {
             await using var tx = await _context.Database.BeginTransactionAsync();
 
-            var order = await _context.PurchaseOrders.FirstOrDefaultAsync(o => o.PurchaseOrderId == purchaseOrderId)
+            // Serialise receipts against one order, then re-check: the service planned this receipt from a snapshot, and a second
+            // receipt that committed since (a double-click, a client retry) must not put the same goods into stock twice.
+            await _context.Database.ExecuteSqlInterpolatedAsync($"""SELECT 1 FROM "PurchaseOrders" WHERE "PurchaseOrderId" = {purchaseOrderId} FOR UPDATE""");
+            var order = await _context.PurchaseOrders.Include(o => o.Lines).FirstOrDefaultAsync(o => o.PurchaseOrderId == purchaseOrderId)
                 ?? throw new NotFoundException($"Purchase order '{purchaseOrderId}' not found.");
+            if (order.Status is PurchaseOrderStatus.Received or PurchaseOrderStatus.Cancelled
+                || order.Lines.Any(l => quantitiesReceivedAsRead.GetValueOrDefault(l.PurchaseOrderLineId) != l.QuantityReceived))
+                throw new InvalidAssignmentException(
+                    $"{order.OrderNumber} has just been received against (or cancelled) by someone else. Reload the order and receive only what is still outstanding.");
 
             order.Status = newStatus;
             order.LastUpdatedBy = updatedBy;
@@ -145,7 +153,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
             foreach (var (lineId, newQty) in lineUpdates)
             {
-                var line = await _context.PurchaseOrderLines.FirstOrDefaultAsync(l => l.PurchaseOrderLineId == lineId)
+                var line = order.Lines.FirstOrDefault(l => l.PurchaseOrderLineId == lineId)
                     ?? throw new NotFoundException($"Purchase order line '{lineId}' not found.");
                 line.QuantityReceived = newQty;
             }

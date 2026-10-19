@@ -207,6 +207,9 @@ namespace UltimatePos.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AllowNegativeStock")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("BackgroundImageUrl")
                         .HasColumnType("text");
 

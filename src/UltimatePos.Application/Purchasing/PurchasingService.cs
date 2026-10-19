@@ -385,7 +385,8 @@ namespace UltimatePos.Application.Purchasing
                 Data: new { order.OrderNumber, billAmount, status = newStatus.ToString(), request.SupplierInvoiceNumber },
                 ClearsAlertKeys: newStatus == PurchaseOrderStatus.Received ? new[] { AlertKeys.PurchaseOrderOverdue(purchaseOrderId) } : null));
             var batchId = Guid.NewGuid();
-            await _repository.ReceivePurchaseOrderAsync(purchaseOrderId, order.SupplierId, newStatus, lineUpdates, movements, batchId, request.Notes, _currentUser.UserId, bill);
+            await _repository.ReceivePurchaseOrderAsync(purchaseOrderId, order.SupplierId, newStatus, lineUpdates, movements, batchId, request.Notes, _currentUser.UserId, bill,
+                order.Lines.ToDictionary(l => l.PurchaseOrderLineId, l => l.QuantityReceived));
 
             return await GetPurchaseOrderByIdAsync(purchaseOrderId);
         }

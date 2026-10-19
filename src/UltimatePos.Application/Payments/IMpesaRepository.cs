@@ -16,7 +16,6 @@ namespace UltimatePos.Application.Payments
         Task<bool> ReceiptExistsAnyBusinessAsync(string mpesaReceiptNumber);
         Task<MpesaTransaction?> GetBySaleIdAsync(Guid saleId);
         Task<IEnumerable<MpesaTransaction>> GetUnmatchedAsync();
-        Task MatchToSaleAsync(Guid mpesaTransactionId, Guid saleId);
         Task ConfirmAsync(Guid mpesaTransactionId, string? mpesaReceiptNumber, DateTime? transactionDate);
         Task FailAsync(Guid mpesaTransactionId);
     }
