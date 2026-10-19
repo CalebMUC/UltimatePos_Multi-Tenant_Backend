@@ -39,12 +39,15 @@ namespace UltimatePos.Application.Sales
         private readonly ICurrentUser _currentUser;
         private readonly ITenantContext _tenant;
         private readonly ISystemEventRecorder _events;
+        private readonly IBranchContext _branches;
 
         public SalesService(
             ISalesRepository repository, ICatalogRepository catalogRepository, IBusinessRepository businessRepository,
             IInventoryRepository inventoryRepository, IAccountingRepository accountingRepository, IMpesaRepository mpesaRepository,
-            IMpesaClient mpesaClient, ICurrentUser currentUser, ITenantContext tenant, ISystemEventRecorder events)
+            IMpesaClient mpesaClient, ICurrentUser currentUser, ITenantContext tenant, ISystemEventRecorder events,
+            IBranchContext branches)
         {
+            _branches = branches;
             _events = events;
             _repository = repository;
             _catalogRepository = catalogRepository;
@@ -74,9 +77,19 @@ namespace UltimatePos.Application.Sales
                 plan.CustomerBalance, plan.CreditLimit, plan.CreditLimitExceeded(request.PaymentMethod));
         }
 
-        public async Task<SaleDto> RecordSaleAsync(CreateSaleRequestDto request)
+        public Task<SaleDto> RecordSaleAsync(CreateSaleRequestDto request) => RecordAsync(request, deliveryOrderId: null);
+
+        /// <summary>
+        /// The sale a delivery order becomes when it is delivered (DeliveryOrderService). Reservations do not hold it back (the goods are
+        /// already with the customer), and the order is marked Delivered in the sale's transaction, only if it is still out for delivery.
+        /// </summary>
+        internal Task<SaleDto> RecordDeliverySaleAsync(CreateSaleRequestDto request, Guid deliveryOrderId) => RecordAsync(request, deliveryOrderId);
+
+        private async Task<SaleDto> RecordAsync(CreateSaleRequestDto request, Guid? deliveryOrderId)
         {
-            var plan = await BuildSalePlanAsync(request);
+            if (deliveryOrderId.HasValue && request.PaymentMethod == PaymentMethod.MpesaStkPush)
+                throw new ValidationException("paymentMethod", "A delivery is completed once paid: use cash, a till payment or credit.");
+            var plan = await BuildSalePlanAsync(request, deliveryOrderId);
             var userId = _currentUser.UserId;
 
             if (plan.DiscountTotal > 0 && !_currentUser.HasPermission(ApplyDiscountPermission))
@@ -121,6 +134,7 @@ namespace UltimatePos.Application.Sales
                 SaleId = Guid.NewGuid(),
                 CustomerId = request.CustomerId,
                 PaymentMethod = request.PaymentMethod,
+                PaymentDueDate = request.PaymentDueDate,
                 Subtotal = plan.Subtotal,
                 DiscountTotal = plan.DiscountTotal,
                 TaxTotal = plan.TaxTotal,
@@ -154,9 +168,9 @@ namespace UltimatePos.Application.Sales
 
             return request.PaymentMethod switch
             {
-                PaymentMethod.Cash => await RecordCashSaleAsync(sale, request, plan.AllowNegativeStock),
-                PaymentMethod.Credit => await RecordCreditSaleAsync(sale, userId, plan.AllowNegativeStock),
-                PaymentMethod.MpesaTill => await RecordTillSaleAsync(sale, request, plan.AllowNegativeStock),
+                PaymentMethod.Cash => await RecordCashSaleAsync(sale, request, plan.AllowNegativeStock, deliveryOrderId),
+                PaymentMethod.Credit => await RecordCreditSaleAsync(sale, userId, plan.AllowNegativeStock, deliveryOrderId),
+                PaymentMethod.MpesaTill => await RecordTillSaleAsync(sale, request, plan.AllowNegativeStock, deliveryOrderId),
                 PaymentMethod.MpesaStkPush => await InitiateStkPushSaleAsync(sale, request, userId),
                 _ => throw new InvalidAssignmentException("Unsupported payment method.")
             };
@@ -386,7 +400,7 @@ namespace UltimatePos.Application.Sales
 
         // ---- Payment-method branches ----
 
-        private async Task<SaleDto> RecordCashSaleAsync(Sale sale, CreateSaleRequestDto request, bool allowNegativeStock)
+        private async Task<SaleDto> RecordCashSaleAsync(Sale sale, CreateSaleRequestDto request, bool allowNegativeStock, Guid? deliveryOrderId)
         {
             if (request.AmountTendered is null || request.AmountTendered < sale.TotalAmount)
                 throw new ValidationException("amountTendered", $"Amount tendered must be at least the total ({sale.TotalAmount:0.00}).");
@@ -396,11 +410,11 @@ namespace UltimatePos.Application.Sales
             sale.ChangeDue = Math.Round(request.AmountTendered.Value - sale.TotalAmount, 2, MidpointRounding.AwayFromZero);
             sale.SaleNumber = $"INV-{await _repository.GetNextDocumentNumberAsync("INV"):D6}";
 
-            await _repository.RecordCompletedSaleAsync(sale, null, Today, allowNegativeStock);
+            await _repository.RecordCompletedSaleAsync(sale, null, Today, allowNegativeStock, deliveryOrderId: deliveryOrderId);
             return await GetSaleByIdAsync(sale.SaleId);
         }
 
-        private async Task<SaleDto> RecordCreditSaleAsync(Sale sale, Guid? userId, bool allowNegativeStock)
+        private async Task<SaleDto> RecordCreditSaleAsync(Sale sale, Guid? userId, bool allowNegativeStock, Guid? deliveryOrderId)
         {
             sale.Status = SaleStatus.Completed;
             sale.SaleNumber = $"INV-{await _repository.GetNextDocumentNumberAsync("INV"):D6}";
@@ -416,11 +430,11 @@ namespace UltimatePos.Application.Sales
                 CreatedBy = userId
             };
 
-            await _repository.RecordCompletedSaleAsync(sale, ledgerEntry, Today, allowNegativeStock);
+            await _repository.RecordCompletedSaleAsync(sale, ledgerEntry, Today, allowNegativeStock, deliveryOrderId: deliveryOrderId);
             return await GetSaleByIdAsync(sale.SaleId);
         }
 
-        private async Task<SaleDto> RecordTillSaleAsync(Sale sale, CreateSaleRequestDto request, bool allowNegativeStock)
+        private async Task<SaleDto> RecordTillSaleAsync(Sale sale, CreateSaleRequestDto request, bool allowNegativeStock, Guid? deliveryOrderId)
         {
             if (request.MpesaTransactionId is null)
                 throw new ValidationException("mpesaTransactionId", "A till payment must reference the matching M-Pesa transaction.");
@@ -438,7 +452,7 @@ namespace UltimatePos.Application.Sales
             sale.SaleNumber = $"INV-{await _repository.GetNextDocumentNumberAsync("INV"):D6}";
 
             // The transaction is claimed in the sale's own database transaction, so it can never end up matched to two sales.
-            await _repository.RecordCompletedSaleAsync(sale, null, Today, allowNegativeStock, transaction.MpesaTransactionId);
+            await _repository.RecordCompletedSaleAsync(sale, null, Today, allowNegativeStock, transaction.MpesaTransactionId, deliveryOrderId);
 
             return await GetSaleByIdAsync(sale.SaleId);
         }
@@ -504,7 +518,8 @@ namespace UltimatePos.Application.Sales
                 method == PaymentMethod.Credit && CreditLimit is { } limit && (CustomerBalance ?? 0m) + Total > limit;
         }
 
-        private async Task<SalePlan> BuildSalePlanAsync(CreateSaleRequestDto request)
+        /// <param name="deliveryOrderId">The delivery order this sale fulfils: checked against stock on hand, not against reservations.</param>
+        private async Task<SalePlan> BuildSalePlanAsync(CreateSaleRequestDto request, Guid? deliveryOrderId = null)
         {
             var lines = (request.Lines ?? Enumerable.Empty<CreateSaleLineRequestDto>()).ToList();
             if (lines.Count == 0)
@@ -515,6 +530,13 @@ namespace UltimatePos.Application.Sales
                 throw new ValidationException("paymentMethod", "Unsupported payment method.");
             if (request.PaymentMethod == PaymentMethod.Credit && !request.CustomerId.HasValue)
                 throw new ValidationException("customerId", "A credit sale must be linked to a registered customer.");
+            if (request.PaymentDueDate is { } due)
+            {
+                if (request.PaymentMethod != PaymentMethod.Credit)
+                    throw new ValidationException("paymentDueDate", "A promised payment date applies only to a credit sale.");
+                if (due < Today)
+                    throw new ValidationException("paymentDueDate", "The promised payment date cannot be in the past.");
+            }
 
             var business = await _businessRepository.GetBusinessByIdAsync(_tenant.RequireBusinessId())
                 ?? throw new NotFoundException("Business not found.");
@@ -535,6 +557,15 @@ namespace UltimatePos.Application.Sales
             var productIds = lines.Select(l => l.ProductId).Distinct().ToList();
             var products = (await _catalogRepository.GetProductsByIdsAsync(productIds)).ToDictionary(p => p.ProductId);
             var sellable = await _inventoryRepository.GetSellableQuantitiesAsync(productIds, Today);
+            // Stock held for open delivery orders at this branch is not for sale over the counter. Recording a delivery is different: the
+            // goods have already gone to the customer, so it is held only to what is on hand (other orders' reservations never block it).
+            if (deliveryOrderId is null)
+            {
+                var branchId = _branches.RequireActiveBranchId();
+                foreach (var ((productId, reservedAt), quantity) in await _inventoryRepository.GetReservedQuantitiesAsync(productIds))
+                    if (reservedAt == branchId)
+                        sellable[productId] = sellable.GetValueOrDefault(productId) - quantity;
+            }
 
             // First pass: price and line discount.
             var priced = new List<(CreateSaleLineRequestDto Line, Product Product, decimal Price, decimal Gross, decimal LineDiscount, decimal RequiredBase)>();
@@ -696,7 +727,7 @@ namespace UltimatePos.Application.Sales
                 s.CreatedBy is { } by && userNames.TryGetValue(by, out var name) ? name : null,
                 s.Subtotal, s.DiscountTotal, s.TaxTotal, s.ReturnedAmount,
                 s.Prescription is null ? null : ToDto(s.Prescription), s.BranchId,
-                s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name);
+                s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name, s.PaymentDueDate);
 
         private static SalePrescriptionDto ToDto(SalePrescription p) =>
             new(p.PrescriptionNumber, p.PrescriberName, p.PrescriberRegistrationNumber, p.PrescriberFacility, p.PatientName, p.PatientPhoneNumber,

@@ -186,9 +186,9 @@ namespace UltimatePos.Application.Reports
                 .OrderByDescending(c => c.Aging.Outstanding).ThenBy(c => c.Customer.CustomerName)
                 .ToList();
 
-            var saleNumbers = new Dictionary<Guid, string>();
+            var invoices = new Dictionary<Guid, (string SaleNumber, DateOnly? PaymentDueDate)>();
             if (includeInvoices)
-                saleNumbers = await _repository.GetSaleNumbersAsync(computed.SelectMany(c => c.Aging.OpenInvoices.Select(i => i.InvoiceId)));
+                invoices = await _repository.GetInvoiceReferencesAsync(computed.SelectMany(c => c.Aging.OpenInvoices.Select(i => i.InvoiceId)));
 
             var rows = computed.Select(c =>
             {
@@ -199,8 +199,13 @@ namespace UltimatePos.Application.Reports
                     new AgingBucketsDto(a.Days0To30, a.Days31To60, a.Days61To90, a.Over90),
                     a.OpenInvoices.Count, oldest?.InvoiceDate, oldest?.AgeDays,
                     includeInvoices
-                        ? a.OpenInvoices.Select(i => new OpenInvoiceDto(i.InvoiceId, saleNumbers.GetValueOrDefault(i.InvoiceId),
-                            i.InvoiceDate, i.OriginalAmount, i.OutstandingAmount, i.AgeDays, i.Bucket)).ToList()
+                        ? a.OpenInvoices.Select(i =>
+                        {
+                            var found = invoices.TryGetValue(i.InvoiceId, out var reference);
+                            return new OpenInvoiceDto(i.InvoiceId, found ? reference.SaleNumber : null,
+                                i.InvoiceDate, i.OriginalAmount, i.OutstandingAmount, i.AgeDays, i.Bucket,
+                                reference.PaymentDueDate, reference.PaymentDueDate < date);
+                        }).ToList()
                         : null);
             }).ToList();
 

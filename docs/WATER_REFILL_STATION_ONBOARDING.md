@@ -33,11 +33,12 @@ Nothing below is invented. Where a value is not known yet, leave it out; do not 
 | 11 | Reorder level in litres (when to order more) | Product `reorderLevel` | ☐ Owner |
 | 12 | Water vendors: name, phone, KRA PIN, payment terms (days), usual price per litre | Suppliers, purchase orders | ☐ Owner |
 | 13 | Staff who will use the system, and what each may do | Users and roles (§9) | ☐ Owner |
-| 14 | Other items sold (empty containers, caps, dispensers, cleaning products)? | Extra products (§3.4) | ☐ Owner |
+| 14 | Container sizes sold, their price (e.g. 20L container 500), and how many are in stock | Container products (§3.4) | ☐ Owner |
 | 15 | Customer credit: who may buy on account, and up to what limit | Customer `creditLimit` | ☐ Owner |
-| 16 | Containers: customer-owned only, or station-owned with deposits? | Container module (gap) | ☐ Owner (§11) |
-| 17 | Deliveries to customers? With a fee? | Delivery module (gap) | ☐ Owner (§11) |
-| 18 | Water-quality testing, filter and tank-cleaning schedule to record? | Maintenance log (gap) | ☐ Owner (§11) |
+| 16 | ~~Containers: deposits?~~ | **Answered 2026-10-19:** customers bring their own (pay for water only), or buy a container with the water. Never lent on deposit. | ✔ |
+| 17 | ~~Deliveries?~~ | **Answered 2026-10-19:** yes, free. Customer orders → rider delivers → customer pays cash, at the till, or promises a date. The cashier records it when the rider is back; only a manager may accept a promise to pay. | ✔ (§6.1) |
+| 18 | Riders' names | Recorded on each delivery (riders do not sign in) | ☐ Owner |
+| 19 | Water-quality testing, filter and tank-cleaning schedule to record? | Maintenance log (gap) | ☐ Owner (§11) |
 
 ---
 
@@ -112,10 +113,19 @@ On go-live day, after a physical reading of the tank:
 `POST /stock/adjustments` `{ "productId": "…", "unitOfMeasureId": "<l>", "quantityChange": <litres>, "reason": "Opening stock", "unitCost": <cost per litre> }`.
 The cost is required: stock with no cost would make every margin wrong.
 
-### 3.4 Other items (only if the owner sells them)
+### 3.4 Containers (and other items)
 
-Empty jerrycans, caps, dispensers and cleaning products are ordinary products (`itemType: 2`, base unit `pcs`) with their own stock.
-Create them only for what the owner confirms. **A container the customer brings is not a product**, and is never entered as one.
+The owner's rule: **a customer who brings a container pays for the refill only; a customer without one buys a container as well.**
+There are no deposits.
+
+- Create one product per container size the station sells, for example *"20L Container (empty)"*: `itemType: 2`, base unit `pcs`,
+  a Retail price (e.g. 500), opening stock by count, and a reorder level. Containers are stock of their own, never mixed with water.
+- **Own container:** one sale line, the refill (20L refill = 200).
+- **No container:** two lines, the refill and the container (200 + 500 = 700). The container leaves container stock and the water
+  leaves water stock, each at its own cost.
+- **A container the customer brings is not a product**, and is never entered.
+
+Caps, dispensers or cleaning products are set up the same way, only if the owner sells them.
 
 ---
 
@@ -191,7 +201,43 @@ the business's (or branch's) `mpesaShortCode`, and the C2B URLs registered once 
 Credentials and callback URLs are deployment configuration (`Mpesa:*` settings), not entered here.
 
 Every sale keeps its number, date, cashier, lines (unit, quantity, litres, price, discount, VAT), total, payment method and status.
-It has no separate *fulfilment* status: a sale is a completed counter sale (orders and deliveries: gaps G3, G4).
+A counter sale is fulfilled when it is rung up. Deliveries go through a delivery order (§6.1) and become a sale when delivered.
+
+**Promise to pay (credit) with a date:** any credit sale may carry `paymentDueDate`, the day the customer promised to pay by. If the
+invoice is still open after that day, an *overdue promise* alert goes to users with `Customers.RecordPayment`. The alert clears once
+it is paid. The customer-ageing report shows `paymentDueDate` and `isPromiseOverdue` on each open invoice.
+
+### 6.1 Delivery orders (free delivery)
+
+```
+Customer orders ─► POST /delivery-orders            Pending: the water (and any container) is set aside for this order
+                   POST /delivery-orders/{id}/dispatch { riderName }        OutForDelivery
+   rider back ─►   POST /delivery-orders/{id}/deliver  { payment }          Delivered = an ordinary sale; stock leaves now, once
+   or ─────────►   POST /delivery-orders/{id}/cancel   { reason }           Cancelled: the reserved stock is free again
+```
+
+1. **Order** (`DeliveryOrders.Create`): `{ customerId, deliveryAddress, contactPhone?, notes?, lines }`. The customer must be
+   registered: register a new one at the phone first (`POST /customers`, name and phone).
+   - Lines are the refill, and the container line only if the customer has none, e.g. `[{ water, 20L, 1 }, { 20L container, pcs, 1 }]`.
+   - The order is priced at the customer's prices (`estimatedTotal`). It is refused with 409 if the water not already set aside for
+     other orders is not enough.
+2. **Reserved:** an open order holds its quantities back. `GET /stock` shows `quantityOnHand` (still in the tank),
+   `reservedQuantity` and `sellableQuantity` (what the counter can sell). A counter sale cannot take water promised to a delivery.
+3. **Dispatch** (`DeliveryOrders.Dispatch`): record the rider's name. Riders do not need an account.
+4. **Deliver** (`DeliveryOrders.Deliver`), recorded by the cashier when the rider is back, at the order's branch.
+   - `paymentMethod` is one of:
+     - `0` Cash, with `amountTendered`; change is worked out
+     - `2` MpesaTill, with `mpesaTransactionId` picked from `GET /mpesa/transactions/unmatched`
+     - `1` Credit, with `paymentDueDate`: **needs `DeliveryOrders.AcceptCredit`, give it to managers only**. The credit limit
+       still applies (`overrideCreditLimit` with `Sales.OverrideCreditLimit`).
+   - STK push is not used for deliveries.
+   - If what was handed over differed from the order (*"I have my own container after all"*), send `lines` with what was actually
+     delivered; the sale is priced from those.
+   - The order is linked to its sale (`saleId`). Recording the same delivery twice, even at the same moment, gives one sale.
+5. **Cancel** (`DeliveryOrders.Cancel`) a called-off or failed delivery, with a reason. Nothing had left stock, so the reservation is
+   simply released.
+6. **Rider cash-up:** `GET /delivery-orders/summary?from=&to=`. Per rider, it shows deliveries, value, **cash to hand in**, till
+   payments and credit, plus how many orders are out now. Lists: `GET /delivery-orders?status=&riderName=&customerId=&from=&to=`.
 
 ---
 
@@ -239,8 +285,8 @@ with `POST /auth/Register` (`roleName`), and change roles with `PUT /users/{id}/
 | Role | Permissions |
 |---|---|
 | **Owner** | `Admin` (everything) |
-| **Manager** | Sales.*, Customers.*, Suppliers.*, PurchaseOrders.*, Stock.View, **Stock.Adjust**, Expenses.*, ExpenseCategories.View, Dashboard.View, Costing.View, all *Reports.View, Mpesa.View, Sales.ApplyDiscount, Sales.OverrideCreditLimit, Sales.Void |
-| **Cashier** | Sales.Create, Sales.View, Customers.View, Customers.Register, Customers.RecordPayment, Products.View, Stock.View, Mpesa.View, Dashboard.View |
+| **Manager** | Sales.*, Customers.*, Suppliers.*, PurchaseOrders.*, Stock.View, **Stock.Adjust**, Expenses.*, ExpenseCategories.View, Dashboard.View, Costing.View, all *Reports.View, Mpesa.View, Sales.ApplyDiscount, Sales.OverrideCreditLimit, Sales.Void, DeliveryOrders.*, including **DeliveryOrders.AcceptCredit** |
+| **Cashier** | Sales.Create, Sales.View, Customers.View, Customers.Register, Customers.RecordPayment, Products.View, Stock.View, Mpesa.View, Dashboard.View, DeliveryOrders.View, .Create, .Dispatch, .Deliver, .Cancel (**not** AcceptCredit) |
 | **Storekeeper** | Suppliers.View, PurchaseOrders.View, PurchaseOrders.Receive, Stock.View, Products.View |
 | **Accountant** | Expenses.*, ExpenseCategories.*, Suppliers.ViewLedger, Suppliers.RecordPayment, Customers.ViewLedger, Costing.View, SalesReports.View, CustomerReports.View, InventoryReports.View, PurchaseReports.View, Dashboard.View |
 
@@ -272,7 +318,8 @@ Business data is isolated per tenant: every query is filtered to the signed-in b
 | Customer balances | `GET /reports/customer-aging` |
 | Gross profit and operating expenses | `GET /dashboard/profit`: revenue (net of VAT), cost of goods sold (cost per litre when sold), gross profit, operating expenses, net operating profit |
 | Cash and M-Pesa reconciliation | Partly (`byPaymentMethod`, unmatched till payments). Full cash-up: gap G10 |
-| Delivery performance | Gap G4 |
+| Deliveries per rider, cash to hand in | `GET /delivery-orders/summary` |
+| Promises to pay that are overdue | Alerts, and `GET /reports/customer-aging?includeInvoices=true` → `isPromiseOverdue` |
 
 Profit is **never** "sales minus what was paid to vendors today". It uses the cost recorded when each litre left stock, plus expenses.
 `isComplete: false` on the profit figures means some sales had no recorded cost (`uncostedRevenue` says how much), so the
@@ -280,16 +327,12 @@ profit figures are not complete. Recording opening stock and every delivery with
 
 ---
 
-## 11. Optional modules — ask the owner first
+## 11. Optional modules
 
-None of these is switched on or assumed. Each needs development (see BACKEND_API_GAPS.md) once the owner confirms it is used.
-
-- **Containers (G5):** customer-owned containers need nothing; they are never stock. Station-owned containers lent out with a
-  **refundable deposit** need a container ledger kept apart from water: issued, returned, damaged, and deposits held as a liability,
-  not revenue. *Ask:* do you lend containers? Charge a deposit? How much?
-- **Deliveries (G3, G4):** counter collection works today. Delivery needs orders, address, fee, rider, status and proof. *Ask:* do you
-  deliver? Who delivers? Is there a fee?
-- **Water quality and maintenance (G6):** a log of tests, filter changes, tank cleaning, service dates and licence expiry, kept apart
+- **Containers: settled, no module needed.** Containers are sold as products (§3.4) and never lent on deposit.
+- **Deliveries: built** (§6.1). Delivery is free today. A delivery fee, scheduled time slots and proof of delivery are not built;
+  add them when the owner needs them (BACKEND_API_GAPS.md G4).
+- **Water quality and maintenance (G6), ask the owner first:** a log of tests, filter changes, tank cleaning, service dates and licence expiry, kept apart
   from stock. The system would record results; it sets no quality thresholds and claims no regulatory compliance. Testing stays with
   accredited labs and the applicable Kenyan requirements. *Ask:* what do you test, how often, and what must you show an inspector?
 
@@ -320,8 +363,26 @@ The backend changes are additive. Nothing an existing screen sends or reads has 
    id on the sale.
 8. **Dashboard (refill station layout):** the cards in §10 can be built from existing endpoints; no new endpoint is required. Water
    in litres shows the product's `baseUnitSymbol`.
+9. **Counter: "Customer has a container?"** A toggle on the cart. Off adds the matching container product line next to the refill;
+   on leaves the refill only. No API change: it only decides the lines sent.
+10. **Delivery orders (new screens):**
+    - *New delivery order:* customer picker with *Register new customer*, address, contact phone, the same container toggle, lines.
+      Show `estimatedTotal`, and handle 409 `INSUFFICIENT_STOCK` (*"…available, …needed"*).
+    - *Delivery board:* `GET /delivery-orders?status=`, with columns Pending / Out for delivery / Delivered today. Actions: **Dispatch**
+      (rider name), **Cancel** (reason).
+    - *Record delivery*, used by the cashier when the rider is back:
+      - Choose Cash (amount given, show change), Till (pick from `GET /mpesa/transactions/unmatched`), or *Pay later* (date picker).
+      - Show *Pay later* only to users holding `DeliveryOrders.AcceptCredit`. The API refuses others with 403 anyway.
+      - Allow editing the lines (remove the container) before saving.
+      - Handle 400 `INVALID_ASSIGNMENT` *"…has just been recorded…"* by reloading the order.
+    - *Rider cash-up:* `GET /delivery-orders/summary?from=&to=`, a table per rider of delivered, cash to hand in, till and credit.
+11. **Stock screens:** show `reservedQuantity` ("on delivery orders") and use `sellableQuantity` as "available". `quantityOnHand` still
+    includes water set aside for deliveries until they are delivered.
+12. **Credit sale at the counter:** optional *Promised by* date (`paymentDueDate`) on credit sales.
+13. **Customer account:** show `paymentDueDate` and an *overdue* badge (`isPromiseOverdue`) on open invoices in the ageing report.
+    The new notification type `Customer.PaymentPromiseOverdue` links to `/sales/{id}`.
 
-Not needed now: bank transfer or split payment at the counter (deferred), orders, deliveries, containers, maintenance (§11).
+Not needed now: bank transfer or split payment at the counter (deferred), container deposits (not used), maintenance (§11).
 
 ---
 
@@ -336,9 +397,18 @@ Not needed now: bank transfer or split payment at the counter (deferred), orders
 | Till payment claimed inside the sale's transaction | One till payment could be matched to two sales | `SalesRepository.RecordCompletedSaleAsync` (removed `IMpesaRepository.MatchToSaleAsync`) |
 | Sales report: `topProductUnits`, `byCashier` | Sales by refill size, sales by cashier | `ReportsService.BuildSalesReport`, report DTOs |
 | Customer phone search in local formats | Searching `0722…` did not find `254722…` | `BusinessRepository.GetCustomersAsync` |
+| **Delivery orders** (Pending → OutForDelivery → Delivered / Cancelled), with reservations, a rider, payment on delivery, rider summary | The station delivers | `Domain/Entities/DeliveryOrder.cs`, `Application/Deliveries/DeliveryOrders.cs`, `DeliveryOrderRepository`, `DeliveryOrdersController`, migration `DeliveryOrders` |
+| Delivery becomes a sale in the sale's own transaction (claim only while out for delivery) | A delivery recorded twice must not be two sales | `SalesRepository.RecordCompletedSaleAsync` |
+| Reserved stock is not sellable | A counter sale must not sell water promised to a delivery | `SalesService.BuildSalePlanAsync`, `InventoryRepository.GetReservedQuantitiesAsync`, `StockLevelDto.ReservedQuantity` |
+| `Sale.PaymentDueDate`, overdue-promise alert, promise on ageing invoices | "Promise to pay on a future date" | `SalesService`, `AlertSweepService`, `ReportsService.GetCustomerAgingAsync` |
+| Permissions `DeliveryOrders.View/Create/Dispatch/Deliver/Cancel/AcceptCredit` | Delivering on credit is manager-only | `PermissionCatalog` (Admin roles get them on startup) |
 
-**Migration:** `ALTER TABLE "Businesses" ADD "AllowNegativeStock" boolean NOT NULL DEFAULT TRUE`. It is additive; every existing
-business keeps allowing negative stock. The API applies migrations on startup (`DbSeeder.SeedAsync`). It can also be applied with
+**Migrations:**
+- `BusinessAllowNegativeStock`: `ALTER TABLE "Businesses" ADD "AllowNegativeStock" boolean NOT NULL DEFAULT TRUE`. Every existing
+  business keeps allowing negative stock.
+- `DeliveryOrders`: new tables `DeliveryOrders` and `DeliveryOrderLines`, plus a nullable `Sales.PaymentDueDate`.
+
+Both are additive. The API applies migrations on startup (`DbSeeder.SeedAsync`). It can also be applied with
 `dotnet ef database update --project src/UltimatePos.Infrastructure --startup-project src/UltimatePos.Api`.
 
 **Tests:** `tests/UltimatePos.Api.Tests/WaterRefillStationPostgresTests.cs` (integration, real PostgreSQL), plus two report tests in
@@ -355,6 +425,15 @@ business keeps allowing negative stock. The API applies migrations on startup (`
 - concurrent voids
 - the new report lists
 - tenant isolation
+- deliveries:
+  - own container (water only) vs no container (water + container), and removing the container at the door
+  - cash with change, a till payment, and STK refused
+  - pay-later refused for a cashier and accepted for a manager with a date
+  - the overdue-promise alert raised and then cleared on payment
+  - reservations blocking the counter and other orders, released on cancel
+  - a delivery still recordable when other orders hold the rest, but never below zero
+  - a delivery recorded four times at once giving one sale
+  - the rider summary
 
 Each concurrency test was checked to **fail** with its guard removed. Run them with:
 

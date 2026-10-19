@@ -50,17 +50,17 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 .ToListAsync();
         }
 
-        public async Task<Dictionary<Guid, string>> GetSaleNumbersAsync(IEnumerable<Guid> saleIds)
+        public async Task<Dictionary<Guid, (string SaleNumber, DateOnly? PaymentDueDate)>> GetInvoiceReferencesAsync(IEnumerable<Guid> saleIds)
         {
             var ids = saleIds.Distinct().ToList();
             if (ids.Count == 0)
-                return new Dictionary<Guid, string>();
+                return new Dictionary<Guid, (string, DateOnly?)>();
 
             // ToDictionaryAsync's selectors run in memory, so project first or EF reads every column of the row.
             return await _context.Sales.AsNoTracking()
                 .Where(s => ids.Contains(s.SaleId))
-                .Select(s => new { s.SaleId, s.SaleNumber })
-                .ToDictionaryAsync(s => s.SaleId, s => s.SaleNumber);
+                .Select(s => new { s.SaleId, s.SaleNumber, s.PaymentDueDate })
+                .ToDictionaryAsync(s => s.SaleId, s => (s.SaleNumber, s.PaymentDueDate));
         }
 
         // ---------------------------------------------------------------- Production

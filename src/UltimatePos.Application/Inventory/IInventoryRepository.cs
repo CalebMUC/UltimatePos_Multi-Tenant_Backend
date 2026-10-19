@@ -29,6 +29,11 @@ namespace UltimatePos.Application.Inventory
         /// <paramref name="today"/>, for the rest the quantity on hand. Products with no stock record are absent.
         /// </summary>
         Task<Dictionary<Guid, decimal>> GetSellableQuantitiesAsync(IEnumerable<Guid> productIds, DateOnly today);
+        /// <summary>
+        /// Base-unit quantity held back for open delivery orders (pending or out for delivery), per (product, branch), over the branches
+        /// the caller can see. Products with nothing reserved are absent.
+        /// </summary>
+        Task<Dictionary<(Guid ProductId, Guid BranchId), decimal>> GetReservedQuantitiesAsync(IEnumerable<Guid> productIds);
         Task<IEnumerable<StockMovement>> GetStockMovementsAsync(Guid productId);
         Task<Dictionary<Guid, decimal>> GetAverageCostsAsync(IEnumerable<Guid> productIds);
         /// <param name="unitCostPerBaseUnit">Cost of the units being ADDED (blended into the average). Null = add at the current

@@ -7,10 +7,12 @@ using System.Threading.Tasks;
 namespace UltimatePos.Application.Inventory.Dtos
 {
     /// <summary>The stock of one product at one branch.</summary>
-    /// <param name="SellableQuantity">For batch-tracked products, only what is in unexpired batches; otherwise the quantity on hand.</param>
+    /// <param name="SellableQuantity">What can be sold now: for batch-tracked products only what is in unexpired batches, otherwise the
+    /// quantity on hand; less what is reserved for open delivery orders.</param>
+    /// <param name="ReservedQuantity">Held back for open delivery orders (pending or out for delivery). Still in QuantityOnHand until delivered.</param>
     public record StockLevelDto(Guid ProductId, string ProductName, string Sku, decimal QuantityOnHand, decimal ReorderLevel, bool BelowReorderLevel,
         bool IsBatchTracked = false, decimal? SellableQuantity = null, string? BaseUnitSymbol = null,
-        Guid BranchId = default, string? KraBranchId = null, string? BranchName = null);
+        Guid BranchId = default, string? KraBranchId = null, string? BranchName = null, decimal ReservedQuantity = 0);
     public record StockMovementDto(Guid StockMovementId, Guid ProductId, string MovementType, decimal QuantityChange,
         string ReferenceType, Guid ReferenceId, Guid BatchId, string? Notes, DateTime CreatedAt,
         Guid? StockBatchId = null, string? BatchNumber = null, Guid BranchId = default);

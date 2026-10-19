@@ -12,6 +12,7 @@ using UltimatePos.Application.Accounting;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
+using UltimatePos.Application.Deliveries;
 using UltimatePos.Application.Costing;
 using UltimatePos.Application.Expenses;
 using UltimatePos.Application.Identity;
@@ -60,6 +61,7 @@ namespace UltimatePos.Infrastructure
             services.AddScoped<StockLedger>();
             services.AddScoped<Application.Branches.IBranchRepository, BranchRepository>();
             services.AddScoped<IStockTransferRepository, StockTransferRepository>();
+            services.AddScoped<IDeliveryOrderRepository, DeliveryOrderRepository>();
             services.AddScoped<IProductionRepository, ProductionRepository>();
 
             services.Configure<MpesaOptions>(configuration.GetSection("Mpesa"));

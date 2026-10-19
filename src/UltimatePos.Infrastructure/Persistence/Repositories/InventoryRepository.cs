@@ -124,6 +124,21 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             return levels.ToDictionary(l => l.ProductId, l => l.IsBatchTracked ? inLots.GetValueOrDefault(l.ProductId) : l.QuantityOnHand);
         }
 
+        public async Task<Dictionary<(Guid ProductId, Guid BranchId), decimal>> GetReservedQuantitiesAsync(IEnumerable<Guid> productIds)
+        {
+            var ids = productIds.Distinct().ToList();
+            if (ids.Count == 0)
+                return new Dictionary<(Guid, Guid), decimal>();
+
+            var rows = await _context.DeliveryOrderLines.AsNoTracking()
+                .Where(l => ids.Contains(l.ProductId)
+                            && (l.DeliveryOrder.Status == DeliveryOrderStatus.Pending || l.DeliveryOrder.Status == DeliveryOrderStatus.OutForDelivery))
+                .GroupBy(l => new { l.ProductId, l.DeliveryOrder.BranchId })
+                .Select(g => new { g.Key.ProductId, g.Key.BranchId, Quantity = g.Sum(l => l.QuantityInBaseUnits) })
+                .ToListAsync();
+            return rows.ToDictionary(r => (r.ProductId, r.BranchId), r => r.Quantity);
+        }
+
         public async Task<StockBatch?> GetBatchAsync(Guid stockBatchId) =>
             await _context.StockBatches.AsNoTracking().FirstOrDefaultAsync(b => b.StockBatchId == stockBatchId);
 

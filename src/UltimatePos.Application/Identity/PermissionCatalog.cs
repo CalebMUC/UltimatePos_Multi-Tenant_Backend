@@ -63,6 +63,10 @@ namespace UltimatePos.Application.Identity
             ("Sales.Create", "Sales"), ("Sales.View", "Sales"), ("Sales.Void", "Sales"),
             ("Sales.Return", "Sales"), ("Sales.ApplyDiscount", "Sales"), ("Sales.OverrideCreditLimit", "Sales"),
             ("Prescriptions.Dispense", "Prescriptions"), ("Prescriptions.View", "Prescriptions"),
+            ("DeliveryOrders.View", "DeliveryOrders"), ("DeliveryOrders.Create", "DeliveryOrders"),
+            ("DeliveryOrders.Dispatch", "DeliveryOrders"), ("DeliveryOrders.Deliver", "DeliveryOrders"),
+            ("DeliveryOrders.Cancel", "DeliveryOrders"),
+            ("DeliveryOrders.AcceptCredit", "DeliveryOrders"),   // complete a delivery on a promise to pay later (managers)
             ("Mpesa.Configure", "Mpesa"), ("Mpesa.View", "Mpesa"),
 
             ("Costing.View", "Costing"), ("Costing.Revalue", "Costing"),

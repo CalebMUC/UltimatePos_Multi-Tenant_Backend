@@ -10,9 +10,9 @@ screen for it. It does not fake success with mock data.
 |---|-----|---|---|---|
 | G1 | Bank transfer at the counter | Maybe | Yes | **Deferred by owner** |
 | G2 | Split and partial payment on one sale | Maybe | Yes | Needs decision |
-| G3 | Sales orders (order before fulfilment) | If they take orders | Yes | Ask owner |
-| G4 | Deliveries | If they deliver | Yes | Ask owner |
-| G5 | Reusable containers and deposits | If they lend containers | Yes | Ask owner |
+| G3 | Sales orders (order before fulfilment) | Yes, for deliveries | Yes | **Built as delivery orders**; general orders not needed |
+| G4 | Deliveries | Yes (free) | Yes | **Built** (fee, time slots, proof of delivery not yet) |
+| G5 | Reusable containers and deposits | No: containers are sold, never lent | — | **Not needed** (owner, 2026-10-19) |
 | G6 | Water-quality and maintenance log, expiry reminders | Likely | Yes | Ask owner |
 | G7 | Close a purchase order short, with a discrepancy reason | Yes | Small | Recommended |
 | G8 | Receive without an order, in one call | Nice to have | No | Optional |
@@ -26,6 +26,7 @@ screen for it. It does not fake success with mock data.
 | G16 | Role templates (Cashier, Storekeeper, …) | Convenience | No | Optional |
 | R1 | Cancel of a purchase order is not serialised against a receipt | — | No | **Risk, fix soon** |
 | R2 | Unique M-Pesa receipt number is not enforced | — | Index | **Risk, fix soon** |
+| R3 | Two delivery orders taken at the same instant can both reserve the last stock | — | No | Low risk |
 
 ---
 
@@ -44,34 +45,29 @@ unpaid remainder posts to the customer ledger (registered customers only). Each 
 (an STK part stays pending until confirmed).
 **Decision needed:** may a walk-in leave a balance? (Recommend no.)
 
-### G3 — Sales orders
-**Today:** a sale is a completed counter sale. `Pending` exists only for STK payments.
-**Proposed:** a `SalesOrder` (`Draft → Confirmed → PartiallyFulfilled → Fulfilled | Cancelled`) with lines and an optional
-`scheduledFor`. `POST /sales-orders`, `POST /sales-orders/{id}/fulfil` with `{ lines[] }`. Fulfilling creates a normal `Sale`, the
-**only** place stock leaves, so an order can never deduct stock twice. Optional reservation: the available quantity seen by sales
-= on hand − reserved.
-**Permissions:** `SalesOrders.Create`, `.View`, `.Fulfil`, `.Cancel`.
+### G3 / G4 — Delivery orders *(built 2026-10-19)*
+**Built:**
+- `DeliveryOrder`: `Pending → OutForDelivery → Delivered | Cancelled`.
+- An open order reserves its stock.
+- Delivery creates an ordinary `Sale` in the same transaction, the only place stock leaves, so an order can never deduct twice.
+- Payment on delivery by cash, till or credit with a promised date; credit needs `DeliveryOrders.AcceptCredit`.
+- A rider name (no rider login), and the per-rider summary.
 
-### G4 — Deliveries
-**Depends on:** G3.
-**Proposed:** delivery fields on the order: `deliveryAddress, contactPhone, deliveryFee, scheduledAt, riderUserId,
-status (Pending, Dispatched, Delivered, Failed), dispatchedAt, deliveredAt, proofOfDeliveryUrl, recipientName`.
-- `POST /sales-orders/{id}/dispatch`, `/deliver`.
-- The fee is a sale line on a service product (no stock), so it counts as revenue.
-- Report: delivery performance (on-time %, failed).
+See onboarding §6.1.
 
-Counter collection stays the default.
+**Not built, add when needed:**
+- *Delivery fee:* a service product (no stock) added as a line, so it counts as revenue.
+- *Scheduled delivery:* `scheduledFor` on the order and a "due today" filter.
+- *Proof of delivery:* `recipientName`, `proofOfDeliveryUrl`.
+- *Delivery from the rider's phone:* a Rider role limited to their own orders, and STK at the door. The owner chose cashier
+  recording.
+- *Partial delivery:* today the cashier records what was handed over, and the rest is dropped. A follow-up order is taken for it.
+- *Editing an order before dispatch:* cancel and re-create today.
+- *Delivery performance:* on-time %, failed-delivery rate.
 
-### G5 — Reusable containers and deposits
-**Today:** containers can only be sold as products.
-**Proposed:** a container *type* (e.g. "20L jerrycan", with its deposit amount) and a `ContainerLedger` per customer: `Issued, Returned,
-Damaged, Lost`, with quantities **separate from water** (never a stock movement of the water product).
-- The deposit is posted to a **deposit liability**, not revenue. It is refunded on return, or kept on loss (then it becomes revenue
-  or other income; accountant to confirm).
-- `GET /customers/{id}/containers`: held, awaiting return.
-- Customer-owned containers are not recorded at all.
-
-**Owner questions:** see onboarding §11.
+### G5 — Reusable containers and deposits *(not needed)*
+The owner confirmed on 2026-10-19 that containers are never lent on deposit. A customer either brings their own (pays for the refill
+only) or buys one with the water, which is an ordinary product. Nothing to build. Revisit only if deposits are introduced.
 
 ### G6 — Water-quality, cleaning and maintenance log
 **Proposed:** an optional module, kept apart from stock and sales.
@@ -150,3 +146,9 @@ from an unlocked read. A cancel racing a receipt can leave an order `Cancelled` 
 index on `MpesaReceiptNumber`, so two simultaneous deliveries of one Safaricom confirmation could store two rows.
 *Fix:* a filtered unique index `("MpesaReceiptNumber") WHERE "MpesaReceiptNumber" IS NOT NULL`, after checking existing data for
 duplicates, and treat the unique violation as "already received".
+
+**R3 — Reservations at order time.** Creating a delivery order checks *on hand − reserved* without a lock, so two orders taken at the
+same instant can both reserve the last water, and the counter then sees less than nothing available until one is delivered or
+cancelled. Nothing goes negative: recording a delivery is checked against stock on hand (not reservations) and guarded in SQL, so if
+the water really is short, that delivery is refused when it is recorded.
+*Fix (if it ever matters):* lock the product's stock row (`StockLedger.LockAsync`) while creating the order.

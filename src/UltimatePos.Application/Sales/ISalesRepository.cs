@@ -19,8 +19,10 @@ namespace UltimatePos.Application.Sales
 
         // Cash / Credit / Till — sale + lines + stock + ledger all commit together, immediately. For a till sale, tillTransactionId is
         // claimed in the same transaction and only while still unmatched; if another sale got it first, nothing is recorded.
+        // For a delivered order, deliveryOrderId is marked Delivered (linked to this sale) in the same transaction, only while it is
+        // still out for delivery at the sale's branch — so a delivery recorded twice at once becomes one sale.
         Task RecordCompletedSaleAsync(Sale sale, CustomerLedgerEntry? ledgerEntry, DateOnly today, bool allowNegativeStock,
-            Guid? tillTransactionId = null);
+            Guid? tillTransactionId = null, Guid? deliveryOrderId = null);
         // STK — sale + lines persist now; stock/ledger are deliberately untouched (still Pending).
         Task RecordPendingSaleAsync(Sale sale);
         // Called once payment is confirmed (callback or reconciliation query). The customer has paid, so a batch shortfall that

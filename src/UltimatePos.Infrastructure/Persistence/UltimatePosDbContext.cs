@@ -63,6 +63,8 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
         public DbSet<StockTransferLine> StockTransferLines => Set<StockTransferLine>();
         public DbSet<StockTransferLineBatch> StockTransferLineBatches => Set<StockTransferLineBatch>();
+        public DbSet<DeliveryOrder> DeliveryOrders => Set<DeliveryOrder>();
+        public DbSet<DeliveryOrderLine> DeliveryOrderLines => Set<DeliveryOrderLine>();
 
         public DbSet<Formula> Formulas => Set<Formula>();
         public DbSet<FormulaLine> FormulaLines => Set<FormulaLine>();
@@ -269,6 +271,26 @@ namespace UltimatePos.Infrastructure.Persistence
                 .HasOne(l => l.UnitOfMeasure).WithMany().HasForeignKey(l => l.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<StockTransferLineBatch>()
                 .HasOne(b => b.Line).WithMany(l => l.Batches).HasForeignKey(b => b.StockTransferLineId).OnDelete(DeleteBehavior.Cascade);
+
+            // ---- Delivery orders ----
+            modelBuilder.Entity<DeliveryOrder>().Property(o => o.Status).HasConversion<string>();
+            modelBuilder.Entity<DeliveryOrder>().HasIndex(o => new { o.BusinessId, o.OrderNumber }).IsUnique();
+            modelBuilder.Entity<DeliveryOrder>().HasIndex(o => new { o.BranchId, o.Status });
+            modelBuilder.Entity<DeliveryOrder>().HasIndex(o => o.SaleId).IsUnique().HasFilter("\"SaleId\" IS NOT NULL");
+            modelBuilder.Entity<DeliveryOrder>()
+                .HasOne<BusinessProfile>().WithMany().HasForeignKey(o => o.BusinessId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DeliveryOrder>()
+                .HasOne(o => o.Branch).WithMany().HasForeignKey(o => o.BranchId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DeliveryOrder>()
+                .HasOne(o => o.Customer).WithMany().HasForeignKey(o => o.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DeliveryOrder>()
+                .HasOne(o => o.Sale).WithMany().HasForeignKey(o => o.SaleId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DeliveryOrderLine>()
+                .HasOne(l => l.DeliveryOrder).WithMany(o => o.Lines).HasForeignKey(l => l.DeliveryOrderId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<DeliveryOrderLine>()
+                .HasOne(l => l.Product).WithMany().HasForeignKey(l => l.ProductId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DeliveryOrderLine>()
+                .HasOne(l => l.UnitOfMeasure).WithMany().HasForeignKey(l => l.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<StockBatch>()
                 .HasOne(b => b.Product).WithMany()
                 .HasForeignKey(b => b.ProductId).OnDelete(DeleteBehavior.Restrict);
@@ -541,6 +563,9 @@ namespace UltimatePos.Infrastructure.Persistence
                 && (BranchUnrestricted || VisibleBranchIds.Contains(e.Sale.BranchId)));
             modelBuilder.Entity<SaleReturnLine>().HasQueryFilter(e => e.SaleReturn.BusinessId == CurrentBusinessId
                 && (BranchUnrestricted || VisibleBranchIds.Contains(e.SaleReturn.BranchId)));
+            modelBuilder.Entity<DeliveryOrder>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
+            modelBuilder.Entity<DeliveryOrderLine>().HasQueryFilter(e => e.DeliveryOrder.BusinessId == CurrentBusinessId
+                && (BranchUnrestricted || VisibleBranchIds.Contains(e.DeliveryOrder.BranchId)));
             modelBuilder.Entity<CustomerLedgerEntry>().HasQueryFilter(e => e.Customer.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<CustomerBalance>().HasQueryFilter(e => e.Customer.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<SupplierLedgerEntry>().HasQueryFilter(e => e.Supplier.BusinessId == CurrentBusinessId);

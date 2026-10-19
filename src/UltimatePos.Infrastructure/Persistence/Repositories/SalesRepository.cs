@@ -29,7 +29,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         }
 
         public async Task RecordCompletedSaleAsync(Sale sale, CustomerLedgerEntry? ledgerEntry, DateOnly today, bool allowNegativeStock,
-            Guid? tillTransactionId = null)
+            Guid? tillTransactionId = null, Guid? deliveryOrderId = null)
         {
             await using var tx = await _context.Database.BeginTransactionAsync();
 
@@ -52,6 +52,19 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                     """);
                 if (claimed == 0)
                     throw new InvalidAssignmentException("This M-Pesa transaction has just been matched to another sale.");
+            }
+
+            if (deliveryOrderId is { } orderId)
+            {
+                var delivered = await _context.Database.ExecuteSqlInterpolatedAsync($"""
+                    UPDATE "DeliveryOrders"
+                    SET "Status" = {DeliveryOrderStatus.Delivered.ToString()}, "SaleId" = {sale.SaleId}, "DeliveredAt" = now(),
+                        "DeliveredBy" = {sale.CreatedBy}, "LastUpdatedAt" = now(), "LastUpdatedBy" = {sale.CreatedBy}
+                    WHERE "DeliveryOrderId" = {orderId} AND "BranchId" = {sale.BranchId}
+                      AND "Status" = {DeliveryOrderStatus.OutForDelivery.ToString()}
+                    """);
+                if (delivered == 0)
+                    throw new InvalidAssignmentException("This delivery has just been recorded (or cancelled) by someone else. Reload the order.");
             }
 
             await tx.CommitAsync();

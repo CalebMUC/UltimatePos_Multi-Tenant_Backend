@@ -1,3 +1,4 @@
+using UltimatePos.Application.Reports;
 using UltimatePos.Domain.Entities;
 
 namespace UltimatePos.Application.Notifications
@@ -54,6 +55,9 @@ namespace UltimatePos.Application.Notifications
     public sealed record ExpiringBatchRow(Guid StockBatchId, Guid ProductId, string ProductName, string BatchNumber, DateOnly ExpiryDate,
         decimal QuantityOnHand, string? UnitSymbol, Guid BranchId, int BranchNumber, string BranchName);
     public sealed record OverdueOrderRow(Guid PurchaseOrderId, string OrderNumber, string SupplierName, DateTime ExpectedDeliveryDate, Guid BranchId);
+    /// <summary>A completed credit sale whose promised payment date has passed. Whether it is still unpaid is worked out from the ledger.</summary>
+    public sealed record PromisedPaymentRow(Guid SaleId, string SaleNumber, Guid CustomerId, string CustomerName, string? PhoneNumber,
+        DateOnly PaymentDueDate, Guid BranchId);
     public sealed record UnmatchedPaymentRow(Guid MpesaTransactionId, string? ReceiptNumber, string PhoneNumber, decimal Amount, DateTime ReceivedAt,
         Guid? BranchId);
 
@@ -65,6 +69,10 @@ namespace UltimatePos.Application.Notifications
         Task<IReadOnlyList<ExpiringBatchRow>> GetExpiringBatchesAsync(DateOnly horizon);
         Task<IReadOnlyList<OverdueOrderRow>> GetOverdueOrdersAsync(DateTime nowUtc);
         Task<IReadOnlyList<UnmatchedPaymentRow>> GetUnmatchedTillPaymentsAsync(DateTime receivedBeforeUtc);
+        /// <summary>Completed credit sales promised for payment before <paramref name="day"/>.</summary>
+        Task<IReadOnlyList<PromisedPaymentRow>> GetPromisesDueBeforeAsync(DateOnly day);
+        /// <summary>Every ledger entry of these customers, to tell which of their invoices are still open.</summary>
+        Task<IReadOnlyList<CustomerLedgerRow>> GetCustomerLedgerAsync(IEnumerable<Guid> customerIds);
         Task<IReadOnlyList<Guid>> GetActiveBusinessIdsAsync();
         /// <summary>The business in scope.</summary>
         Task<BusinessProfile?> GetCurrentBusinessAsync();

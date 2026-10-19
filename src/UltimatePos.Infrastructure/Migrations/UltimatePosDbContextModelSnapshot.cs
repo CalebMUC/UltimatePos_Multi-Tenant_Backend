@@ -469,6 +469,129 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.ToTable("CustomerLedgerEntries");
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.DeliveryOrder", b =>
+                {
+                    b.Property<Guid>("DeliveryOrderId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CancelReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CancelledBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContactPhone")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeliveredBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DeliveryAddress")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("DispatchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DispatchedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("EstimatedTotal")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("LastUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("OrderNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RiderName")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SaleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("DeliveryOrderId");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("SaleId")
+                        .IsUnique()
+                        .HasFilter("\"SaleId\" IS NOT NULL");
+
+                    b.HasIndex("BranchId", "Status");
+
+                    b.HasIndex("BusinessId", "OrderNumber")
+                        .IsUnique();
+
+                    b.ToTable("DeliveryOrders");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.DeliveryOrderLine", b =>
+                {
+                    b.Property<Guid>("DeliveryOrderLineId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DeliveryOrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("QuantityInBaseUnits")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("UnitOfMeasureId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("DeliveryOrderLineId");
+
+                    b.HasIndex("DeliveryOrderId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("UnitOfMeasureId");
+
+                    b.ToTable("DeliveryOrderLines");
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.Expense", b =>
                 {
                     b.Property<Guid>("ExpenseId")
@@ -1461,6 +1584,9 @@ namespace UltimatePos.Infrastructure.Migrations
 
                     b.Property<string>("Notes")
                         .HasColumnType("text");
+
+                    b.Property<DateOnly?>("PaymentDueDate")
+                        .HasColumnType("date");
 
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
@@ -2517,6 +2643,65 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Navigation("Customer");
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.DeliveryOrder", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.Sale", "Sale")
+                        .WithMany()
+                        .HasForeignKey("SaleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Sale");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.DeliveryOrderLine", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.DeliveryOrder", "DeliveryOrder")
+                        .WithMany("Lines")
+                        .HasForeignKey("DeliveryOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.UnitOfMeasure", "UnitOfMeasure")
+                        .WithMany()
+                        .HasForeignKey("UnitOfMeasureId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DeliveryOrder");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("UnitOfMeasure");
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.Expense", b =>
                 {
                     b.HasOne("UltimatePos.Domain.Entities.Branch", null)
@@ -3250,6 +3435,11 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Navigation("Products");
 
                     b.Navigation("Subcategories");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.DeliveryOrder", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.Formula", b =>

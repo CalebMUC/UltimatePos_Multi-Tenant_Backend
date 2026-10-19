@@ -1,14 +1,17 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using UltimatePos.Application.Accounting;
+using UltimatePos.Application.Accounting.Dtos;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Business.Dtos;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Catalog.Dtos;
+using UltimatePos.Application.Deliveries;
 using UltimatePos.Application.Expenses;
 using UltimatePos.Application.Expenses.Dtos;
 using UltimatePos.Application.Inventory;
 using UltimatePos.Application.Inventory.Dtos;
+using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Payments;
 using UltimatePos.Application.Payments.Dtos;
 using UltimatePos.Application.Platform;
@@ -507,5 +510,308 @@ public class WaterRefillStationPostgresTests : IClassFixture<MultiBusinessDataba
 
         await SignInToStationAsync();
         Assert.Equal(100, await LitresAsync(water));
+    }
+
+    // ================================================================ Delivery orders
+    //
+    // The station's flow: a customer orders; with their own container they pay for the water only, without one they also buy a container
+    // (e.g. 20L refill 200 + container 500). A rider delivers for free. When the rider is back, the cashier records how the customer
+    // paid: cash, the till, or — only a manager — a promise to pay by a date.
+
+    private const decimal Refill20 = 200m, ContainerPrice = 500m;
+
+    /// <summary>An empty 20L container sold by the piece, with <paramref name="inStock"/> on the shelf.</summary>
+    private async Task<(Guid ProductId, Guid Piece)> ContainerAsync(decimal inStock = 10)
+    {
+        var piece = await UnitAsync("Piece", "pcs");
+        var code = $"J{Guid.NewGuid():N}"[..8].ToUpperInvariant();
+        var productId = await Run(async sp =>
+        {
+            var catalog = sp.GetRequiredService<CatalogService>();
+            var category = await catalog.CreateCategoryAsync(new CreateCategoryRequestDto("Containers " + code, code, null));
+            var product = await catalog.CreateProductAsync(new CreateProductRequestDto(
+                "20L container " + code, null, category.CategoryId, ItemType.FinishedGood, TaxClassification.Exempt, piece, 2));
+            await catalog.AddPriceTierAsync(product.ProductId, new AddPriceTierRequestDto(piece, PriceType.Retail, ContainerPrice, DateTime.UtcNow.AddMinutes(-1)));
+            await sp.GetRequiredService<InventoryService>().AdjustStockAsync(
+                new CreateStockAdjustmentRequestDto(product.ProductId, piece, inStock, "Opening stock", 300m));
+            return product.ProductId;
+        });
+        return (productId, piece);
+    }
+
+    private Task<decimal> OnHandAsync(Guid productId) =>
+        Run(async sp => (await sp.GetRequiredService<InventoryService>().GetStockLevelAsync(productId)).QuantityOnHand);
+
+    private Task<CustomerDto> CustomerAsync(decimal? creditLimit = null) =>
+        Run(sp => sp.GetRequiredService<BusinessService>().RegisterCustomerAsync(new RegisterCustomerRequestDto(
+            null, "Customer " + Guid.NewGuid().ToString("N")[..6], null, null, "0733" + Random.Shared.Next(100000, 999999), null, "Thika Road",
+            CreditLimit: creditLimit)));
+
+    private Task<DeliveryOrderDto> OrderForDeliveryAsync(Guid customerId, params DeliveryOrderLineRequestDto[] lines) =>
+        Run(sp => sp.GetRequiredService<DeliveryOrderService>().CreateAsync(
+            new CreateDeliveryOrderRequestDto(customerId, "Kiambu Road, blue gate opposite the church", null, null, lines)));
+
+    private Task<DeliveryOrderDto> DispatchAsync(DeliveryOrderDto order, string rider = "Kamau") =>
+        Run(sp => sp.GetRequiredService<DeliveryOrderService>().DispatchAsync(order.DeliveryOrderId, new DispatchDeliveryOrderRequestDto(rider)));
+
+    private Task<DeliveryOrderDto> DeliverAsync(DeliveryOrderDto order, DeliverDeliveryOrderRequestDto request) =>
+        Run(sp => sp.GetRequiredService<DeliveryOrderService>().DeliverAsync(order.DeliveryOrderId, request));
+
+    private static DeliveryOrderLineRequestDto Item(Guid productId, Guid unit, decimal quantity) => new(productId, unit, quantity);
+
+    [PostgresFact]
+    public async Task A_customer_with_their_own_container_pays_for_the_water_only_and_it_leaves_stock_on_delivery()
+    {
+        await SignInToStationAsync();
+        var water = await WaterAsync(priceTwenty: Refill20);
+        await AdjustAsync(water, 100, "Opening stock");
+        var customer = await CustomerAsync();
+
+        var order = await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, 2));
+        Assert.Equal((DeliveryOrderStatus.Pending, 400m), (order.Status, order.EstimatedTotal));
+        Assert.StartsWith("DEL-", order.OrderNumber);
+
+        // Ordered but not delivered: still in the tank, but held back — the counter can sell only the other 60 litres.
+        var stock = await Run(sp => sp.GetRequiredService<InventoryService>().GetStockLevelAsync(water.ProductId));
+        Assert.Equal((100m, 40m, 60m), (stock.QuantityOnHand, stock.ReservedQuantity, stock.SellableQuantity!.Value));
+        await Assert.ThrowsAsync<InsufficientStockException>(() => SellAsync(Cash(Line(water.ProductId, water.Litre, 61))));
+
+        order = await DispatchAsync(order);
+        Assert.Equal((DeliveryOrderStatus.OutForDelivery, "Kamau"), (order.Status, order.RiderName));
+
+        order = await DeliverAsync(order, new DeliverDeliveryOrderRequestDto(PaymentMethod.Cash, AmountTendered: 400m));
+        Assert.Equal(DeliveryOrderStatus.Delivered, order.Status);
+        Assert.Equal((400m, PaymentMethod.Cash), (order.SaleTotal!.Value, order.PaymentMethod!.Value));
+        Assert.Equal(60, await LitresAsync(water));
+        var sale = await Run(sp => sp.GetRequiredService<SalesService>().GetSaleByIdAsync(order.SaleId!.Value));
+        Assert.Equal((customer.CustomerId, SaleStatus.Completed), (sale.CustomerId!.Value, sale.Status));
+        Assert.Contains(order.OrderNumber, sale.Notes);
+        Assert.Equal(0m, (await Run(sp => sp.GetRequiredService<InventoryService>().GetStockLevelAsync(water.ProductId))).ReservedQuantity);
+    }
+
+    [PostgresFact]
+    public async Task A_customer_without_a_container_buys_one_with_the_water()
+    {
+        await SignInToStationAsync();
+        var water = await WaterAsync(priceTwenty: Refill20);
+        await AdjustAsync(water, 100, "Opening stock");
+        var container = await ContainerAsync(inStock: 10);
+        var customer = await CustomerAsync();
+
+        var order = await OrderForDeliveryAsync(customer.CustomerId,
+            Item(water.ProductId, water.TwentyLitre, 1), Item(container.ProductId, container.Piece, 1));
+        Assert.Equal(Refill20 + ContainerPrice, order.EstimatedTotal);
+
+        await DispatchAsync(order);
+        order = await DeliverAsync(order, new DeliverDeliveryOrderRequestDto(PaymentMethod.Cash, AmountTendered: 1000m));
+
+        var sale = await Run(sp => sp.GetRequiredService<SalesService>().GetSaleByIdAsync(order.SaleId!.Value));
+        Assert.Equal((700m, 300m), (sale.TotalAmount, sale.ChangeDue!.Value));
+        Assert.Equal(80, await LitresAsync(water));
+        Assert.Equal(9, await OnHandAsync(container.ProductId)); // water and containers are separate stock
+    }
+
+    [PostgresFact]
+    public async Task When_the_customer_turns_out_to_have_a_container_only_the_water_is_charged()
+    {
+        await SignInToStationAsync();
+        var water = await WaterAsync(priceTwenty: Refill20);
+        await AdjustAsync(water, 100, "Opening stock");
+        var container = await ContainerAsync(inStock: 10);
+        var customer = await CustomerAsync();
+        var order = await OrderForDeliveryAsync(customer.CustomerId,
+            Item(water.ProductId, water.TwentyLitre, 1), Item(container.ProductId, container.Piece, 1));
+        await DispatchAsync(order);
+
+        order = await DeliverAsync(order, new DeliverDeliveryOrderRequestDto(PaymentMethod.Cash, AmountTendered: 200m,
+            Lines: new[] { Item(water.ProductId, water.TwentyLitre, 1) }));
+
+        Assert.Equal(Refill20, order.SaleTotal);
+        Assert.Equal(10, await OnHandAsync(container.ProductId)); // the container came back on the bike
+        var containerStock = await Run(sp => sp.GetRequiredService<InventoryService>().GetStockLevelAsync(container.ProductId));
+        Assert.Equal(0m, containerStock.ReservedQuantity);
+    }
+
+    [PostgresFact]
+    public async Task A_customer_may_pay_at_the_till_on_delivery()
+    {
+        var stationId = await SignInToStationAsync();
+        var water = await WaterAsync(priceTwenty: Refill20);
+        await AdjustAsync(water, 100, "Opening stock");
+        var customer = await CustomerAsync();
+        var order = await DispatchAsync(await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, 1)));
+
+        var transactionId = Guid.NewGuid();
+        await Run(sp => sp.GetRequiredService<IMpesaRepository>().CreateAsync(new MpesaTransaction
+        {
+            MpesaTransactionId = transactionId, BusinessId = stationId, TransactionType = MpesaTransactionType.C2B,
+            Status = MpesaTransactionStatus.Received, MpesaReceiptNumber = "T" + Guid.NewGuid().ToString("N")[..9].ToUpperInvariant(),
+            PhoneNumber = "254733000111", Amount = Refill20, TransactionDate = DateTime.UtcNow
+        }));
+
+        order = await DeliverAsync(order, new DeliverDeliveryOrderRequestDto(PaymentMethod.MpesaTill, MpesaTransactionId: transactionId));
+
+        Assert.Equal(PaymentMethod.MpesaTill, order.PaymentMethod);
+        Assert.DoesNotContain(await Run(sp => sp.GetRequiredService<MpesaService>().GetUnmatchedTillTransactionsAsync()),
+            t => t.MpesaTransactionId == transactionId);
+        // A prompt to the customer's phone is not how this station is paid: a delivery must be settled when it is recorded.
+        var another = await DispatchAsync(await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.Litre, 1)));
+        await Assert.ThrowsAsync<ValidationException>(() => DeliverAsync(another,
+            new DeliverDeliveryOrderRequestDto(PaymentMethod.MpesaStkPush)));
+    }
+
+    [PostgresFact]
+    public async Task Only_a_manager_can_accept_a_promise_to_pay_later_and_an_unkept_promise_raises_an_alert_until_paid()
+    {
+        await SignInToStationAsync();
+        var water = await WaterAsync(priceTwenty: Refill20);
+        await AdjustAsync(water, 100, "Opening stock");
+        var customer = await CustomerAsync(creditLimit: 1000m);
+        var order = await DispatchAsync(await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, 2)));
+        var promise = new DeliverDeliveryOrderRequestDto(PaymentMethod.Credit, PaymentDueDate: Today.AddDays(7));
+
+        // A cashier records deliveries but cannot accept a promise to pay.
+        await SignInToStationAsync("DeliveryOrders.View", "DeliveryOrders.Deliver", "Sales.Create", "Sales.View");
+        await Assert.ThrowsAsync<ForbiddenException>(() => DeliverAsync(order, promise));
+        Assert.Equal(100, await LitresAsync(water));
+
+        // A manager can — with the date the customer promised.
+        await SignInToStationAsync();
+        await Assert.ThrowsAsync<ValidationException>(() => DeliverAsync(order, promise with { PaymentDueDate = null }));
+        await Assert.ThrowsAsync<ValidationException>(() => DeliverAsync(order, promise with { PaymentDueDate = Today.AddDays(-1) }));
+        order = await DeliverAsync(order, promise);
+        Assert.Equal((PaymentMethod.Credit, Today.AddDays(7)), (order.PaymentMethod!.Value, order.PaymentDueDate!.Value));
+        Assert.Equal(400m, (await Run(sp => sp.GetRequiredService<AccountingService>().GetCustomerBalanceAsync(customer.CustomerId))).OutstandingBalance);
+
+        // The day passes unpaid (moved back here rather than waiting a week): the sweep raises an alert for it.
+        var saleId = order.SaleId!.Value;
+        var lapsed = Today.AddDays(-2);
+        await Run(sp => sp.GetRequiredService<UltimatePosDbContext>().Sales.IgnoreQueryFilters()
+            .Where(s => s.SaleId == saleId).ExecuteUpdateAsync(u => u.SetProperty(s => s.PaymentDueDate, lapsed)));
+        var stationId = _db.Caller.BusinessId!.Value;
+        async Task<bool> AlertOpenAsync()
+        {
+            // As the background worker does it: sweep with no user and the business in scope, then dispatch (which opens alerts).
+            _db.Caller.UserId = null;
+            _db.Caller.BusinessId = null;
+            await Run(async sp =>
+            {
+                using var tenant = sp.GetRequiredService<UltimatePos.Application.Common.Interfaces.ITenantContext>().Use(stationId);
+                return await sp.GetRequiredService<AlertSweepService>().RunAsync();
+            });
+            await Run(sp => sp.GetRequiredService<NotificationDispatcher>().DispatchPendingAsync());
+            var open = await Run(sp => sp.GetRequiredService<UltimatePosDbContext>().AlertStates.IgnoreQueryFilters()
+                .AnyAsync(a => a.BusinessId == stationId && a.AlertKey == AlertKeys.PaymentPromiseOverdue(saleId) && a.IsActive));
+            await SignInToStationAsync();
+            return open;
+        }
+        Assert.True(await AlertOpenAsync());
+
+        // The ageing report shows the promise next to the open invoice.
+        var aging = await Run(sp => sp.GetRequiredService<ReportsService>().GetCustomerAgingAsync(null, ReportPeriod.DefaultUtcOffsetMinutes,
+            customer.CustomerId, includeInvoices: true, includeSettled: false));
+        var invoice = aging.Customers.Single().OpenInvoices!.Single();
+        Assert.Equal((lapsed, true), (invoice.PaymentDueDate!.Value, invoice.IsPromiseOverdue));
+
+        // Paid: the alert clears on the next sweep.
+        await Run(sp => sp.GetRequiredService<AccountingService>().RecordCustomerPaymentAsync(customer.CustomerId,
+            new RecordCustomerPaymentRequestDto(400m, "Paid the delivery", SettlementMethod.Cash)));
+        Assert.False(await AlertOpenAsync());
+    }
+
+    [PostgresFact]
+    public async Task An_order_cannot_take_water_already_promised_to_others_and_a_cancelled_order_gives_it_back()
+    {
+        await SignInToStationAsync();
+        var water = await WaterAsync(priceTwenty: Refill20);
+        await AdjustAsync(water, 50, "Opening stock");
+        var customer = await CustomerAsync();
+
+        var first = await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, 2)); // 40 of 50 held
+        var refused = await Assert.ThrowsAsync<InsufficientStockException>(() =>
+            OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, 1)));
+        Assert.Contains("10 available, 20 needed", refused.Message);
+
+        // Must go out with a rider before it can be delivered; cancelling needs a reason.
+        await Assert.ThrowsAsync<InvalidAssignmentException>(() => DeliverAsync(first, new DeliverDeliveryOrderRequestDto(PaymentMethod.Cash, AmountTendered: 400m)));
+        await Assert.ThrowsAsync<ValidationException>(() => Run(sp => sp.GetRequiredService<DeliveryOrderService>().DispatchAsync(
+            first.DeliveryOrderId, new DispatchDeliveryOrderRequestDto(" "))));
+        first = await DispatchAsync(first);
+        await Assert.ThrowsAsync<ValidationException>(() => Run(sp => sp.GetRequiredService<DeliveryOrderService>().CancelAsync(
+            first.DeliveryOrderId, new CancelDeliveryOrderRequestDto(""))));
+
+        // The customer could not be found: the order is cancelled and the 40 litres are free again.
+        first = await Run(sp => sp.GetRequiredService<DeliveryOrderService>().CancelAsync(first.DeliveryOrderId,
+            new CancelDeliveryOrderRequestDto("Customer not reachable")));
+        Assert.Equal((DeliveryOrderStatus.Cancelled, "Customer not reachable"), (first.Status, first.CancelReason));
+        Assert.Equal(50, await LitresAsync(water)); // nothing ever left stock
+        await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, 2));
+        await Assert.ThrowsAsync<InvalidAssignmentException>(() => DeliverAsync(first, new DeliverDeliveryOrderRequestDto(PaymentMethod.Cash, AmountTendered: 400m)));
+    }
+
+    [PostgresFact]
+    public async Task A_delivery_recorded_twice_at_once_becomes_one_sale()
+    {
+        await SignInToStationAsync();
+        var water = await WaterAsync(priceTwenty: Refill20);
+        await AdjustAsync(water, 100, "Opening stock");
+        var customer = await CustomerAsync();
+        var order = await DispatchAsync(await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, 1)));
+
+        var (succeeded, failures) = await AtOnceAsync(4, sp => sp.GetRequiredService<DeliveryOrderService>().DeliverAsync(order.DeliveryOrderId,
+            new DeliverDeliveryOrderRequestDto(PaymentMethod.Cash, AmountTendered: 200m)));
+
+        Assert.Equal(1, succeeded);
+        Assert.All(failures, f => Assert.IsType<InvalidAssignmentException>(f));
+        Assert.Equal(80, await LitresAsync(water));
+        var sales = await Run(sp => sp.GetRequiredService<SalesService>().GetSalesAsync(1, 100, new SaleQuery(CustomerId: customer.CustomerId)));
+        Assert.Equal(1, sales.TotalCount);
+    }
+
+    [PostgresFact]
+    public async Task The_delivery_summary_shows_what_each_rider_delivered_and_the_cash_to_hand_in()
+    {
+        await SignInToStationAsync();
+        var water = await WaterAsync(priceTwenty: Refill20);
+        await AdjustAsync(water, 500, "Opening stock");
+        var customer = await CustomerAsync(creditLimit: 5000m);
+        var rider = "Rider " + Guid.NewGuid().ToString("N")[..6]; // this test's own rider, apart from other tests' deliveries
+
+        async Task<DeliveryOrderDto> Delivered(int refills, DeliverDeliveryOrderRequestDto payment) =>
+            await DeliverAsync(await DispatchAsync(await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, refills)), rider), payment);
+
+        await Delivered(2, new DeliverDeliveryOrderRequestDto(PaymentMethod.Cash, AmountTendered: 500m));               // 400 cash
+        await Delivered(1, new DeliverDeliveryOrderRequestDto(PaymentMethod.Credit, PaymentDueDate: Today.AddDays(3))); // 200 on credit
+        await DispatchAsync(await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, 1)), rider); // still out
+
+        var summary = await Run(sp => sp.GetRequiredService<DeliveryOrderService>().GetSummaryAsync(Today, Today, ReportPeriod.DefaultUtcOffsetMinutes));
+        var theirs = summary.ByRider.Single(r => r.RiderName == rider);
+        Assert.Equal((2, 600m, 400m, 0m, 200m, 1), (theirs.DeliveredCount, theirs.DeliveredTotal, theirs.CashCollected, theirs.PaidByMpesaTill,
+            theirs.OnCredit, theirs.OutForDeliveryNow));
+
+        var list = await Run(sp => sp.GetRequiredService<DeliveryOrderService>().GetOrdersAsync(1, 50,
+            new DeliveryOrderQuery(Status: DeliveryOrderStatus.OutForDelivery, RiderName: rider)));
+        Assert.Single(list.Items);
+    }
+
+    [PostgresFact]
+    public async Task Water_already_delivered_is_recorded_even_when_other_orders_hold_what_is_left_but_never_below_zero()
+    {
+        await SignInToStationAsync();
+        var water = await WaterAsync(priceTwenty: Refill20);
+        await AdjustAsync(water, 40, "Opening stock");
+        var customer = await CustomerAsync();
+        var first = await DispatchAsync(await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, 1)));
+        var second = await DispatchAsync(await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, 1)));
+        await AdjustAsync(water, -5, "Spillage at the tap"); // 35 left, 40 promised
+
+        // The first rider is back: the water is already with the customer, so the other order's reservation does not block it.
+        first = await DeliverAsync(first, new DeliverDeliveryOrderRequestDto(PaymentMethod.Cash, AmountTendered: 200m));
+        Assert.Equal(DeliveryOrderStatus.Delivered, first.Status);
+        Assert.Equal(15, await LitresAsync(water));
+
+        // The second cannot have been filled from 15 litres: refused, and stock never goes below zero.
+        await Assert.ThrowsAsync<InsufficientStockException>(() => DeliverAsync(second, new DeliverDeliveryOrderRequestDto(PaymentMethod.Cash, AmountTendered: 200m)));
+        Assert.Equal(15, await LitresAsync(water));
     }
 }

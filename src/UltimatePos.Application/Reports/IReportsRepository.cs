@@ -65,7 +65,8 @@ namespace UltimatePos.Application.Reports
         /// <summary>Every ledger entry created before the bound, oldest first within each customer.</summary>
         Task<IReadOnlyList<CustomerLedgerRow>> GetCustomerLedgerAsync(DateTime toUtcExclusive, Guid? customerId);
 
-        Task<Dictionary<Guid, string>> GetSaleNumbersAsync(IEnumerable<Guid> saleIds);
+        /// <summary>Each sale's number, and the day the customer promised to pay by (null = no promise).</summary>
+        Task<Dictionary<Guid, (string SaleNumber, DateOnly? PaymentDueDate)>> GetInvoiceReferencesAsync(IEnumerable<Guid> saleIds);
 
         /// <summary>Production runs created in [fromUtc, toUtcExclusive).</summary>
         Task<IReadOnlyList<ProductionRunReportRow>> GetProductionRunsAsync(DateTime fromUtc, DateTime toUtcExclusive, Guid? productId);

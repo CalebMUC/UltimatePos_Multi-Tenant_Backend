@@ -519,7 +519,8 @@ internal sealed class UnreachableRepository : IReportsRepository, ICostingReposi
     public Task<IReadOnlyList<SaleReportRow>> GetSalesAsync(DateTime fromUtc, DateTime toUtcExclusive) => Fail<IReadOnlyList<SaleReportRow>>();
     public Task<IReadOnlyList<CustomerBalanceRow>> GetCustomerBalancesAsync() => Fail<IReadOnlyList<CustomerBalanceRow>>();
     public Task<IReadOnlyList<CustomerLedgerRow>> GetCustomerLedgerAsync(DateTime toUtcExclusive, Guid? customerId) => Fail<IReadOnlyList<CustomerLedgerRow>>();
-    public Task<Dictionary<Guid, string>> GetSaleNumbersAsync(IEnumerable<Guid> saleIds) => Fail<Dictionary<Guid, string>>();
+    public Task<Dictionary<Guid, (string SaleNumber, DateOnly? PaymentDueDate)>> GetInvoiceReferencesAsync(IEnumerable<Guid> saleIds) =>
+        Fail<Dictionary<Guid, (string SaleNumber, DateOnly? PaymentDueDate)>>();
     public Task<IReadOnlyList<ProductionRunReportRow>> GetProductionRunsAsync(DateTime fromUtc, DateTime toUtcExclusive, Guid? productId) => Fail<IReadOnlyList<ProductionRunReportRow>>();
     public Task<IReadOnlyList<ProductionCostLineRow>> GetProductionCostLinesAsync(DateTime fromUtc, DateTime toUtcExclusive, Guid? productId) => Fail<IReadOnlyList<ProductionCostLineRow>>();
     public Task<IReadOnlyList<ProductionInputRow>> GetProductionInputsAsync(DateTime fromUtc, DateTime toUtcExclusive, Guid? productId) => Fail<IReadOnlyList<ProductionInputRow>>();

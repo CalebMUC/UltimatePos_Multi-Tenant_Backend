@@ -40,8 +40,9 @@ namespace UltimatePos.Application.Reports.Dtos
     // Outstanding is what is still owed on open invoices; UnappliedCredit is what the customer has paid beyond that.
     // NetBalance = Outstanding - UnappliedCredit, the same figure as the customer's running balance on that day.
     public record AgingBucketsDto(decimal Days0To30, decimal Days31To60, decimal Days61To90, decimal Over90);
+    // PaymentDueDate is the day the customer promised to pay by (null = no promise); IsPromiseOverdue when that day has passed.
     public record OpenInvoiceDto(Guid InvoiceId, string? InvoiceNumber, DateOnly InvoiceDate, decimal OriginalAmount,
-        decimal OutstandingAmount, int AgeDays, string Bucket);
+        decimal OutstandingAmount, int AgeDays, string Bucket, DateOnly? PaymentDueDate = null, bool IsPromiseOverdue = false);
     public record CustomerAgingRowDto(Guid CustomerId, string CustomerName, string? PhoneNumber, decimal Outstanding, decimal UnappliedCredit,
         decimal NetBalance, AgingBucketsDto Buckets, int OpenInvoiceCount, DateOnly? OldestOpenInvoiceDate, int? OldestOpenInvoiceAgeDays,
         IEnumerable<OpenInvoiceDto>? OpenInvoices);
