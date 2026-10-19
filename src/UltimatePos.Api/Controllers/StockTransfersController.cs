@@ -20,8 +20,9 @@ public class StockTransfersController : ControllerBase
     public async Task<IActionResult> GetTransfers([FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] StockTransferStatus? status = null, [FromQuery] Guid? branchId = null)
     {
-        var result = await _transfers.GetTransfersAsync(page, pageSize, status, branchId);
-        return Ok(ApiResponse<PagedResult<StockTransferDto>>.Ok(result));
+        var paged = await _transfers.GetTransfersAsync(page, pageSize, status, branchId);
+        var meta = new PagingMeta(paged.Page, paged.PageSize, paged.TotalCount, paged.TotalPages);
+        return Ok(ApiResponse<IEnumerable<StockTransferDto>>.Ok(paged.Items, meta));
     }
 
     [Authorize(Policy = "PERMISSION:StockTransfers.View")]

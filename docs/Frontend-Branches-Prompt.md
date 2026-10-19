@@ -105,7 +105,7 @@ export enum StockTransferStatus { Draft = 0, Dispatched = 1, Received = 2, Cance
 
 | Action | Call |
 |---|---|
-| List | `GET stock-transfers?page&pageSize&status&branchId` → paged `StockTransferDto` (from **or** to the branch) |
+| List | `GET stock-transfers?page&pageSize&status&branchId` → `data: StockTransferDto[]`, paging in `meta` `{ page, pageSize, totalCount, totalPages }` like every other list (from **or** to the branch) |
 | View | `GET stock-transfers/{id}` |
 | Create | `POST stock-transfers` `{ fromBranchId?, toBranchId, notes?, lines: [{ productId, unitOfMeasureId, quantity }] }` |
 | Dispatch | `POST stock-transfers/{id}/dispatch` |
