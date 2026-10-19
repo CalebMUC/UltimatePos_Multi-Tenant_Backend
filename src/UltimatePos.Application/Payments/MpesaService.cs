@@ -106,8 +106,15 @@ namespace UltimatePos.Application.Payments
         public Task RegisterC2BUrlsAsync(string confirmationUrl, string validationUrl) =>
             _client.RegisterC2BUrlsAsync(confirmationUrl, validationUrl);
 
-        public async Task<IEnumerable<MpesaTransactionDto>> GetUnmatchedTillTransactionsAsync() =>
-            (await _repository.GetUnmatchedAsync()).Select(ToDto);
+        /// <summary>Till payments not yet matched to a sale: the branch's own till's, and those to the business short code (no branch).</summary>
+        public async Task<IEnumerable<MpesaTransactionDto>> GetUnmatchedTillTransactionsAsync()
+        {
+            var transactions = await _repository.GetUnmatchedAsync();
+            var branches = (await _branchRepository.GetBranchesAsync(includeInactive: true)).ToDictionary(b => b.BranchId);
+            return transactions.Select(t => ToDto(t) is var dto && t.BranchId is { } id && branches.TryGetValue(id, out var branch)
+                ? dto with { KraBranchId = branch.KraBranchId, BranchName = branch.Name }
+                : dto);
+        }
 
         // On-demand reconciliation for a Pending STK sale whose callback never arrived.
         public async Task<Sales.Dtos.SaleDto> ReconcileStkPushAsync(Guid saleId)
@@ -152,6 +159,7 @@ namespace UltimatePos.Application.Payments
                 ? DateTime.SpecifyKind(dt.AddHours(-3), DateTimeKind.Utc) : null;
 
         private static MpesaTransactionDto ToDto(MpesaTransaction t) =>
-            new(t.MpesaTransactionId, t.TransactionType, t.Status, t.MpesaReceiptNumber, t.PhoneNumber, t.Amount, t.TransactionDate, t.SaleId);
+            new(t.MpesaTransactionId, t.TransactionType, t.Status, t.MpesaReceiptNumber, t.PhoneNumber, t.Amount, t.TransactionDate, t.SaleId,
+                t.BranchId);
     }
 }

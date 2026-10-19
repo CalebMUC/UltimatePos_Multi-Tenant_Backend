@@ -81,5 +81,5 @@ namespace UltimatePos.Application.Business.Dtos
         string? PhoneNumber, string? Email, string? PhysicalAddress, bool IsActive, PriceType PriceType, decimal? CreditLimit);
 
     public record BusinessLicenseStatusDto(UltimatePos.Application.Platform.BusinessAccessDto Access, int? MaxUsers,
-        IEnumerable<UltimatePos.Application.Platform.BusinessLicenseDto> Licenses, int? MaxBranches = null);
+        IEnumerable<UltimatePos.Application.Platform.BusinessLicenseDto> Licenses, int? MaxBranches = null, int OpenBranches = 0);
 }

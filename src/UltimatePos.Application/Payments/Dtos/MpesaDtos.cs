@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,7 +8,8 @@ using static UltimatePos.Domain.Enums.PosEnums;
 namespace UltimatePos.Application.Payments.Dtos
 {
     public record MpesaTransactionDto(Guid MpesaTransactionId, MpesaTransactionType TransactionType, MpesaTransactionStatus Status,
-    string? MpesaReceiptNumber, string PhoneNumber, decimal Amount, DateTime? TransactionDate, Guid? SaleId);
+    string? MpesaReceiptNumber, string PhoneNumber, decimal Amount, DateTime? TransactionDate, Guid? SaleId,
+    Guid? BranchId = null, string? KraBranchId = null, string? BranchName = null);
 
     // Shapes matching Daraja's actual callback/confirmation payloads — see note on JsonElement below.
     public record StkCallbackPayload(StkCallbackBody Body);

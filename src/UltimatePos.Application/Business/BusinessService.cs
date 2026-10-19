@@ -19,15 +19,17 @@ namespace UltimatePos.Application.Business
         public const string ViewAllPermission = "Businesses.ViewAll";
 
         private readonly IBusinessRepository _repository;
+        private readonly Branches.IBranchRepository _branchRepository;
         private readonly ICurrentUser _currentUser;
         private readonly ITenantContext _tenant;
         private readonly ISystemEventRecorder _events;
         private readonly Licensing.LicensingSettings _licensing;
 
         public BusinessService(IBusinessRepository repository, ICurrentUser currentUser, ITenantContext tenant, ISystemEventRecorder events,
-            Licensing.LicensingSettings licensing)
+            Licensing.LicensingSettings licensing, Branches.IBranchRepository branchRepository)
         {
             _repository = repository;
+            _branchRepository = branchRepository;
             _currentUser = currentUser;
             _tenant = tenant;
             _events = events;
@@ -87,7 +89,8 @@ namespace UltimatePos.Application.Business
             var licenses = await _repository.GetLicensesAsync();
             return new BusinessLicenseStatusDto(
                 Platform.PlatformService.ToAccessDto(Licensing.LicensePolicy.Evaluate(business, _licensing, Licensing.LicensePolicy.Today)),
-                business.LicenseMaxUsers, licenses.Select(Platform.PlatformService.ToDto), business.LicenseMaxBranches);
+                business.LicenseMaxUsers, licenses.Select(Platform.PlatformService.ToDto), business.LicenseMaxBranches,
+                await _branchRepository.CountActiveBranchesAsync());
         }
 
         private async Task EnsureCanSeeAsync(Guid businessId)

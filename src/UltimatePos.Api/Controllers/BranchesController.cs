@@ -22,6 +22,18 @@ public class BranchesController : ControllerBase
         return Ok(ApiResponse<IEnumerable<BranchDto>>.Ok(result));
     }
 
+    /// <summary>
+    /// Every open branch of the business, names only, for any signed-in member — e.g. the "To" list of a stock transfer. isMine marks
+    /// the branches the caller works in. Use GET /branches for full details of your own.
+    /// </summary>
+    [Authorize]
+    [HttpGet("directory")]
+    public async Task<IActionResult> GetDirectory()
+    {
+        var result = await _branches.GetDirectoryAsync();
+        return Ok(ApiResponse<IEnumerable<BranchDirectoryEntryDto>>.Ok(result));
+    }
+
     [Authorize]
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetBranch(Guid id)

@@ -131,6 +131,7 @@ All of this runs in a transaction, with the transfer row locked `FOR UPDATE` and
 ## Endpoints
 
 - `GET/POST /branches`, `GET/PUT /branches/{id}`, `POST /branches/{id}/activate|deactivate`
+- `GET /branches/directory`: every open branch, names only, for any member (`isMine` marks the caller's own); for transfer destinations and labels
 - `GET/PUT /users/{id}/branches`
 - `GET/POST /stock-transfers`, `GET /stock-transfers/{id}`, `POST /stock-transfers/{id}/dispatch|receive|cancel`
 - `POST /auth/switch-branch`
