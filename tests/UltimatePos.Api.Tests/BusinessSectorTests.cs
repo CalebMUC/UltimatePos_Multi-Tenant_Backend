@@ -44,6 +44,42 @@ public class BusinessSectorDefaultsTests
         Assert.Null(BusinessDefaults.For(BusinessSector.General).Kind);
         Assert.Equal(BusinessKind.Trader, BusinessDefaults.For(BusinessSector.Supermarket).Kind);
     }
+
+    [Fact]
+    public void A_water_refill_station_has_no_production_and_an_agrovet_has_no_containers()
+    {
+        var water = BusinessModules.For(BusinessSector.WaterRefill, BusinessKind.Trader);
+        Assert.DoesNotContain(BusinessModules.Production, water);
+        Assert.Contains(BusinessModules.Deliveries, water);
+        Assert.Contains(BusinessModules.Containers, water);
+        Assert.DoesNotContain(BusinessModules.Prescriptions, water);
+
+        var reseller = BusinessModules.For(BusinessSector.Agrovet, BusinessKind.Trader);
+        Assert.DoesNotContain(BusinessModules.Containers, reseller);
+        Assert.DoesNotContain(BusinessModules.Production, reseller);
+        Assert.Contains(BusinessModules.Batches, reseller);
+        // An agrovet that makes its own feeds produces: production follows the kind, not the sector.
+        Assert.Contains(BusinessModules.Production, BusinessModules.For(BusinessSector.Agrovet, BusinessKind.Manufacturer));
+
+        Assert.Contains(BusinessModules.Prescriptions, BusinessModules.For(BusinessSector.Pharmacy, BusinessKind.Trader));
+        Assert.DoesNotContain(BusinessModules.Prescriptions, BusinessModules.For(BusinessSector.Supermarket, BusinessKind.Trader));
+    }
+
+    [Fact]
+    public void Every_business_gets_the_core_modules_and_an_unclassified_one_keeps_every_menu()
+    {
+        foreach (var sector in Enum.GetValues<BusinessSector>())
+            foreach (var kind in Enum.GetValues<BusinessKind>())
+            {
+                var modules = BusinessModules.For(sector, kind);
+                Assert.All(BusinessModules.Core, core => Assert.Contains(core, modules));
+                Assert.Equal(modules.Count, modules.Distinct().Count());
+            }
+
+        var general = BusinessModules.For(BusinessSector.General, BusinessKind.Trader);
+        foreach (var module in new[] { BusinessModules.Batches, BusinessModules.Prescriptions, BusinessModules.Deliveries, BusinessModules.Containers })
+            Assert.Contains(module, general);
+    }
 }
 
 /// <summary>Sectors end to end: registration defaults, explicit values winning, reclassification by a super user, platform reporting.</summary>
@@ -101,8 +137,11 @@ public class BusinessSectorPostgresTests : IClassFixture<MultiBusinessDatabase>
         Assert.Contains("FILT", categories);
         Assert.Contains("SAN", categories);
 
-        // The owner sees it from their own business profile.
-        Assert.Equal(BusinessSector.WaterRefill, (await _db.RunAsync(sp => sp.GetRequiredService<BusinessService>().GetCurrentBusinessAsync())).Sector);
+        // The owner sees it from their own business profile, with the modules it uses: deliveries and containers, no production.
+        var current = await _db.RunAsync(sp => sp.GetRequiredService<BusinessService>().GetCurrentBusinessAsync());
+        Assert.Equal(BusinessSector.WaterRefill, current.Sector);
+        Assert.Contains(BusinessModules.Deliveries, current.Modules!);
+        Assert.DoesNotContain(BusinessModules.Production, current.Modules!);
     }
 
     [PostgresFact]

@@ -396,9 +396,10 @@ The backend changes are additive. Nothing an existing screen sends or reads has 
     - Platform businesses list: a sector filter (`GET /platform/businesses?sector=`).
     - Platform dashboard: a by-sector table (`bySector`).
     - Business detail: a *Change sector* action (`PUT /platform/businesses/{id}/sector`).
-    - In the business app, read `sector` from sign-in (`businesses[].sector`) or `GET /businesses/current`. Use it to choose menus:
-      prescriptions for Pharmacy, the delivery board and refill quick buttons for WaterRefill. Hiding a menu is a convenience only;
-      the API still checks permissions.
+    - In the business app, show menus from `modules`, never from your own sector table. It comes from sign-in
+      (`businesses[].modules`) or `GET /businesses/current`. A refill station gets `deliveries` and `containers` but no
+      `production`. Full brief: [Frontend-Sector-Modules-Prompt.md](Frontend-Sector-Modules-Prompt.md). Hiding a menu is a
+      convenience only; the API still checks permissions.
 
 Not needed now: bank transfer or split payment at the counter (deferred), container deposits (not used), maintenance (§11).
 

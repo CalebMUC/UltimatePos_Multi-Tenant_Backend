@@ -56,7 +56,8 @@ namespace UltimatePos.Application.Business.Dtos
         string? PhoneNumber, string? Email, string? LogoUrl, string? BackgroundImageUrl, bool IsActive,
         bool IsVatRegistered, string? MpesaShortCode, decimal? MaxDiscountPercent,
         bool IsSuspended = false, string? SuspensionReason = null, DateOnly? LicenseEndsOn = null, int? LicenseMaxUsers = null,
-        int? LicenseMaxBranches = null, bool AllowNegativeStock = true, BusinessSector Sector = BusinessSector.General);
+        int? LicenseMaxBranches = null, bool AllowNegativeStock = true, BusinessSector Sector = BusinessSector.General,
+        IReadOnlyList<string>? Modules = null); // the app areas it uses (BusinessModules), from its sector and kind
 
     /// <param name="BusinessId">Optional. Customers are always registered in the business signed in to; if given it must be that one.</param>
     /// <param name="PriceType">Which price list the customer buys at. Defaults to Wholesale for a wholesaler, Retail for a retailer.</param>
