@@ -10,10 +10,17 @@ namespace UltimatePos.Application.Reports.Dtos
     public record SalesByPaymentMethodDto(string PaymentMethod, int SaleCount, decimal Total, decimal PercentOfRevenue);
     public record SalesByCustomerDto(Guid? CustomerId, string CustomerName, int SaleCount, decimal Total);
     public record SalesByProductDto(Guid ProductId, string ProductName, string Sku, decimal QuantitySoldInBaseUnits, decimal Revenue, decimal PercentOfRevenue);
+    // One row per product AND the unit it was sold in (a 20L refill, a 10L refill, a 1L refill of the same water), measured like
+    // TopProducts: Revenue is net of VAT and of returns. QuantitySold is in that unit, net of returns.
+    public record SalesByProductUnitDto(Guid ProductId, string ProductName, string Sku, Guid UnitOfMeasureId, string UnitSymbol,
+        decimal QuantitySold, decimal QuantitySoldInBaseUnits, decimal Revenue, decimal PercentOfRevenue);
+    // Who rang the sales up, measured like ByPaymentMethod (sale totals, VAT included). CashierName is null for sales with no user.
+    public record SalesByCashierDto(Guid? UserId, string? CashierName, int SaleCount, decimal Total, decimal PercentOfRevenue);
     public record SalesReportDto(DateOnly From, DateOnly To, int SaleCount, decimal Revenue, decimal AverageSaleValue,
         int VoidedCount, decimal VoidedAmount, int PendingCount, decimal PendingAmount,
         IEnumerable<SalesByDayDto> ByDay, IEnumerable<SalesByPaymentMethodDto> ByPaymentMethod,
-        IEnumerable<SalesByCustomerDto> TopCustomers, IEnumerable<SalesByProductDto> TopProducts);
+        IEnumerable<SalesByCustomerDto> TopCustomers, IEnumerable<SalesByProductDto> TopProducts,
+        IEnumerable<SalesByProductUnitDto>? TopProductUnits = null, IEnumerable<SalesByCashierDto>? ByCashier = null);
 
     // ---- Production costs ----
     // One row per product AND unit: runs of the same product in different units (a box and a packet) are never added together.
@@ -33,8 +40,9 @@ namespace UltimatePos.Application.Reports.Dtos
     // Outstanding is what is still owed on open invoices; UnappliedCredit is what the customer has paid beyond that.
     // NetBalance = Outstanding - UnappliedCredit, the same figure as the customer's running balance on that day.
     public record AgingBucketsDto(decimal Days0To30, decimal Days31To60, decimal Days61To90, decimal Over90);
+    // PaymentDueDate is the day the customer promised to pay by (null = no promise); IsPromiseOverdue when that day has passed.
     public record OpenInvoiceDto(Guid InvoiceId, string? InvoiceNumber, DateOnly InvoiceDate, decimal OriginalAmount,
-        decimal OutstandingAmount, int AgeDays, string Bucket);
+        decimal OutstandingAmount, int AgeDays, string Bucket, DateOnly? PaymentDueDate = null, bool IsPromiseOverdue = false);
     public record CustomerAgingRowDto(Guid CustomerId, string CustomerName, string? PhoneNumber, decimal Outstanding, decimal UnappliedCredit,
         decimal NetBalance, AgingBucketsDto Buckets, int OpenInvoiceCount, DateOnly? OldestOpenInvoiceDate, int? OldestOpenInvoiceAgeDays,
         IEnumerable<OpenInvoiceDto>? OpenInvoices);

@@ -5,9 +5,10 @@ using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Application.Reports
 {
-    /// <summary>One sale reduced to what the sales report and dashboard need. CustomerName is null for walk-in sales.</summary>
+    /// <summary>One sale reduced to what the sales report and dashboard need. CustomerName is null for walk-in sales.
+    /// CreatedBy / CashierName are the user who rang the sale up (null on sales recorded without a user).</summary>
     public record SaleReportRow(Guid SaleId, string SaleNumber, DateTime CreatedAt, SaleStatus Status, PaymentMethod PaymentMethod,
-        Guid? CustomerId, string? CustomerName, decimal TotalAmount);
+        Guid? CustomerId, string? CustomerName, decimal TotalAmount, Guid? CreatedBy = null, string? CashierName = null);
 
     public record CustomerBalanceRow(Guid CustomerId, string CustomerName, decimal OutstandingBalance);
 
@@ -64,7 +65,8 @@ namespace UltimatePos.Application.Reports
         /// <summary>Every ledger entry created before the bound, oldest first within each customer.</summary>
         Task<IReadOnlyList<CustomerLedgerRow>> GetCustomerLedgerAsync(DateTime toUtcExclusive, Guid? customerId);
 
-        Task<Dictionary<Guid, string>> GetSaleNumbersAsync(IEnumerable<Guid> saleIds);
+        /// <summary>Each sale's number, and the day the customer promised to pay by (null = no promise).</summary>
+        Task<Dictionary<Guid, (string SaleNumber, DateOnly? PaymentDueDate)>> GetInvoiceReferencesAsync(IEnumerable<Guid> saleIds);
 
         /// <summary>Production runs created in [fromUtc, toUtcExclusive).</summary>
         Task<IReadOnlyList<ProductionRunReportRow>> GetProductionRunsAsync(DateTime fromUtc, DateTime toUtcExclusive, Guid? productId);

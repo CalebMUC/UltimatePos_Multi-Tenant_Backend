@@ -28,11 +28,14 @@ namespace UltimatePos.Application.Purchasing
         // Deliberately reaches into the stock tables directly — see the atomicity note above.
         // One SaveChangesAsync covering PurchaseOrder + PurchaseOrderLine + StockMovement + StockLevel together.
         // Batch-tracked lines go into their lot (created on first receipt); the bill, if any, posts to the supplier's account.
+        // quantitiesReceivedAsRead is every line's QuantityReceived as the caller planned from: under a lock on the order, the receipt
+        // is refused if any of them has moved since, so one delivery can never be put into stock twice.
         Task ReceivePurchaseOrderAsync(
             Guid purchaseOrderId, Guid supplierId, PurchaseOrderStatus newStatus,
             IEnumerable<(Guid PurchaseOrderLineId, decimal NewQuantityReceived)> lineUpdates,
             IEnumerable<ReceiptMovement> movements,
-            Guid batchId, string? notes, Guid? updatedBy, SupplierLedgerEntry? bill);
+            Guid batchId, string? notes, Guid? updatedBy, SupplierLedgerEntry? bill,
+            IReadOnlyDictionary<Guid, decimal> quantitiesReceivedAsRead);
     }
 
     /// <summary>One receipt of stock: quantity and cost per base unit, and the lot it goes into for batch-tracked products.</summary>

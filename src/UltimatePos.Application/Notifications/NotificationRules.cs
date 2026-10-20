@@ -67,6 +67,7 @@ namespace UltimatePos.Application.Notifications
             new(SystemEventTypes.MpesaStkPaymentFailed, "M-Pesa payment failed", Array.Empty<string>(),
                 SubjectChannels: NotificationChannels.InApp, Link: "/sales/{entityId}"),
             new(SystemEventTypes.MpesaTillPaymentUnmatched, "Unmatched M-Pesa payment", new[] { "Mpesa.View" }, Link: "/mpesa"),
+            new(SystemEventTypes.PaymentPromiseOverdue, "Promised payment overdue", new[] { "Customers.RecordPayment" }, Link: "/sales/{entityId}"),
             new(SystemEventTypes.ExpenseVoided, "Expense voided", new[] { "Expenses.Void" }, ExcludeActor: true, Link: "/expenses/{entityId}"),
 
             // Users and security

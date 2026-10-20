@@ -350,9 +350,9 @@ public class ReportsPostgresTests : IClassFixture<ReportsDatabase>
     {
         var (report, sql) = await RunAsync(sp => Reports(sp).GetCustomerAgingAsync(October31, Nairobi, null, includeInvoices: true, includeSettled: false));
 
-        // Invoice numbers are looked up with just the two columns they need.
+        // Invoice numbers and promised payment dates are looked up in one query, with just the columns they need.
         var numbersQuery = Assert.Single(sql, c => c.Contains("= ANY"));
-        Assert.Contains("SELECT s.\"SaleId\", s.\"SaleNumber\"\n", numbersQuery.Replace("\r\n", "\n"));
+        Assert.Contains("SELECT s.\"SaleId\", s.\"SaleNumber\", s.\"PaymentDueDate\"\n", numbersQuery.Replace("\r\n", "\n"));
 
         Assert.Equal(2, report.CustomerCount);
         Assert.Equal(2700m, report.TotalOutstanding);

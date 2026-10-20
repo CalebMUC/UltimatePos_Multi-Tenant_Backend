@@ -141,6 +141,15 @@ public class ProductsController : ControllerBase
         return Ok(ApiResponse<ProductUnitConversionDto>.Ok(result));
     }
 
+    /// <summary>The container sold with one of this pack when the customer has none (an empty 20L container with a 20L refill). Null clears it.</summary>
+    [Authorize(Policy = "PERMISSION:Products.ManageUnitConversions")]
+    [HttpPut("{id:guid}/unit-conversions/{conversionId:guid}/container")]
+    public async Task<IActionResult> SetUnitConversionContainer(Guid id, Guid conversionId, SetConversionContainerRequestDto request)
+    {
+        var result = await _catalogService.SetUnitConversionContainerAsync(id, conversionId, request);
+        return Ok(ApiResponse<ProductUnitConversionDto>.Ok(result));
+    }
+
     [Authorize(Policy = "PERMISSION:Products.ManageUnitConversions")]
     [HttpPost("{id:guid}/unit-conversions/{conversionId:guid}/activate")]
     public async Task<IActionResult> ActivateUnitConversion(Guid id, Guid conversionId)

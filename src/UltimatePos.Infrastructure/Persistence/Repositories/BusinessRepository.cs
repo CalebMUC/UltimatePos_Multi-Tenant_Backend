@@ -54,6 +54,8 @@ public class BusinessRepository : IBusinessRepository
         business.IsVatRegistered = request.IsVatRegistered;
         business.MpesaShortCode = request.MpesaShortCode;
         business.MaxDiscountPercent = request.MaxDiscountPercent;
+        if (request.AllowNegativeStock is { } allowNegativeStock)
+            business.AllowNegativeStock = allowNegativeStock;
         business.LastUpdatedBy = updatedBy;
         business.LastUpdatedAt = DateTime.UtcNow;
 
@@ -77,11 +79,25 @@ public class BusinessRepository : IBusinessRepository
         if (!string.IsNullOrWhiteSpace(search))
         {
             var pattern = $"%{search.Trim()}%";
+            // Phones are stored as 2547XXXXXXXX; a cashier types 07XX..., +254 7XX... or 7XX.... Searched by the part after the prefix.
+            var phonePattern = PhoneSearchPattern(search);
             query = query.Where(c => EF.Functions.ILike(c.CustomerName, pattern)
                                      || (c.PhoneNumber != null && EF.Functions.ILike(c.PhoneNumber, pattern))
+                                     || (phonePattern != null && c.PhoneNumber != null && EF.Functions.ILike(c.PhoneNumber, phonePattern))
                                      || (c.KraPin != null && EF.Functions.ILike(c.KraPin, pattern)));
         }
         return await query.OrderBy(c => c.CustomerName).ToListAsync();
+    }
+
+    /// <summary>For a search that looks like (part of) a phone number, the digits without a leading 0, 254 or +254; else null.</summary>
+    private static string? PhoneSearchPattern(string search)
+    {
+        var trimmed = search.Trim();
+        if (!trimmed.All(ch => char.IsDigit(ch) || ch is ' ' or '+' or '-'))
+            return null;
+        var digits = new string(trimmed.Where(char.IsDigit).ToArray());
+        var local = digits.StartsWith("254") ? digits[3..] : digits.StartsWith('0') ? digits[1..] : digits;
+        return local.Length >= 3 ? $"%{local}%" : null;
     }
 
     public async Task<Customer?> GetCustomerByIdAsync(Guid customerId) =>

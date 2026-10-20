@@ -28,7 +28,8 @@ namespace UltimatePos.Application.Sales.Dtos
         Guid? MpesaTransactionId,     // MpesaTill only — the unmatched transaction being linked
         decimal? DiscountAmount = null,
         bool OverrideCreditLimit = false,
-        SalePrescriptionRequestDto? Prescription = null);
+        SalePrescriptionRequestDto? Prescription = null,
+        DateOnly? PaymentDueDate = null); // Credit only — the day the customer promised to pay by
 
     public record SalePreviewLineDto(Guid ProductId, string ProductName, string Sku, Guid UnitOfMeasureId,
         decimal Quantity, decimal UnitPrice, decimal LineTotal, decimal AvailableInBaseUnits, decimal RequiredInBaseUnits, bool StockSufficient,
@@ -53,7 +54,8 @@ namespace UltimatePos.Application.Sales.Dtos
         decimal TotalAmount, decimal? AmountTendered, decimal? ChangeDue, string? Notes, DateTime CreatedAt, IEnumerable<SaleLineDto> Lines,
         string? CustomerName = null, Guid? CreatedBy = null, string? CreatedByName = null,
         decimal Subtotal = 0, decimal DiscountTotal = 0, decimal TaxTotal = 0, decimal ReturnedAmount = 0,
-        SalePrescriptionDto? Prescription = null, Guid BranchId = default, string? KraBranchId = null, string? BranchName = null);
+        SalePrescriptionDto? Prescription = null, Guid BranchId = default, string? KraBranchId = null, string? BranchName = null,
+        DateOnly? PaymentDueDate = null);
 
     /// <summary>Filters for the sales list. from/to are local calendar days (inclusive), resolved with utcOffsetMinutes.</summary>
     public record SaleQuery(Guid? CustomerId = null, SaleStatus? Status = null, DateOnly? From = null, DateOnly? To = null,

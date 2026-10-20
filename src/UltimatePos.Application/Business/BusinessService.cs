@@ -74,7 +74,7 @@ namespace UltimatePos.Application.Business
 
             _events.Record(new SystemEventDraft(SystemEventTypes.BusinessProfileUpdated, $"The business profile of {request.BusinessName.Trim()} was updated.",
                 EntityType: "Business", EntityId: businessId,
-                Data: new { request.IsVatRegistered, MpesaShortCode = shortCode, request.MaxDiscountPercent, KraPin = request.KraPin.Trim() }));
+                Data: new { request.IsVatRegistered, MpesaShortCode = shortCode, request.MaxDiscountPercent, request.AllowNegativeStock, KraPin = request.KraPin.Trim() }));
             return ToDto(await _repository.UpdateBusinessAsync(businessId,
                 request with { KraPin = request.KraPin.Trim(), MpesaShortCode = shortCode, PhoneNumber = PhoneNumberHelper.NormalizePhoneNumber(request.PhoneNumber) },
                 _currentUser.UserId));

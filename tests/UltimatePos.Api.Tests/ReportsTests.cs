@@ -312,6 +312,53 @@ public class SalesReportTests
     }
 
     [Fact]
+    public void Sales_are_broken_down_by_the_unit_sold_in_so_pack_sizes_of_one_product_stay_apart()
+    {
+        // One water product sold as 20L and 1L refills, with one 20L refill brought back.
+        var water = Guid.NewGuid();
+        var twenty = Guid.NewGuid();
+        var one = Guid.NewGuid();
+        var lines = new SaleCostRow[]
+        {
+            new(water, "Water", "W-1", 40m, 140m, 1m, twenty, "20L", 2m),
+            new(water, "Water", "W-1", 20m, 70m, 1m, twenty, "20L", 1m),
+            new(water, "Water", "W-1", 3m, 15m, 1m, one, "l", 3m),
+            new(water, "Water", "W-1", -20m, -70m, 1m, twenty, "20L", -1m), // a return
+        };
+
+        var report = ReportsService.BuildSalesReport(Period, Sales, lines, 10);
+
+        var units = report.TopProductUnits!.ToList();
+        Assert.Equal(new[] { "20L", "l" }, units.Select(u => u.UnitSymbol).ToArray());
+        Assert.Equal((2m, 40m, 140m), (units[0].QuantitySold, units[0].QuantitySoldInBaseUnits, units[0].Revenue));
+        Assert.Equal((3m, 3m, 15m), (units[1].QuantitySold, units[1].QuantitySoldInBaseUnits, units[1].Revenue));
+        Assert.Equal(90.32m, units[0].PercentOfRevenue);
+        // The product-level row still adds every unit together.
+        Assert.Equal(43m, report.TopProducts.Single().QuantitySoldInBaseUnits);
+    }
+
+    [Fact]
+    public void Completed_sales_are_totalled_per_cashier()
+    {
+        var wanjiru = Guid.NewGuid();
+        var otieno = Guid.NewGuid();
+        var sales = new[]
+        {
+            new SaleReportRow(Guid.NewGuid(), "S1", Utc(1, 8), SaleStatus.Completed, PaymentMethod.Cash, null, null, 300m, wanjiru, "wanjiru"),
+            new SaleReportRow(Guid.NewGuid(), "S2", Utc(1, 9), SaleStatus.Completed, PaymentMethod.MpesaTill, null, null, 500m, otieno, "otieno"),
+            new SaleReportRow(Guid.NewGuid(), "S3", Utc(1, 10), SaleStatus.Completed, PaymentMethod.Cash, null, null, 300m, wanjiru, "wanjiru"),
+            new SaleReportRow(Guid.NewGuid(), "S4", Utc(1, 11), SaleStatus.Voided, PaymentMethod.Cash, null, null, 900m, otieno, "otieno"),
+        };
+
+        var cashiers = ReportsService.BuildSalesReport(Period, sales, Array.Empty<SaleCostRow>(), 10).ByCashier!.ToList();
+
+        Assert.Equal(2, cashiers.Count);
+        Assert.Equal((wanjiru, "wanjiru", 2, 600m, 54.55m),
+            (cashiers[0].UserId, cashiers[0].CashierName, cashiers[0].SaleCount, cashiers[0].Total, cashiers[0].PercentOfRevenue));
+        Assert.Equal((otieno, 1, 500m), (cashiers[1].UserId, cashiers[1].SaleCount, cashiers[1].Total)); // the voided sale is not counted
+    }
+
+    [Fact]
     public void A_period_with_no_sales_is_an_empty_report_not_an_error()
     {
         var report = ReportsService.BuildSalesReport(Period, Array.Empty<SaleReportRow>(), Array.Empty<SaleCostRow>(), 10);
@@ -472,7 +519,8 @@ internal sealed class UnreachableRepository : IReportsRepository, ICostingReposi
     public Task<IReadOnlyList<SaleReportRow>> GetSalesAsync(DateTime fromUtc, DateTime toUtcExclusive) => Fail<IReadOnlyList<SaleReportRow>>();
     public Task<IReadOnlyList<CustomerBalanceRow>> GetCustomerBalancesAsync() => Fail<IReadOnlyList<CustomerBalanceRow>>();
     public Task<IReadOnlyList<CustomerLedgerRow>> GetCustomerLedgerAsync(DateTime toUtcExclusive, Guid? customerId) => Fail<IReadOnlyList<CustomerLedgerRow>>();
-    public Task<Dictionary<Guid, string>> GetSaleNumbersAsync(IEnumerable<Guid> saleIds) => Fail<Dictionary<Guid, string>>();
+    public Task<Dictionary<Guid, (string SaleNumber, DateOnly? PaymentDueDate)>> GetInvoiceReferencesAsync(IEnumerable<Guid> saleIds) =>
+        Fail<Dictionary<Guid, (string SaleNumber, DateOnly? PaymentDueDate)>>();
     public Task<IReadOnlyList<ProductionRunReportRow>> GetProductionRunsAsync(DateTime fromUtc, DateTime toUtcExclusive, Guid? productId) => Fail<IReadOnlyList<ProductionRunReportRow>>();
     public Task<IReadOnlyList<ProductionCostLineRow>> GetProductionCostLinesAsync(DateTime fromUtc, DateTime toUtcExclusive, Guid? productId) => Fail<IReadOnlyList<ProductionCostLineRow>>();
     public Task<IReadOnlyList<ProductionInputRow>> GetProductionInputsAsync(DateTime fromUtc, DateTime toUtcExclusive, Guid? productId) => Fail<IReadOnlyList<ProductionInputRow>>();

@@ -12,6 +12,7 @@ using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Costing;
 using UltimatePos.Application.Dashboard;
+using UltimatePos.Application.Deliveries;
 using UltimatePos.Application.Expenses;
 using UltimatePos.Application.Identity;
 using UltimatePos.Application.Inventory;
@@ -34,6 +35,7 @@ namespace UltimatePos.Application
             services.AddScoped<IBranchContext, BranchContext>();
             services.AddScoped<Branches.BranchService>();
             services.AddScoped<StockTransferService>();
+            services.AddScoped<DeliveryOrderService>();
 
             services.AddScoped<AuthService>();
             services.AddScoped<BusinessService>();

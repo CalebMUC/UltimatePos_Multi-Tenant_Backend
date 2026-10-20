@@ -23,7 +23,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 .Where(s => s.Status != SaleStatus.Failed && s.CreatedAt >= fromUtc && s.CreatedAt < toUtcExclusive)
                 .OrderBy(s => s.CreatedAt)
                 .Select(s => new SaleReportRow(s.SaleId, s.SaleNumber, s.CreatedAt, s.Status, s.PaymentMethod, s.CustomerId,
-                    s.Customer != null ? s.Customer.CustomerName : null, s.TotalAmount))
+                    s.Customer != null ? s.Customer.CustomerName : null, s.TotalAmount, s.CreatedBy,
+                    _context.Users.Where(u => u.UserId == s.CreatedBy).Select(u => u.Username).FirstOrDefault()))
                 .ToListAsync();
 
         // ---------------------------------------------------------------- Customers
@@ -49,17 +50,17 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 .ToListAsync();
         }
 
-        public async Task<Dictionary<Guid, string>> GetSaleNumbersAsync(IEnumerable<Guid> saleIds)
+        public async Task<Dictionary<Guid, (string SaleNumber, DateOnly? PaymentDueDate)>> GetInvoiceReferencesAsync(IEnumerable<Guid> saleIds)
         {
             var ids = saleIds.Distinct().ToList();
             if (ids.Count == 0)
-                return new Dictionary<Guid, string>();
+                return new Dictionary<Guid, (string, DateOnly?)>();
 
             // ToDictionaryAsync's selectors run in memory, so project first or EF reads every column of the row.
             return await _context.Sales.AsNoTracking()
                 .Where(s => ids.Contains(s.SaleId))
-                .Select(s => new { s.SaleId, s.SaleNumber })
-                .ToDictionaryAsync(s => s.SaleId, s => s.SaleNumber);
+                .Select(s => new { s.SaleId, s.SaleNumber, s.PaymentDueDate })
+                .ToDictionaryAsync(s => s.SaleId, s => (s.SaleNumber, s.PaymentDueDate));
         }
 
         // ---------------------------------------------------------------- Production

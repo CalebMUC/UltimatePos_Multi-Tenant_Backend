@@ -40,18 +40,6 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 .OrderByDescending(t => t.CreatedAt)
                 .ToListAsync();
 
-        public async Task MatchToSaleAsync(Guid mpesaTransactionId, Guid saleId)
-        {
-            var transaction = await _context.MpesaTransactions.FirstOrDefaultAsync(t => t.MpesaTransactionId == mpesaTransactionId)
-                ?? throw new NotFoundException($"M-Pesa transaction '{mpesaTransactionId}' not found.");
-
-            transaction.Status = MpesaTransactionStatus.Matched;
-            transaction.SaleId = saleId;
-            transaction.LastUpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-        }
-
         public async Task ConfirmAsync(Guid mpesaTransactionId, string? mpesaReceiptNumber, DateTime? transactionDate)
         {
             var transaction = await _context.MpesaTransactions.FirstOrDefaultAsync(t => t.MpesaTransactionId == mpesaTransactionId)

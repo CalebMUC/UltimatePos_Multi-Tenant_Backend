@@ -41,7 +41,8 @@ namespace UltimatePos.Application.Inventory
         {
             var levels = (await _repository.GetStockLevelsAsync(belowReorderOnly)).ToList();
             var sellable = await _repository.GetSellableByBranchAsync(levels.Where(l => l.Product.IsBatchTracked).Select(l => l.ProductId), Today);
-            return levels.OrderBy(l => l.Product.Name).ThenBy(l => l.Branch?.BranchNumber).Select(s => ToDto(s, sellable));
+            var reserved = await _repository.GetReservedQuantitiesAsync(levels.Select(l => l.ProductId));
+            return levels.OrderBy(l => l.Product.Name).ThenBy(l => l.Branch?.BranchNumber).Select(s => ToDto(s, sellable, reserved));
         }
 
         public async Task<StockLevelDto> GetStockLevelAsync(Guid productId)
@@ -49,13 +50,20 @@ namespace UltimatePos.Application.Inventory
             var level = await _repository.GetStockLevelAsync(productId)
                 ?? throw new NotFoundException($"No stock record for product '{productId}' at this branch — nothing has been received, produced or adjusted against it here yet.");
             var sellable = await _repository.GetSellableByBranchAsync(new[] { productId }, Today);
-            return ToDto(level, sellable);
+            var reserved = await _repository.GetReservedQuantitiesAsync(new[] { productId });
+            return ToDto(level, sellable, reserved);
         }
 
-        private static StockLevelDto ToDto(StockLevel s, IReadOnlyDictionary<(Guid, Guid), decimal> sellable) =>
-            new(s.ProductId, s.Product.Name, s.Product.Sku, s.QuantityOnHand, s.Product.ReorderLevel, s.QuantityOnHand <= s.Product.ReorderLevel,
-                s.Product.IsBatchTracked, s.Product.IsBatchTracked ? sellable.GetValueOrDefault((s.ProductId, s.BranchId)) : s.QuantityOnHand,
-                s.Product.BaseUnitOfMeasure?.Symbol, s.BranchId, s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name);
+        private static StockLevelDto ToDto(StockLevel s, IReadOnlyDictionary<(Guid, Guid), decimal> sellable,
+            IReadOnlyDictionary<(Guid, Guid), decimal> reserved)
+        {
+            var held = reserved.GetValueOrDefault((s.ProductId, s.BranchId));
+            var usable = s.Product.IsBatchTracked ? sellable.GetValueOrDefault((s.ProductId, s.BranchId)) : s.QuantityOnHand;
+            return new(s.ProductId, s.Product.Name, s.Product.Sku, s.QuantityOnHand, s.Product.ReorderLevel, s.QuantityOnHand <= s.Product.ReorderLevel,
+                s.Product.IsBatchTracked, usable - held,
+                s.Product.BaseUnitOfMeasure?.Symbol, s.BranchId, s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name,
+                held);
+        }
 
         public async Task<IEnumerable<StockMovementDto>> GetStockMovementsAsync(Guid productId)
         {

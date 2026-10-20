@@ -28,6 +28,8 @@ namespace UltimatePos.Domain.Entities
         public decimal ReturnedAmount { get; set; }
         public decimal? AmountTendered { get; set; }
         public decimal? ChangeDue { get; set; }
+        /// <summary>Credit sales: the day the customer promised to pay by. An open invoice past it raises an alert. Null = no promise.</summary>
+        public DateOnly? PaymentDueDate { get; set; }
         public string? Notes { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }

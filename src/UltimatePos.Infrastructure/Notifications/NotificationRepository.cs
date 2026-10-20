@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Notifications;
+using UltimatePos.Application.Reports;
 using UltimatePos.Domain.Entities;
 using UltimatePos.Infrastructure.Persistence;
 using static UltimatePos.Domain.Enums.PosEnums;
@@ -294,6 +295,24 @@ namespace UltimatePos.Infrastructure.Notifications
                             && t.CreatedAt < receivedBeforeUtc)
                 .Select(t => new UnmatchedPaymentRow(t.MpesaTransactionId, t.MpesaReceiptNumber, t.PhoneNumber, t.Amount, t.CreatedAt, t.BranchId))
                 .ToListAsync();
+
+        public async Task<IReadOnlyList<PromisedPaymentRow>> GetPromisesDueBeforeAsync(DateOnly day) =>
+            await _context.Sales.AsNoTracking()
+                .Where(s => s.Status == SaleStatus.Completed && s.PaymentMethod == PaymentMethod.Credit
+                            && s.CustomerId != null && s.PaymentDueDate != null && s.PaymentDueDate < day)
+                .Select(s => new PromisedPaymentRow(s.SaleId, s.SaleNumber, s.CustomerId!.Value, s.Customer!.CustomerName, s.Customer.PhoneNumber,
+                    s.PaymentDueDate!.Value, s.BranchId))
+                .ToListAsync();
+
+        public async Task<IReadOnlyList<CustomerLedgerRow>> GetCustomerLedgerAsync(IEnumerable<Guid> customerIds)
+        {
+            var ids = customerIds.Distinct().ToList();
+            return await _context.CustomerLedgerEntries.AsNoTracking()
+                .Where(e => ids.Contains(e.CustomerId))
+                .Select(e => new CustomerLedgerRow(e.CustomerId, e.Customer.CustomerName, e.Customer.PhoneNumber, e.EntryType, e.Amount,
+                    e.ReferenceType, e.ReferenceId, e.Notes, e.CreatedAt))
+                .ToListAsync();
+        }
 
         public async Task<IReadOnlyList<Guid>> GetActiveBusinessIdsAsync() =>
             await _context.Businesses.AsNoTracking().Where(b => b.IsActive).Select(b => b.BusinessId).ToListAsync();

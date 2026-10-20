@@ -99,6 +99,30 @@ namespace UltimatePos.Application.Notifications
                     new { payment.ReceiptNumber, payment.Amount, payment.PhoneNumber, payment.ReceivedAt },
                     AlertKey: AlertKeys.TillPaymentUnmatched(payment.MpesaTransactionId), BranchId: payment.BranchId));
 
+            // Credit sales still unpaid after the day the customer promised to pay by. Which invoices are still open is worked out the
+            // same way as the customer-ageing report (payments settle the oldest invoices first), so a promise kept clears its alert.
+            var promises = await _sweep.GetPromisesDueBeforeAsync(today);
+            if (promises.Count > 0)
+            {
+                var offset = TimeSpan.FromMinutes(ReportPeriod.DefaultUtcOffsetMinutes);
+                var unpaid = (await _sweep.GetCustomerLedgerAsync(promises.Select(p => p.CustomerId)))
+                    .GroupBy(e => e.CustomerId)
+                    .SelectMany(g => AgingCalculator.Calculate(g, today, offset).OpenInvoices)
+                    .ToDictionary(i => i.InvoiceId, i => i.OutstandingAmount);
+                foreach (var promise in promises)
+                {
+                    if (!unpaid.TryGetValue(promise.SaleId, out var outstanding) || outstanding <= 0)
+                        continue;
+                    var late = today.DayNumber - promise.PaymentDueDate.DayNumber;
+                    Raise(new SystemEventDraft(SystemEventTypes.PaymentPromiseOverdue,
+                        $"{promise.CustomerName}{(promise.PhoneNumber is null ? "" : $" ({promise.PhoneNumber})")} promised to pay for {promise.SaleNumber} by " +
+                        $"{promise.PaymentDueDate:yyyy-MM-dd}; {outstanding:0.00} is still unpaid, {late} day{(late == 1 ? "" : "s")} late.",
+                        EventSeverity.Warning, "Sale", promise.SaleId,
+                        new { promise.SaleNumber, promise.CustomerId, promise.PaymentDueDate, outstanding, DaysLate = late },
+                        AlertKey: AlertKeys.PaymentPromiseOverdue(promise.SaleId), BranchId: promise.BranchId));
+                }
+            }
+
             // The business's own licence: warn before it ends, then again once it has.
             if (await _sweep.GetCurrentBusinessAsync() is { LicenseEndsOn: { } endsOn } business)
             {
@@ -118,7 +142,7 @@ namespace UltimatePos.Application.Notifications
 
             // Everything still open whose condition no longer holds is over: it will be announced again if it recurs.
             var swept = new[] { "stock-low:", "stock-out:", "batch-expiring:", "batch-expired:", "po-overdue:", "mpesa-unmatched:",
-                "license-expiring:", "license-expired:" };
+                "promise-overdue:", "license-expiring:", "license-expired:" };
             var cleared = open.Where(k => swept.Any(p => k.StartsWith(p, StringComparison.Ordinal)) && !stillTrue.Contains(k)).ToList();
             if (cleared.Count > 0)
                 await _notifications.CloseAlertsAsync(cleared);

@@ -18,8 +18,9 @@ namespace UltimatePos.Application.Identity.Dtos
         public record UserDto(Guid Id, string Email, string FullName, string? PhoneNumber,bool IsActive,bool IsLocked, IEnumerable<string> Roles, IEnumerable<string> Permissions);
 
         /// <param name="AccessStatus">Active, ExpiringSoon, GracePeriod, Expired, Unlicensed, Suspended or Closed — for the business picker.</param>
+        /// <param name="Sector">What line of business it is in, so a client can tailor its menus from sign-in.</param>
         public record BusinessMembershipDto(Guid BusinessId, string BusinessName, string? TradingName, BusinessKind Kind, BusinessType BusinessType,
-            bool IsDefault, string? AccessStatus = null);
+            bool IsDefault, string? AccessStatus = null, BusinessSector Sector = BusinessSector.General);
 
         /// <param name="ActiveBusinessId">The business the access token is for. Null when the user has platform access only.</param>
         /// <param name="MustChangePassword">Someone else set the password: send the user to change it before anything else.</param>

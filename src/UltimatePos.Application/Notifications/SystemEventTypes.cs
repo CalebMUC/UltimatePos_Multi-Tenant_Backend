@@ -28,6 +28,7 @@ namespace UltimatePos.Application.Notifications
         public const string BusinessReactivated = "Business.Reactivated";
         public const string BusinessClosed = "Business.Closed";
         public const string BusinessReopened = "Business.Reopened";
+        public const string BusinessSectorChanged = "Business.SectorChanged";
         public const string BusinessOwnerAdded = "Business.OwnerAdded";
 
         // Licensing and the platform (super users)
@@ -69,6 +70,13 @@ namespace UltimatePos.Application.Notifications
         public const string MpesaStkPaymentFailed = "Mpesa.StkPaymentFailed";
         public const string MpesaTillPaymentUnmatched = "Mpesa.TillPaymentUnmatched";
         public const string CustomerPaymentRecorded = "Customer.PaymentRecorded";
+        public const string PaymentPromiseOverdue = "Customer.PaymentPromiseOverdue";
+
+        // Deliveries
+        public const string DeliveryOrderCreated = "DeliveryOrder.Created";
+        public const string DeliveryOrderDispatched = "DeliveryOrder.Dispatched";
+        public const string DeliveryOrderDelivered = "DeliveryOrder.Delivered";
+        public const string DeliveryOrderCancelled = "DeliveryOrder.Cancelled";
 
         // Purchasing and expenses
         public const string PurchaseOrderReceived = "PurchaseOrder.Received";
@@ -87,6 +95,8 @@ namespace UltimatePos.Application.Notifications
         public static string BatchExpired(Guid batchId) => $"batch-expired:{batchId}";
         public static string PurchaseOrderOverdue(Guid purchaseOrderId) => $"po-overdue:{purchaseOrderId}";
         public static string TillPaymentUnmatched(Guid mpesaTransactionId) => $"mpesa-unmatched:{mpesaTransactionId}";
+        /// <summary>A credit sale still unpaid after the day the customer promised to pay by.</summary>
+        public static string PaymentPromiseOverdue(Guid saleId) => $"promise-overdue:{saleId}";
         /// <summary>Per licence period: renewing changes the end date, so the next period gets its own warning.</summary>
         public static string LicenseExpiring(DateOnly endsOn) => $"license-expiring:{endsOn:yyyyMMdd}";
         public static string LicenseExpired(DateOnly endsOn) => $"license-expired:{endsOn:yyyyMMdd}";

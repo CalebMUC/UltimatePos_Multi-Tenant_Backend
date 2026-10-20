@@ -24,6 +24,24 @@ namespace UltimatePos.Domain.Entities
         Trader
     }
 
+    /// <summary>
+    /// What line of business it is in — separate from Kind (how it acquires stock) and BusinessType (who it sells to): an agrovet may
+    /// make its own feeds (Manufacturer) or only resell (Trader); a pharmacy may be retail or a wholesaler. Sector sets starting defaults
+    /// at registration (BusinessDefaults), lets clients tailor their menus and lets the platform report by sector. It never switches
+    /// behaviour on in code: that stays on explicit settings (AllowNegativeStock, a product's batch tracking, ...). Set by super users.
+    /// </summary>
+    public enum BusinessSector
+    {
+        /// <summary>Not classified yet, or none of the others.</summary>
+        General,
+        Pharmacy,
+        Agrovet,
+        WaterRefill,
+        Minimart,
+        Supermarket,
+        Hardware
+    }
+
     public class BusinessProfile
     {
         public Guid BusinessId { get; set; }
@@ -31,6 +49,7 @@ namespace UltimatePos.Domain.Entities
         public string? TradingName { get; set; }
         public BusinessType BusinessType { get; set; }
         public BusinessKind Kind { get; set; }
+        public BusinessSector Sector { get; set; } = BusinessSector.General;
         public string? RegistrationNumber { get; set; }
         public string KraPin { get; set; } = string.Empty;
         public string? PhysicalAddress { get; set; }
@@ -45,6 +64,13 @@ namespace UltimatePos.Domain.Entities
         public string? MpesaShortCode { get; set; }
         /// <summary>Largest discount a cashier may give on one sale, as a percentage of its subtotal. Null = no cap.</summary>
         public decimal? MaxDiscountPercent { get; set; }
+        /// <summary>
+        /// True = a sale may take a product that is not batch-tracked below zero (the cashier is never stopped; a count corrects it
+        /// later). False = such a sale is refused, so the business never sells more than it holds (e.g. a refill station's water).
+        /// Batch-tracked stock is never oversold either way. An M-Pesa STK sale is checked when the prompt is sent; once the customer
+        /// has paid, the confirmation always completes.
+        /// </summary>
+        public bool AllowNegativeStock { get; set; } = true;
         /// <summary>False = closed by a super user: nobody can sign in to it. Data is kept.</summary>
         public bool IsActive { get; set; } = true;
         /// <summary>Locked by a super user (typically for an unpaid licence). Reversible; users are refused until it is lifted.</summary>

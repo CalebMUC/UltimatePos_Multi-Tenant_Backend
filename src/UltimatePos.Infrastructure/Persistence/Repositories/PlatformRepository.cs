@@ -196,11 +196,11 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             _context.UserRoles.Add(new UserRole { UserId = owner.UserId, RoleId = adminRole.RoleId });
             _context.UserBranches.Add(new UserBranch { UserId = owner.UserId, BranchId = headOffice.BranchId, IsDefault = true, CreatedBy = business.CreatedBy });
 
-            _context.UnitsOfMeasure.AddRange(BusinessDefaults.UnitsOfMeasure.Select(u => new UnitOfMeasure
+            _context.UnitsOfMeasure.AddRange(BusinessDefaults.UnitsFor(business.Sector).Select(u => new UnitOfMeasure
             {
                 BusinessId = business.BusinessId, Name = u.Name, Symbol = u.Symbol, CreatedBy = business.CreatedBy
             }));
-            _context.ExpenseCategories.AddRange(BusinessDefaults.ExpenseCategories.Select(c => new ExpenseCategory
+            _context.ExpenseCategories.AddRange(BusinessDefaults.ExpenseCategoriesFor(business.Sector).Select(c => new ExpenseCategory
             {
                 BusinessId = business.BusinessId, Code = c.Code, Name = c.Name, Description = c.Description, CreatedBy = business.CreatedBy
             }));

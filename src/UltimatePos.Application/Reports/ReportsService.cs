@@ -84,9 +84,23 @@ namespace UltimatePos.Application.Reports
                 .Take(top)
                 .ToList();
 
+            var topProductUnits = completedSaleLines.GroupBy(l => (l.ProductId, l.UnitOfMeasureId))
+                .Select(g => new SalesByProductUnitDto(g.Key.ProductId, g.First().ProductName, g.First().Sku, g.Key.UnitOfMeasureId,
+                    g.First().UnitSymbol ?? string.Empty, g.Sum(l => l.Quantity), g.Sum(l => l.QuantityInBaseUnits), g.Sum(l => l.LineTotal),
+                    Percent(g.Sum(l => l.LineTotal), lineRevenue)))
+                .OrderByDescending(p => p.Revenue).ThenBy(p => p.ProductName).ThenBy(p => p.UnitSymbol)
+                .Take(top)
+                .ToList();
+
+            var byCashier = completed.GroupBy(s => s.CreatedBy)
+                .Select(g => new SalesByCashierDto(g.Key, g.First().CashierName, g.Count(), g.Sum(s => s.TotalAmount),
+                    Percent(g.Sum(s => s.TotalAmount), revenue)))
+                .OrderByDescending(c => c.Total).ThenBy(c => c.CashierName)
+                .ToList();
+
             return new SalesReportDto(period.From, period.To, completed.Count, revenue, Average(revenue, completed.Count),
                 voided.Count, voided.Sum(s => s.TotalAmount), pending.Count, pending.Sum(s => s.TotalAmount),
-                byDay, byMethod, topCustomers, topProducts);
+                byDay, byMethod, topCustomers, topProducts, topProductUnits, byCashier);
         }
 
         // =====================================================================
@@ -172,9 +186,9 @@ namespace UltimatePos.Application.Reports
                 .OrderByDescending(c => c.Aging.Outstanding).ThenBy(c => c.Customer.CustomerName)
                 .ToList();
 
-            var saleNumbers = new Dictionary<Guid, string>();
+            var invoices = new Dictionary<Guid, (string SaleNumber, DateOnly? PaymentDueDate)>();
             if (includeInvoices)
-                saleNumbers = await _repository.GetSaleNumbersAsync(computed.SelectMany(c => c.Aging.OpenInvoices.Select(i => i.InvoiceId)));
+                invoices = await _repository.GetInvoiceReferencesAsync(computed.SelectMany(c => c.Aging.OpenInvoices.Select(i => i.InvoiceId)));
 
             var rows = computed.Select(c =>
             {
@@ -185,8 +199,13 @@ namespace UltimatePos.Application.Reports
                     new AgingBucketsDto(a.Days0To30, a.Days31To60, a.Days61To90, a.Over90),
                     a.OpenInvoices.Count, oldest?.InvoiceDate, oldest?.AgeDays,
                     includeInvoices
-                        ? a.OpenInvoices.Select(i => new OpenInvoiceDto(i.InvoiceId, saleNumbers.GetValueOrDefault(i.InvoiceId),
-                            i.InvoiceDate, i.OriginalAmount, i.OutstandingAmount, i.AgeDays, i.Bucket)).ToList()
+                        ? a.OpenInvoices.Select(i =>
+                        {
+                            var found = invoices.TryGetValue(i.InvoiceId, out var reference);
+                            return new OpenInvoiceDto(i.InvoiceId, found ? reference.SaleNumber : null,
+                                i.InvoiceDate, i.OriginalAmount, i.OutstandingAmount, i.AgeDays, i.Bucket,
+                                reference.PaymentDueDate, reference.PaymentDueDate < date);
+                        }).ToList()
                         : null);
             }).ToList();
 
