@@ -659,7 +659,8 @@ namespace UltimatePos.Application.Identity
             string.IsNullOrEmpty(value) ? string.Empty : value.Length <= max ? value : value[..max];
 
         private static BusinessMembershipDto ToMembershipDto(UserBusiness m) =>
-            new(m.BusinessId, m.Business.BusinessName, m.Business.TradingName, m.Business.Kind, m.Business.BusinessType, m.IsDefault);
+            new(m.BusinessId, m.Business.BusinessName, m.Business.TradingName, m.Business.Kind, m.Business.BusinessType, m.IsDefault,
+                Sector: m.Business.Sector);
 
         private static UserDto ToUserDto(User user, bool membershipActive) =>
             new(user.UserId, user.Email, user.Username,user.PhoneNumber, user.IsActive && membershipActive, user.IsLocked,

@@ -58,8 +58,14 @@ namespace UltimatePos.Application.Platform
         /// </summary>
         public async Task<RegisterBusinessResultDto> RegisterBusinessAsync(RegisterBusinessRequestDto request)
         {
-            if (request.Kind is not { } kind || !Enum.IsDefined(kind))
-                throw new ValidationException("kind", "Business kind is required (Manufacturer or Trader).");
+            var sector = request.Sector ?? BusinessSector.General;
+            if (!Enum.IsDefined(sector))
+                throw new ValidationException("sector", "Unknown sector.");
+            var profile = BusinessDefaults.For(sector);
+            if ((request.Kind ?? profile.Kind) is not { } kind || !Enum.IsDefined(kind))
+                throw new ValidationException("kind", sector == BusinessSector.General
+                    ? "Business kind is required (Manufacturer or Trader)."
+                    : $"Business kind is required for the {sector} sector (Manufacturer or Trader): it can be either.");
             if (request.Owner is null)
                 throw new ValidationException("owner", "The business's owner is required: they become its first administrator.");
 
@@ -79,6 +85,7 @@ namespace UltimatePos.Application.Platform
                 TradingName = request.TradingName,
                 BusinessType = request.BusinessType,
                 Kind = kind,
+                Sector = sector,
                 RegistrationNumber = request.RegistrationNumber,
                 KraPin = request.KraPin.Trim(),
                 PhysicalAddress = request.PhysicalAddress,
@@ -90,7 +97,7 @@ namespace UltimatePos.Application.Platform
                 IsVatRegistered = request.IsVatRegistered,
                 MpesaShortCode = shortCode,
                 MaxDiscountPercent = request.MaxDiscountPercent,
-                AllowNegativeStock = request.AllowNegativeStock,
+                AllowNegativeStock = request.AllowNegativeStock ?? profile.AllowNegativeStock,
                 CreatedBy = _currentUser.UserId
             };
 
@@ -108,10 +115,10 @@ namespace UltimatePos.Application.Platform
             using (_tenant.Use(business.BusinessId))
             {
                 _events.Record(new SystemEventDraft(SystemEventTypes.BusinessRegistered,
-                    $"{business.BusinessName} ({business.Kind}, {business.BusinessType}) was registered, owned by {owner.Username} ({owner.Email})" +
+                    $"{business.BusinessName} ({business.Sector}, {business.Kind}, {business.BusinessType}) was registered, owned by {owner.Username} ({owner.Email})" +
                     (trial is null ? "." : $", on a trial until {trial.EndsOn:yyyy-MM-dd}."),
                     EntityType: "Business", EntityId: business.BusinessId,
-                    Data: new { business.KraPin, business.Kind, business.BusinessType, ownerEmail = owner.Email, trialEndsOn = trial?.EndsOn }));
+                    Data: new { business.KraPin, business.Sector, business.Kind, business.BusinessType, ownerEmail = owner.Email, trialEndsOn = trial?.EndsOn }));
                 _events.Record(new SystemEventDraft(SystemEventTypes.BusinessOwnerAdded,
                     $"You are now the administrator of {business.BusinessName} on Ultimate POS. Sign in with {owner.Email}.",
                     EntityType: "User", EntityId: owner.UserId, SubjectUserId: owner.UserId));
@@ -189,9 +196,10 @@ namespace UltimatePos.Application.Platform
 
         // ================================================================ Businesses and performance
 
-        public async Task<IEnumerable<BusinessSummaryDto>> GetBusinessesAsync()
+        /// <param name="sector">Only businesses of this sector. Null = all.</param>
+        public async Task<IEnumerable<BusinessSummaryDto>> GetBusinessesAsync(BusinessSector? sector = null)
         {
-            var businesses = await _repository.GetBusinessesAsync();
+            var businesses = (await _repository.GetBusinessesAsync()).Where(b => sector is null || b.Sector == sector);
             var activity = await _repository.GetActivityAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
             return businesses.Select(b => Summary(b, activity.GetValueOrDefault(b.BusinessId)?.ActiveUsers ?? 0,
                 activity.GetValueOrDefault(b.BusinessId)?.ActiveBranches ?? 0));
@@ -226,10 +234,15 @@ namespace UltimatePos.Application.Platform
                 .ToList();
             int Count(string status) => rows.Count(r => r.AccessStatus == status);
 
+            var bySector = rows.GroupBy(r => r.Sector)
+                .Select(g => new SectorPerformanceDto(g.Key, g.Count(), g.Sum(r => r.SaleCount), g.Sum(r => r.Revenue)))
+                .OrderByDescending(s => s.Revenue).ThenBy(s => s.Sector)
+                .ToList();
+
             return new PlatformDashboardDto(period.From, period.To, rows.Count, Count("Active"), Count("ExpiringSoon"), Count("GracePeriod"),
                 Count("Expired"), Count("Unlicensed"), Count("Suspended"), Count("Closed"),
                 rows.Sum(r => r.SaleCount), rows.Sum(r => r.Revenue), await _repository.GetLicenseIncomeAsync(period.FromUtc, period.ToUtcExclusive),
-                rows);
+                rows, bySector);
         }
 
         // ================================================================ Suspend / close
@@ -278,6 +291,25 @@ namespace UltimatePos.Application.Platform
                 b.IsActive = true;
             }, b => new SystemEventDraft(SystemEventTypes.BusinessReopened, $"{b.BusinessName} was reopened.",
                 EntityType: "Business", EntityId: b.BusinessId));
+
+        /// <summary>
+        /// Reclassifies a business (registered as General before sectors existed, or simply wrong). Only the label moves: what it started
+        /// with — units, expense categories, AllowNegativeStock — stays as it is, since the business may have changed it since.
+        /// </summary>
+        public Task<BusinessSummaryDto> ChangeSectorAsync(Guid businessId, ChangeSectorRequestDto request)
+        {
+            if (request is null || !Enum.IsDefined(request.Sector))
+                throw new ValidationException("sector", "Unknown sector.");
+            BusinessSector? from = null;
+            return ChangeStatusAsync(businessId, b =>
+            {
+                if (b.Sector == request.Sector) throw new InvalidAssignmentException($"{b.BusinessName} is already in the {b.Sector} sector.");
+                from ??= b.Sector; // the change runs twice (validate, then save): keep the sector it had to begin with
+                b.Sector = request.Sector;
+            }, b => new SystemEventDraft(SystemEventTypes.BusinessSectorChanged,
+                $"{b.BusinessName} was moved from the {from} sector to {request.Sector}.",
+                EntityType: "Business", EntityId: b.BusinessId, Data: new { from, to = request.Sector }));
+        }
 
         private async Task<BusinessSummaryDto> ChangeStatusAsync(Guid businessId, Action<BusinessProfile> change, Func<BusinessProfile, SystemEventDraft> describe)
         {
@@ -549,7 +581,7 @@ namespace UltimatePos.Application.Platform
             new(b.BusinessId, b.TradingName ?? b.BusinessName, b.Kind, b.BusinessType, LicensePolicy.Evaluate(b, _licensing, Today).Status, b.LicenseEndsOn,
                 a?.ActiveUsers ?? 0, a?.ActiveProducts ?? 0, a?.SaleCount ?? 0, a?.Revenue ?? 0m,
                 a is { SaleCount: > 0 } ? Math.Round(a.Revenue / a.SaleCount, 2, MidpointRounding.AwayFromZero) : 0m,
-                a?.LastSaleAt, a?.LastSignInAt, b.CreatedAt, a?.ActiveBranches ?? 0);
+                a?.LastSaleAt, a?.LastSignInAt, b.CreatedAt, a?.ActiveBranches ?? 0, b.Sector);
 
         internal static BusinessAccessDto ToAccessDto(BusinessAccess a) => new(a.Status, a.Allowed, a.Code, a.Message, a.LicenseEndsOn, a.DaysRemaining);
 
@@ -557,7 +589,7 @@ namespace UltimatePos.Application.Platform
             new(b.BusinessId, b.BusinessName, b.TradingName, b.BusinessType, b.Kind, b.RegistrationNumber, b.KraPin,
                 b.PhysicalAddress, b.County, b.PhoneNumber, b.Email, b.LogoUrl, b.BackgroundImageUrl, b.IsActive,
                 b.IsVatRegistered, b.MpesaShortCode, b.MaxDiscountPercent, b.IsSuspended, b.SuspensionReason, b.LicenseEndsOn, b.LicenseMaxUsers,
-                b.LicenseMaxBranches, b.AllowNegativeStock);
+                b.LicenseMaxBranches, b.AllowNegativeStock, b.Sector);
 
         internal static BusinessLicenseDto ToDto(BusinessLicense l) =>
             new(l.BusinessLicenseId, l.BusinessId, l.LicenseNumber, l.Kind, l.PlanName, l.MaxUsers, l.StartsOn, l.EndsOn, l.Amount, l.Currency,

@@ -125,6 +125,7 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.MpesaShortCode).IsUnique().HasFilter("\"MpesaShortCode\" IS NOT NULL");
             modelBuilder.Entity<BusinessProfile>().Property(b => b.BusinessType).HasConversion<string>();
             modelBuilder.Entity<BusinessProfile>().Property(b => b.Kind).HasConversion<string>();
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.Sector).HasConversion<string>();
 
 
             modelBuilder.Entity<Customer>()
@@ -163,6 +164,10 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<ProductUnitConversion>()
                 .HasOne(c => c.PackUnitOfMeasure).WithMany()
                 .HasForeignKey(c => c.PackUnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ProductUnitConversion>()
+                .HasOne(c => c.ContainerProduct).WithMany()
+                .HasForeignKey(c => c.ContainerProductId).OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<ProductPriceTier>()
                 .HasOne(t => t.Product).WithMany(p => p.PriceTiers)

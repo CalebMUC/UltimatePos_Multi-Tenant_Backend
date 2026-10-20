@@ -5,6 +5,7 @@ using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Identity.Dtos;
 using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Platform;
+using UltimatePos.Domain.Entities;
 
 namespace UltimatePos.Api.Controllers
 {
@@ -32,11 +33,12 @@ namespace UltimatePos.Api.Controllers
 
         // ---- Businesses ----
 
+        /// <summary>Every business; sector narrows to one line of business (Pharmacy, WaterRefill, ...).</summary>
         [Authorize(Policy = "PERMISSION:Businesses.ViewAll")]
         [HttpGet("businesses")]
-        public async Task<IActionResult> GetBusinesses()
+        public async Task<IActionResult> GetBusinesses([FromQuery] BusinessSector? sector = null)
         {
-            var result = await _platform.GetBusinessesAsync();
+            var result = await _platform.GetBusinessesAsync(sector);
             return Ok(ApiResponse<IEnumerable<BusinessSummaryDto>>.Ok(result));
         }
 
@@ -59,6 +61,12 @@ namespace UltimatePos.Api.Controllers
         [HttpPost("businesses/{id:guid}/reactivate")]
         public async Task<IActionResult> Reactivate(Guid id) =>
             Ok(ApiResponse<BusinessSummaryDto>.Ok(await _platform.ReactivateAsync(id)));
+
+        /// <summary>Reclassifies a business. Only the classification changes; what it started with stays.</summary>
+        [Authorize(Policy = "PERMISSION:Businesses.Register")]
+        [HttpPut("businesses/{id:guid}/sector")]
+        public async Task<IActionResult> ChangeSector(Guid id, ChangeSectorRequestDto request) =>
+            Ok(ApiResponse<BusinessSummaryDto>.Ok(await _platform.ChangeSectorAsync(id, request)));
 
         /// <summary>Closes a business that has left the platform. Reversible with reopen; data is kept.</summary>
         [Authorize(Policy = "PERMISSION:Businesses.Deactivate")]

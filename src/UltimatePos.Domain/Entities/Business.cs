@@ -24,6 +24,24 @@ namespace UltimatePos.Domain.Entities
         Trader
     }
 
+    /// <summary>
+    /// What line of business it is in — separate from Kind (how it acquires stock) and BusinessType (who it sells to): an agrovet may
+    /// make its own feeds (Manufacturer) or only resell (Trader); a pharmacy may be retail or a wholesaler. Sector sets starting defaults
+    /// at registration (BusinessDefaults), lets clients tailor their menus and lets the platform report by sector. It never switches
+    /// behaviour on in code: that stays on explicit settings (AllowNegativeStock, a product's batch tracking, ...). Set by super users.
+    /// </summary>
+    public enum BusinessSector
+    {
+        /// <summary>Not classified yet, or none of the others.</summary>
+        General,
+        Pharmacy,
+        Agrovet,
+        WaterRefill,
+        Minimart,
+        Supermarket,
+        Hardware
+    }
+
     public class BusinessProfile
     {
         public Guid BusinessId { get; set; }
@@ -31,6 +49,7 @@ namespace UltimatePos.Domain.Entities
         public string? TradingName { get; set; }
         public BusinessType BusinessType { get; set; }
         public BusinessKind Kind { get; set; }
+        public BusinessSector Sector { get; set; } = BusinessSector.General;
         public string? RegistrationNumber { get; set; }
         public string KraPin { get; set; } = string.Empty;
         public string? PhysicalAddress { get; set; }

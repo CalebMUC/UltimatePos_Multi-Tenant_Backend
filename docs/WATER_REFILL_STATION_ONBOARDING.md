@@ -46,6 +46,7 @@ Nothing below is invented. Where a value is not known yet, leave it out; do not 
 
 | Setting | Value | Notes |
 |---|---|---|
+| **Sector** | **`WaterRefill`** | What line of business it is in. Sets the starting defaults below (Trader, overselling off, `10L`/`20L` units, filter, sanitation and water-testing expense categories). Set and changed by super users only |
 | Business type | `Retailer` (1) | Sells to the public at retail prices |
 | Kind | `Trader` (1) | Buys finished goods (water) to resell; a Trader may only purchase `FinishedGood` items |
 | County | Kiambu | |
@@ -60,10 +61,9 @@ A super user registers the business (`Businesses.Register`), and names the owner
 POST /businesses
 {
   "businessName": "<legal name>", "tradingName": "<trading name>",
-  "businessType": 1, "kind": 1,
+  "sector": 3 /*WaterRefill*/, "businessType": 1,   // kind and allowNegativeStock may be left out: the sector supplies Trader and false
   "kraPin": "<KRA PIN>", "physicalAddress": "<address>", "county": "Kiambu", "phoneNumber": "<phone>",
   "isVatRegistered": <owner/accountant>, "mpesaShortCode": "<till>", "maxDiscountPercent": <owner or null>,
-  "allowNegativeStock": false,
   "owner": { "fullName": "<owner's name>", "email": "<owner email>", "phoneNumber": "<phone>" }
 }
 ```
@@ -120,6 +120,12 @@ There are no deposits.
 
 - Create one product per container size the station sells, for example *"20L Container (empty)"*: `itemType: 2`, base unit `pcs`,
   a Retail price (e.g. 500), opening stock by count, and a reorder level. Containers are stock of their own, never mixed with water.
+- **Pair each refill size with its container:** `PUT /products/{waterId}/unit-conversions/{20L conversionId}/container`
+  `{ "containerProductId": "<20L container>" }` (`Products.ManageUnitConversions`; `null` clears it). It can also be given when the
+  conversion is created (`containerProductId` on `POST /products/{id}/unit-conversions`). The till reads it from `GET /products/{id}`
+  (`unitConversions[].containerProductId`, `…Name`, `…Sku`, `…UnitOfMeasureId`, `…UnitSymbol`, `…IsActive`), so cashiers need only
+  `Products.View`. The container must be an active finished good of the same business, not batch-tracked or prescription-only.
+  Pack units only: the base unit (1L) has no conversion row, so it cannot carry a container.
 - **Own container:** one sale line, the refill (20L refill = 200).
 - **No container:** two lines, the refill and the container (200 + 500 = 700). The container leaves container stock and the water
   leaves water stock, each at its own cost.
@@ -228,7 +234,8 @@ Customer orders ─► POST /delivery-orders            Pending: the water (and 
    - `paymentMethod` is one of:
      - `0` Cash, with `amountTendered`; change is worked out
      - `2` MpesaTill, with `mpesaTransactionId` picked from `GET /mpesa/transactions/unmatched`
-     - `1` Credit, with `paymentDueDate`: **needs `DeliveryOrders.AcceptCredit`, give it to managers only**. The credit limit
+     - `1` Credit: charged to the customer's account like any credit sale. `paymentDueDate` is optional. **Needs
+       `DeliveryOrders.AcceptCredit`, give it to managers only**. The credit limit
        still applies (`overrideCreditLimit` with `Sales.OverrideCreditLimit`).
    - STK push is not used for deliveries.
    - If what was handed over differed from the order (*"I have my own container after all"*), send `lines` with what was actually
@@ -363,8 +370,9 @@ The backend changes are additive. Nothing an existing screen sends or reads has 
    id on the sale.
 8. **Dashboard (refill station layout):** the cards in §10 can be built from existing endpoints; no new endpoint is required. Water
    in litres shows the product's `baseUnitSymbol`.
-9. **Counter: "Customer has a container?"** A toggle on the cart. Off adds the matching container product line next to the refill;
-   on leaves the refill only. No API change: it only decides the lines sent.
+9. **Counter: "Customer has a container?"** A toggle on the cart. Off adds the container named on the refill's unit conversion
+   (`unitConversions[].containerProductId`, §3.4) as a line next to the refill; on leaves the refill only. Selling is unchanged: it only
+   decides the lines sent.
 10. **Delivery orders (new screens):**
     - *New delivery order:* customer picker with *Register new customer*, address, contact phone, the same container toggle, lines.
       Show `estimatedTotal`, and handle 409 `INSUFFICIENT_STOCK` (*"…available, …needed"*).
@@ -381,6 +389,16 @@ The backend changes are additive. Nothing an existing screen sends or reads has 
 12. **Credit sale at the counter:** optional *Promised by* date (`paymentDueDate`) on credit sales.
 13. **Customer account:** show `paymentDueDate` and an *overdue* badge (`isPromiseOverdue`) on open invoices in the ageing report.
     The new notification type `Customer.PaymentPromiseOverdue` links to `/sales/{id}`.
+
+14. **Sector (all businesses):**
+    - Platform registration screen: a *Sector* picker (`sector`: 0 General, 1 Pharmacy, 2 Agrovet, 3 WaterRefill, 4 Minimart,
+      5 Supermarket, 6 Hardware). Kind can be left empty where the sector suggests one; an Agrovet must still choose.
+    - Platform businesses list: a sector filter (`GET /platform/businesses?sector=`).
+    - Platform dashboard: a by-sector table (`bySector`).
+    - Business detail: a *Change sector* action (`PUT /platform/businesses/{id}/sector`).
+    - In the business app, read `sector` from sign-in (`businesses[].sector`) or `GET /businesses/current`. Use it to choose menus:
+      prescriptions for Pharmacy, the delivery board and refill quick buttons for WaterRefill. Hiding a menu is a convenience only;
+      the API still checks permissions.
 
 Not needed now: bank transfer or split payment at the counter (deferred), container deposits (not used), maintenance (§11).
 
@@ -402,13 +420,16 @@ Not needed now: bank transfer or split payment at the counter (deferred), contai
 | Reserved stock is not sellable | A counter sale must not sell water promised to a delivery | `SalesService.BuildSalePlanAsync`, `InventoryRepository.GetReservedQuantitiesAsync`, `StockLevelDto.ReservedQuantity` |
 | `Sale.PaymentDueDate`, overdue-promise alert, promise on ageing invoices | "Promise to pay on a future date" | `SalesService`, `AlertSweepService`, `ReportsService.GetCustomerAgingAsync` |
 | Permissions `DeliveryOrders.View/Create/Dispatch/Deliver/Cancel/AcceptCredit` | Delivering on credit is manager-only | `PermissionCatalog` (Admin roles get them on startup) |
+| Credit delivery needs no promised date | Owner: pay later is an ordinary credit sale on the customer's account | `DeliveryOrderService.DeliverAsync` |
+| `ProductUnitConversion.ContainerProductId`, `PUT …/unit-conversions/{id}/container` | Which container goes with which refill size, kept on the server rather than per till | Domain, `CatalogService`, `CatalogRepository`, `ProductsController`, migration `UnitConversionContainer` |
 
 **Migrations:**
 - `BusinessAllowNegativeStock`: `ALTER TABLE "Businesses" ADD "AllowNegativeStock" boolean NOT NULL DEFAULT TRUE`. Every existing
   business keeps allowing negative stock.
 - `DeliveryOrders`: new tables `DeliveryOrders` and `DeliveryOrderLines`, plus a nullable `Sales.PaymentDueDate`.
+- `UnitConversionContainer`: a nullable `ProductUnitConversions.ContainerProductId` (foreign key to `Products`, restrict on delete).
 
-Both are additive. The API applies migrations on startup (`DbSeeder.SeedAsync`). It can also be applied with
+All are additive. The API applies migrations on startup (`DbSeeder.SeedAsync`). It can also be applied with
 `dotnet ef database update --project src/UltimatePos.Infrastructure --startup-project src/UltimatePos.Api`.
 
 **Tests:** `tests/UltimatePos.Api.Tests/WaterRefillStationPostgresTests.cs` (integration, real PostgreSQL), plus two report tests in

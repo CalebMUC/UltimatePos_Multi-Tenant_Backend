@@ -28,6 +28,8 @@ namespace UltimatePos.Application.Platform
         decimal Amount, SettlementMethod? PaymentMethod, string? PaymentReference, string? Notes, int? MaxBranches = null);
 
     public record ReasonRequestDto(string Reason);
+    /// <summary>Reclassifies a business. Only the classification changes: units, expense categories and settings it started with stay.</summary>
+    public record ChangeSectorRequestDto(BusinessSector Sector);
 
     public record BusinessAccessDto(string Status, bool Allowed, string? Code, string? Message, DateOnly? LicenseEndsOn, int? DaysRemaining);
 
@@ -36,11 +38,13 @@ namespace UltimatePos.Application.Platform
     /// <param name="Revenue">Completed sales in the period, VAT included, less what was later returned against them.</param>
     public record BusinessPerformanceDto(Guid BusinessId, string BusinessName, BusinessKind Kind, BusinessType BusinessType,
         string AccessStatus, DateOnly? LicenseEndsOn, int ActiveUsers, int ActiveProducts, int SaleCount, decimal Revenue, decimal AverageSale,
-        DateTime? LastSaleAt, DateTime? LastSignInAt, DateTime CreatedAt, int ActiveBranches = 0);
+        DateTime? LastSaleAt, DateTime? LastSignInAt, DateTime CreatedAt, int ActiveBranches = 0, BusinessSector Sector = BusinessSector.General);
+    /// <summary>Businesses of one sector in the dashboard period: how many, and what they sold.</summary>
+    public record SectorPerformanceDto(BusinessSector Sector, int BusinessCount, int SaleCount, decimal Revenue);
 
     public record PlatformDashboardDto(DateOnly From, DateOnly To, int BusinessCount, int ActiveCount, int ExpiringSoonCount, int GracePeriodCount,
         int ExpiredCount, int UnlicensedCount, int SuspendedCount, int ClosedCount, int SaleCount, decimal Revenue, decimal LicenseIncome,
-        IEnumerable<BusinessPerformanceDto> Businesses);
+        IEnumerable<BusinessPerformanceDto> Businesses, IEnumerable<SectorPerformanceDto>? BySector = null);
 
     public record BusinessDetailDto(BusinessSummaryDto Summary, IEnumerable<BusinessLicenseDto> Licenses, IEnumerable<UserDto> Members,
         BusinessPerformanceDto Last30Days);

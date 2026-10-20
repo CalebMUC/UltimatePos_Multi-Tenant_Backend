@@ -158,6 +158,7 @@ public class CatalogRepository : ICatalogRepository
             .Include(p => p.Category)
             .Include(p => p.BaseUnitOfMeasure)
             .Include(p => p.UnitConversions).ThenInclude(c => c.PackUnitOfMeasure)
+            .Include(p => p.UnitConversions).ThenInclude(c => c.ContainerProduct).ThenInclude(cp => cp!.BaseUnitOfMeasure)
             .Include(p => p.PriceTiers)
             .AsSplitQuery()
             .FirstOrDefaultAsync(p => p.ProductId == productId);
@@ -252,15 +253,31 @@ public class CatalogRepository : ICatalogRepository
     {
         _context.ProductUnitConversions.Add(conversion);
         await _context.SaveChangesAsync();
-        return conversion;
+        return await WithDetails().AsNoTracking().FirstAsync(c => c.ProductUnitConversionId == conversion.ProductUnitConversionId);
     }
 
+    /// <summary>A conversion with its pack unit and its container (and the container's base unit), for the DTO.</summary>
+    private IQueryable<ProductUnitConversion> WithDetails() =>
+        _context.ProductUnitConversions.Include(c => c.PackUnitOfMeasure).Include(c => c.ContainerProduct).ThenInclude(cp => cp!.BaseUnitOfMeasure);
+
     public async Task<IEnumerable<ProductUnitConversion>> GetUnitConversionsAsync(Guid productId) =>
-        await _context.ProductUnitConversions.AsNoTracking().Include(c => c.PackUnitOfMeasure).Where(c => c.ProductId == productId).ToListAsync();
+        await WithDetails().AsNoTracking().Where(c => c.ProductId == productId).ToListAsync();
+
+    public async Task<ProductUnitConversion> SetUnitConversionContainerAsync(Guid productId, Guid conversionId, Guid? containerProductId, Guid? updatedBy)
+    {
+        var conversion = await _context.ProductUnitConversions
+            .FirstOrDefaultAsync(c => c.ProductId == productId && c.ProductUnitConversionId == conversionId)
+            ?? throw new NotFoundException($"Unit conversion '{conversionId}' not found on this product.");
+        conversion.ContainerProductId = containerProductId;
+        conversion.LastUpdatedBy = updatedBy;
+        conversion.LastUpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return await WithDetails().AsNoTracking().FirstAsync(c => c.ProductUnitConversionId == conversionId);
+    }
 
     public async Task<ProductUnitConversion> UpdateUnitConversionAsync(Guid productId, Guid conversionId, decimal? conversionFactor, bool? isActive, Guid? updatedBy)
     {
-        var conversion = await _context.ProductUnitConversions.Include(c => c.PackUnitOfMeasure)
+        var conversion = await WithDetails()
             .FirstOrDefaultAsync(c => c.ProductId == productId && c.ProductUnitConversionId == conversionId)
             ?? throw new NotFoundException($"Unit conversion '{conversionId}' not found on this product.");
         if (conversionFactor.HasValue)

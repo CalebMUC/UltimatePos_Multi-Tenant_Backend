@@ -539,6 +539,50 @@ public class WaterRefillStationPostgresTests : IClassFixture<MultiBusinessDataba
         return (productId, piece);
     }
 
+    [PostgresFact]
+    public async Task A_refill_size_names_the_container_sold_with_it_and_a_till_can_read_it()
+    {
+        await SignInToStationAsync();
+        var water = await WaterAsync();
+        var container = await ContainerAsync();
+        var twentyId = (await Run(sp => sp.GetRequiredService<CatalogService>().GetProductByIdAsync(water.ProductId)))
+            .UnitConversions.Single(c => c.PackUnitOfMeasureId == water.TwentyLitre).ProductUnitConversionId;
+        Task<ProductUnitConversionDto> SetAsync(Guid? containerId) => Run(sp => sp.GetRequiredService<CatalogService>()
+            .SetUnitConversionContainerAsync(water.ProductId, twentyId, new SetConversionContainerRequestDto(containerId)));
+
+        var set = await SetAsync(container.ProductId);
+        Assert.Equal((container.ProductId, container.Piece, "pcs", true), (set.ContainerProductId!.Value, set.ContainerUnitOfMeasureId!.Value, set.ContainerUnitSymbol, set.ContainerIsActive!.Value));
+
+        // A cashier reads it from the product, which needs only Products.View.
+        var detail = await Run(sp => sp.GetRequiredService<CatalogService>().GetProductByIdAsync(water.ProductId));
+        var twenty = detail.UnitConversions.Single(c => c.ProductUnitConversionId == twentyId);
+        Assert.Equal(container.ProductId, twenty.ContainerProductId);
+        Assert.StartsWith("20L container", twenty.ContainerProductName);
+        Assert.Null(detail.UnitConversions.Single(c => c.PackUnitOfMeasureId == water.TenLitre).ContainerProductId);
+
+        // Not itself, not something that cannot be sold.
+        await Assert.ThrowsAsync<ValidationException>(() => SetAsync(water.ProductId));
+        var piece = await UnitAsync("Piece", "pcs");
+        var rawId = await Run(async sp =>
+        {
+            var catalog = sp.GetRequiredService<CatalogService>();
+            var category = await catalog.CreateCategoryAsync(new CreateCategoryRequestDto("Caps " + Guid.NewGuid().ToString("N")[..4], $"C{Guid.NewGuid():N}"[..6].ToUpperInvariant(), null));
+            return (await catalog.CreateProductAsync(new CreateProductRequestDto("Cap blanks", null, category.CategoryId, ItemType.RawMaterial, TaxClassification.Standard, piece, 0))).ProductId;
+        });
+        await Assert.ThrowsAsync<ValidationException>(() => SetAsync(rawId));
+
+        // Cleared with null; selling is unchanged either way.
+        Assert.Null((await SetAsync(null)).ContainerProductId);
+
+        // Another business cannot name the station's container.
+        _db.SignInTo(_db.Afya);
+        var theirs = await WaterAsync();
+        var theirTwenty = (await Run(sp => sp.GetRequiredService<CatalogService>().GetProductByIdAsync(theirs.ProductId)))
+            .UnitConversions.Single(c => c.PackUnitOfMeasureId == theirs.TwentyLitre).ProductUnitConversionId;
+        await Assert.ThrowsAsync<ValidationException>(() => Run(sp => sp.GetRequiredService<CatalogService>()
+            .SetUnitConversionContainerAsync(theirs.ProductId, theirTwenty, new SetConversionContainerRequestDto(container.ProductId))));
+    }
+
     private Task<decimal> OnHandAsync(Guid productId) =>
         Run(async sp => (await sp.GetRequiredService<InventoryService>().GetStockLevelAsync(productId)).QuantityOnHand);
 
@@ -661,6 +705,22 @@ public class WaterRefillStationPostgresTests : IClassFixture<MultiBusinessDataba
     }
 
     [PostgresFact]
+    public async Task A_delivery_on_credit_needs_no_date_and_is_charged_to_the_customer_account()
+    {
+        await SignInToStationAsync();
+        var water = await WaterAsync(priceTwenty: Refill20);
+        await AdjustAsync(water, 100, "Opening stock");
+        var customer = await CustomerAsync(creditLimit: 1000m);
+        var order = await DispatchAsync(await OrderForDeliveryAsync(customer.CustomerId, Item(water.ProductId, water.TwentyLitre, 2)));
+
+        order = await DeliverAsync(order, new DeliverDeliveryOrderRequestDto(PaymentMethod.Credit));
+        Assert.Equal((DeliveryOrderStatus.Delivered, PaymentMethod.Credit), (order.Status, order.PaymentMethod!.Value));
+        Assert.Null(order.PaymentDueDate);
+        Assert.Equal(400m, (await Run(sp => sp.GetRequiredService<AccountingService>().GetCustomerBalanceAsync(customer.CustomerId))).OutstandingBalance);
+        Assert.Equal(60, await LitresAsync(water));
+    }
+
+    [PostgresFact]
     public async Task Only_a_manager_can_accept_a_promise_to_pay_later_and_an_unkept_promise_raises_an_alert_until_paid()
     {
         await SignInToStationAsync();
@@ -675,9 +735,8 @@ public class WaterRefillStationPostgresTests : IClassFixture<MultiBusinessDataba
         await Assert.ThrowsAsync<ForbiddenException>(() => DeliverAsync(order, promise));
         Assert.Equal(100, await LitresAsync(water));
 
-        // A manager can — with the date the customer promised.
+        // A manager can, here with the date the customer promised (the date is optional).
         await SignInToStationAsync();
-        await Assert.ThrowsAsync<ValidationException>(() => DeliverAsync(order, promise with { PaymentDueDate = null }));
         await Assert.ThrowsAsync<ValidationException>(() => DeliverAsync(order, promise with { PaymentDueDate = Today.AddDays(-1) }));
         order = await DeliverAsync(order, promise);
         Assert.Equal((PaymentMethod.Credit, Today.AddDays(7)), (order.PaymentMethod!.Value, order.PaymentDueDate!.Value));

@@ -283,6 +283,10 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<string>("RegistrationNumber")
                         .HasColumnType("text");
 
+                    b.Property<string>("Sector")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("SuspendedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1185,6 +1189,9 @@ namespace UltimatePos.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ContainerProductId")
+                        .HasColumnType("uuid");
+
                     b.Property<decimal>("ConversionFactor")
                         .HasColumnType("numeric");
 
@@ -1210,6 +1217,8 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("ProductUnitConversionId");
+
+                    b.HasIndex("ContainerProductId");
 
                     b.HasIndex("PackUnitOfMeasureId");
 
@@ -2882,6 +2891,11 @@ namespace UltimatePos.Infrastructure.Migrations
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.ProductUnitConversion", b =>
                 {
+                    b.HasOne("UltimatePos.Domain.Entities.Product", "ContainerProduct")
+                        .WithMany()
+                        .HasForeignKey("ContainerProductId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("UltimatePos.Domain.Entities.UnitOfMeasure", "PackUnitOfMeasure")
                         .WithMany()
                         .HasForeignKey("PackUnitOfMeasureId")
@@ -2893,6 +2907,8 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("ContainerProduct");
 
                     b.Navigation("PackUnitOfMeasure");
 

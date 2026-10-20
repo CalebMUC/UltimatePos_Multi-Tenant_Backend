@@ -34,8 +34,12 @@ public record ProductDto(
     string? Barcode = null, bool IsBatchTracked = false, bool RequiresPrescription = false,
     string? GenericName = null, string? Strength = null, string? DosageForm = null, string? Manufacturer = null,
     string? CategoryName = null, string? BaseUnitSymbol = null);
+/// <param name="ContainerProductId">Sold with one of this pack when the customer has no container (see ProductUnitConversion).
+/// The Container* fields describe it, in its base unit, so a till can add the line without another call.</param>
 public record ProductUnitConversionDto(Guid ProductUnitConversionId, Guid PackUnitOfMeasureId, decimal ConversionFactor,
-    bool IsActive = true, string? PackUnitSymbol = null);
+    bool IsActive = true, string? PackUnitSymbol = null,
+    Guid? ContainerProductId = null, string? ContainerProductName = null, string? ContainerSku = null,
+    Guid? ContainerUnitOfMeasureId = null, string? ContainerUnitSymbol = null, bool? ContainerIsActive = null);
 public record ProductPriceTierDto(Guid ProductPriceTierId, Guid UnitOfMeasureId, PriceType PriceType, decimal Price, DateTime EffectiveFrom);
 public record AddPriceTierRequestDto(Guid UnitOfMeasureId, PriceType PriceType, decimal Price, DateTime EffectiveFrom);
 public record ProductDetailDto(
@@ -47,7 +51,10 @@ public record ProductDetailDto(
     string? CategoryName = null, string? BaseUnitSymbol = null);
 public record ProductImportRowResult(int RowNumber, string Name, bool IsValid, string? Error, string? Sku);
 public record ProductBulkImportResultDto(bool Committed, int TotalRows, int ValidRows, int InvalidRows, IEnumerable<ProductImportRowResult> Rows);
-public record CreateProductUnitConversionRequestDto(Guid PackUnitOfMeasureId, decimal ConversionFactor);
+/// <param name="ContainerProductId">Optional: the container sold with this pack when the customer has none.</param>
+public record CreateProductUnitConversionRequestDto(Guid PackUnitOfMeasureId, decimal ConversionFactor, Guid? ContainerProductId = null);
+/// <summary>Sets (or, with null, clears) the container sold with one of this pack. A request of its own, so the factor update stays as it was.</summary>
+public record SetConversionContainerRequestDto(Guid? ContainerProductId);
 /// <summary>Changes how many base units the pack holds. Past documents keep the base quantities they were recorded with.</summary>
 public record UpdateProductUnitConversionRequestDto(decimal ConversionFactor);
 

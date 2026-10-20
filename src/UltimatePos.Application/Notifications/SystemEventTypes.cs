@@ -28,6 +28,7 @@ namespace UltimatePos.Application.Notifications
         public const string BusinessReactivated = "Business.Reactivated";
         public const string BusinessClosed = "Business.Closed";
         public const string BusinessReopened = "Business.Reopened";
+        public const string BusinessSectorChanged = "Business.SectorChanged";
         public const string BusinessOwnerAdded = "Business.OwnerAdded";
 
         // Licensing and the platform (super users)

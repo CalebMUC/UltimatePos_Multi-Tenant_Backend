@@ -8,6 +8,9 @@ using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Application.Business.Dtos
 {
+    /// <param name="Kind">Required, unless the Sector suggests one (BusinessDefaults.Sectors).</param>
+    /// <param name="AllowNegativeStock">Null = the Sector's default (a water refill station starts with overselling off).</param>
+    /// <param name="Sector">What line of business it is in. Defaults to General; sets the units and expense categories it starts with.</param>
     public record RegisterBusinessRequestDto(
     string BusinessName,
     string? TradingName,
@@ -25,7 +28,8 @@ namespace UltimatePos.Application.Business.Dtos
     string? MpesaShortCode = null,
     decimal? MaxDiscountPercent = null,
     UltimatePos.Application.Platform.BusinessOwnerRequestDto? Owner = null,
-    bool AllowNegativeStock = true);
+    bool? AllowNegativeStock = null,
+    BusinessSector? Sector = null);
 
     /// <summary>Full replace of the editable profile. Kind cannot change: it decides what the business may purchase.</summary>
     /// <param name="AllowNegativeStock">Null keeps the current setting (older clients do not send it).</param>
@@ -52,7 +56,7 @@ namespace UltimatePos.Application.Business.Dtos
         string? PhoneNumber, string? Email, string? LogoUrl, string? BackgroundImageUrl, bool IsActive,
         bool IsVatRegistered, string? MpesaShortCode, decimal? MaxDiscountPercent,
         bool IsSuspended = false, string? SuspensionReason = null, DateOnly? LicenseEndsOn = null, int? LicenseMaxUsers = null,
-        int? LicenseMaxBranches = null, bool AllowNegativeStock = true);
+        int? LicenseMaxBranches = null, bool AllowNegativeStock = true, BusinessSector Sector = BusinessSector.General);
 
     /// <param name="BusinessId">Optional. Customers are always registered in the business signed in to; if given it must be that one.</param>
     /// <param name="PriceType">Which price list the customer buys at. Defaults to Wholesale for a wholesaler, Retail for a retailer.</param>

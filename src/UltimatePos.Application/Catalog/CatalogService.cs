@@ -461,11 +461,15 @@ public class CatalogService
         if (await _repository.ConversionExistsAsync(productId, request.PackUnitOfMeasureId))
             throw new InvalidAssignmentException("A conversion for this unit already exists on this product.");
 
+        if (request.ContainerProductId is { } containerId)
+            await RequireContainerAsync(productId, containerId);
+
         var conversion = new ProductUnitConversion
         {
             ProductId = productId,
             PackUnitOfMeasureId = request.PackUnitOfMeasureId,
             ConversionFactor = request.ConversionFactor,
+            ContainerProductId = request.ContainerProductId,
             CreatedBy = _currentUser.UserId
         };
         return ToDto(await _repository.CreateUnitConversionAsync(conversion));
@@ -484,6 +488,32 @@ public class CatalogService
     public async Task<ProductUnitConversionDto> SetUnitConversionActiveStatusAsync(Guid productId, Guid conversionId, bool isActive) =>
         ToDto(await _repository.UpdateUnitConversionAsync(productId, conversionId, null, isActive, _currentUser.UserId));
 
+    /// <summary>The container sold with one of this pack when the customer has none of their own. Null clears it.</summary>
+    public async Task<ProductUnitConversionDto> SetUnitConversionContainerAsync(Guid productId, Guid conversionId, SetConversionContainerRequestDto request)
+    {
+        if (request.ContainerProductId is { } containerId)
+            await RequireContainerAsync(productId, containerId);
+        return ToDto(await _repository.SetUnitConversionContainerAsync(productId, conversionId, request.ContainerProductId, _currentUser.UserId));
+    }
+
+    /// <summary>
+    /// A container is another active finished good of this business (the query filter keeps other businesses' products out), sold
+    /// in its own base unit. It is never the product itself, and never batch-tracked or prescription-only.
+    /// </summary>
+    private async Task RequireContainerAsync(Guid productId, Guid containerProductId)
+    {
+        if (containerProductId == productId)
+            throw new ValidationException("containerProductId", "A product cannot be its own container.");
+        var container = await _repository.GetProductByIdAsync(containerProductId)
+            ?? throw new ValidationException("containerProductId", "That container product was not found.");
+        if (!container.IsActive)
+            throw new ValidationException("containerProductId", $"'{container.Name}' is inactive.");
+        if (container.ItemType != ItemType.FinishedGood)
+            throw new ValidationException("containerProductId", $"'{container.Name}' is not a finished good, so it cannot be sold.");
+        if (container.IsBatchTracked || container.RequiresPrescription)
+            throw new ValidationException("containerProductId", $"'{container.Name}' is batch-tracked or prescription-only: it cannot be added to a sale automatically.");
+    }
+
     // ---- Mapping ----
 
     private static UnitOfMeasureDto ToDto(UnitOfMeasure u) => new(u.UnitOfMeasureId, u.Name, u.Symbol, u.IsActive);
@@ -497,7 +527,9 @@ public class CatalogService
         new(t.ProductPriceTierId, t.UnitOfMeasureId, t.PriceType, t.Price, t.EffectiveFrom);
 
     private static ProductUnitConversionDto ToDto(ProductUnitConversion c) =>
-        new(c.ProductUnitConversionId, c.PackUnitOfMeasureId, c.ConversionFactor, c.IsActive, c.PackUnitOfMeasure?.Symbol);
+        new(c.ProductUnitConversionId, c.PackUnitOfMeasureId, c.ConversionFactor, c.IsActive, c.PackUnitOfMeasure?.Symbol,
+            c.ContainerProductId, c.ContainerProduct?.Name, c.ContainerProduct?.Sku, c.ContainerProduct?.BaseUnitOfMeasureId,
+            c.ContainerProduct?.BaseUnitOfMeasure?.Symbol, c.ContainerProduct?.IsActive);
 
     private static ProductDetailDto ToDetailDto(Product p) =>
         new(p.ProductId, p.Sku, p.Name, p.Description, p.CategoryId, p.ItemType, p.TaxClassification, p.BaseUnitOfMeasureId, p.ReorderLevel, p.IsActive,

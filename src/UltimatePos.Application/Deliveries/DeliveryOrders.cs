@@ -206,12 +206,11 @@ namespace UltimatePos.Application.Deliveries
 
             if (request.PaymentMethod is not (PaymentMethod.Cash or PaymentMethod.MpesaTill or PaymentMethod.Credit))
                 throw new ValidationException("paymentMethod", "A delivery is paid in cash, by a till payment (pick it from the unmatched payments), or on credit.");
+            // On credit, the sale is charged to the customer's account like any credit sale. A promised date is optional.
             if (request.PaymentMethod == PaymentMethod.Credit)
             {
                 if (!_currentUser.HasPermission(AcceptCreditPermission))
-                    throw new ForbiddenException("Only a manager can accept a promise to pay later. Ask them to record this delivery.");
-                if (request.PaymentDueDate is null)
-                    throw new ValidationException("paymentDueDate", "When did the customer promise to pay? The date is required.");
+                    throw new ForbiddenException("Only a manager can accept a delivery on credit. Ask them to record this delivery.");
             }
             else if (request.PaymentDueDate.HasValue)
                 throw new ValidationException("paymentDueDate", "A promised payment date applies only to a delivery on credit.");
@@ -233,7 +232,8 @@ namespace UltimatePos.Application.Deliveries
             // The sale (and the order's move to Delivered) has already been saved, so this event has no change of its own to ride on.
             await _events.RecordNowAsync(new SystemEventDraft(SystemEventTypes.DeliveryOrderDelivered,
                 $"{order.OrderNumber} was delivered to {order.Customer.CustomerName} by {order.RiderName}: {sale.SaleNumber}, {sale.TotalAmount:0.00} " +
-                (request.PaymentMethod == PaymentMethod.Credit ? $"on credit, promised by {request.PaymentDueDate:yyyy-MM-dd}." : $"by {request.PaymentMethod}."),
+                (request.PaymentMethod != PaymentMethod.Credit ? $"by {request.PaymentMethod}."
+                    : request.PaymentDueDate is { } due ? $"on credit, promised by {due:yyyy-MM-dd}." : "on credit."),
                 EntityType: "DeliveryOrder", EntityId: deliveryOrderId, BranchId: order.BranchId,
                 Data: new { sale.SaleId, sale.SaleNumber, sale.TotalAmount, request.PaymentMethod, request.PaymentDueDate, order.RiderName }));
             return await GetAsync(deliveryOrderId);
