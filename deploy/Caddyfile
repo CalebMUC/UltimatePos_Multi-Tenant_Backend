@@ -1,0 +1,27 @@
+# One address for everything: the API under /api/v1, the frontend for the rest. The browser never calls another origin, so the API
+# needs no CORS settings. With a domain name in SITE_ADDRESS, Caddy gets and renews the HTTPS certificate by itself (ports 80 and
+# 443 must be open and the domain's DNS must point at this server).
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+	}
+
+	handle /api/v1/* {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

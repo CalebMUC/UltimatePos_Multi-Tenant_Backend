@@ -1,0 +1,90 @@
+# The production stack: PostgreSQL, the API, the Next.js frontend and Caddy (HTTPS) on one server.
+# Run it through ./pos.sh, which passes the .env file (by default /opt/ultimatepos/.env, two folders up from here):
+#   ./pos.sh build                 build the api and web images
+#   ./pos.sh run --rm migrate      update the database (every release, before `up`)
+#   ./pos.sh up -d                 start or restart everything that changed
+#   ./pos.sh logs -f api           follow the API's log
+# Only Caddy has public ports. The database and the API are reachable only inside this stack.
+
+name: ultimatepos
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Updates the database schema and the permission list, then exits. Not started by `up`: run it with `./pos.sh run --rm migrate`.
+  migrate:
+    image: ultimatepos-api:latest
+    build:
+      context: ..
+      dockerfile: src/UltimatePos.Api/Dockerfile
+    command: ["--migrate"]
+    env_file: ${POS_ENV_FILE:-../../.env}
+    environment:
+      Notifications__WorkersEnabled: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["tools"]
+
+  api:
+    image: ultimatepos-api:latest
+    build:
+      context: ..
+      dockerfile: src/UltimatePos.Api/Dockerfile
+    env_file: ${POS_ENV_FILE:-../../.env}
+    environment:
+      # Caddy is the only way in, so trust its X-Forwarded-For / X-Forwarded-Proto.
+      ReverseProxy__Enabled: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    # Exactly one: the notification workers inside it are not safe to run twice.
+
+  web:
+    image: ultimatepos-web:latest
+    build:
+      context: ${FRONTEND_DIR:-../../frontend}
+      args:
+        # Fixed into the frontend when it is built: change them, then rebuild (`./pos.sh build web`).
+        NEXT_PUBLIC_API_BASE_URL: /api/v1
+        NEXT_PUBLIC_DEFAULT_UTC_OFFSET_MINUTES: "180"
+        NEXT_PUBLIC_SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
+        NEXT_PUBLIC_SUPPORT_PHONE: ${SUPPORT_PHONE:-}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      # Change only to test on a machine where 80/443 are taken (the certificate needs 80 and 443).
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env, e.g. pos.yourcompany.co.ke}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # HTTPS certificates: keep this volume
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

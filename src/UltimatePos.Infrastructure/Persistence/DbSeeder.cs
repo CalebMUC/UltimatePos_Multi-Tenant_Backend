@@ -9,9 +9,9 @@ using UltimatePos.Domain.Entities;
 namespace UltimatePos.Infrastructure.Persistence;
 
 /// <summary>
-/// Development seeding. Production environments get the same permissions and roles from migrations; this only adds what a fresh
-/// local database needs to be usable: every permission, the Super User role, a dev super user (who belongs to no business and
-/// registers businesses), and the dev admin account a business can be handed to.
+/// Development seeding: migrates the local database and adds the dev accounts — a dev super user (who belongs to no business and
+/// registers businesses) and the dev admin account a business can be handed to. Permissions and the Super User role are kept up to
+/// date in every environment by PlatformBootstrapper; this calls the same code so a fresh local database is usable at once.
 /// </summary>
 public static class DbSeeder
 {
@@ -28,34 +28,7 @@ public static class DbSeeder
         var hasher = services.GetRequiredService<IPasswordHasher>();
 
         await context.Database.MigrateAsync();
-
-        // ---- Permissions ----
-        var existingNames = await context.Permissions.Select(p => p.Name).ToListAsync();
-        var newPermissions = PermissionCatalog.All
-            .Where(p => !existingNames.Contains(p.Name))
-            .Select(p => new Permission { Name = p.Name, Module = p.Module })
-            .ToList();
-        if (newPermissions.Count > 0)
-        {
-            context.Permissions.AddRange(newPermissions);
-            await context.SaveChangesAsync();
-        }
-
-        // ---- Super User role (BusinessId null): every platform permission ----
-        var superUserRole = await PlatformBootstrapper.EnsureSuperUserRoleAsync(context);
-
-        // ---- Each business's Admin role picks up new business permissions ----
-        var newBusinessPermissions = newPermissions.Where(p => !PermissionCatalog.IsPlatform(p.Name)).ToList();
-        if (newBusinessPermissions.Count > 0)
-        {
-            var businessAdminRoleIds = await context.Roles.IgnoreQueryFilters()
-                .Where(r => r.BusinessId != null && r.RoleName == PermissionCatalog.BusinessAdminRole)
-                .Select(r => r.RoleId)
-                .ToListAsync();
-            foreach (var roleId in businessAdminRoleIds)
-                context.RolePermissions.AddRange(newBusinessPermissions.Select(p => new RolePermission { RoleId = roleId, PermissionId = p.PermissionId }));
-            await context.SaveChangesAsync();
-        }
+        await PlatformBootstrapper.SyncPermissionsAsync(context);
 
         // ---- Dev accounts ----
         if (!await context.Users.AnyAsync(u => u.Email == DevAdminEmail))
@@ -70,8 +43,9 @@ public static class DbSeeder
 }
 
 /// <summary>
-/// Makes sure the platform has a super user, in every environment. Production has no seeder, so the first one comes from
-/// configuration — Platform:BootstrapSuperUser:Email / FullName / Password (set it as user-secrets or environment variables, sign
+/// Runs at every startup, in every environment: brings the permission list up to date (PermissionCatalog is the source of truth, so
+/// a release that adds a permission needs no data migration), then makes sure the platform has a super user. Production has no
+/// seeder, so the first one comes from configuration — Platform:BootstrapSuperUser:Email / FullName / Password (set it as user-secrets or environment variables, sign
 /// in, change the password, then remove it). Nothing happens once an active super user exists.
 /// </summary>
 public static class PlatformBootstrapper
@@ -79,7 +53,7 @@ public static class PlatformBootstrapper
     public static async Task RunAsync(IServiceProvider services, IConfiguration configuration, ILogger logger)
     {
         var context = services.GetRequiredService<UltimatePosDbContext>();
-        await EnsureSuperUserRoleAsync(context);
+        await SyncPermissionsAsync(context);
 
         var hasActive = await context.UserRoles.IgnoreQueryFilters()
             .AnyAsync(ur => ur.Role.BusinessId == null && ur.Role.RoleName == PermissionCatalog.SuperUserRole && ur.User.IsActive);
@@ -101,6 +75,39 @@ public static class PlatformBootstrapper
             logger.LogWarning("Created super user {Email} from Platform:BootstrapSuperUser. Sign in, change the password, and remove the setting.", email);
         else
             logger.LogError("Platform:BootstrapSuperUser {Email} already exists as a business account; it was NOT made a super user. Use a separate email.", email);
+    }
+
+    /// <summary>
+    /// Adds every permission in PermissionCatalog that the database does not have yet, gives the Super User role every platform
+    /// permission, and gives each business's Admin role the new business permissions (Admin has every business permission).
+    /// Nothing is removed, and running it again changes nothing.
+    /// </summary>
+    public static async Task SyncPermissionsAsync(UltimatePosDbContext context)
+    {
+        var existingNames = await context.Permissions.Select(p => p.Name).ToListAsync();
+        var newPermissions = PermissionCatalog.All
+            .Where(p => !existingNames.Contains(p.Name))
+            .Select(p => new Permission { Name = p.Name, Module = p.Module })
+            .ToList();
+        if (newPermissions.Count > 0)
+        {
+            context.Permissions.AddRange(newPermissions);
+            await context.SaveChangesAsync();
+        }
+
+        await EnsureSuperUserRoleAsync(context);
+
+        var newBusinessPermissions = newPermissions.Where(p => !PermissionCatalog.IsPlatform(p.Name)).ToList();
+        if (newBusinessPermissions.Count > 0)
+        {
+            var businessAdminRoleIds = await context.Roles.IgnoreQueryFilters()
+                .Where(r => r.BusinessId != null && r.RoleName == PermissionCatalog.BusinessAdminRole)
+                .Select(r => r.RoleId)
+                .ToListAsync();
+            foreach (var roleId in businessAdminRoleIds)
+                context.RolePermissions.AddRange(newBusinessPermissions.Select(p => new RolePermission { RoleId = roleId, PermissionId = p.PermissionId }));
+            await context.SaveChangesAsync();
+        }
     }
 
     internal static async Task<Role> EnsureSuperUserRoleAsync(UltimatePosDbContext context)
