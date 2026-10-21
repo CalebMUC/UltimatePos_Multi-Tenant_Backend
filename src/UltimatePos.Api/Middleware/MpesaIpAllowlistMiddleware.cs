@@ -14,9 +14,7 @@ public class MpesaIpAllowlistMiddleware
     public async Task InvokeAsync(HttpContext context, IOptions<MpesaOptions> options)
     {
         var path = context.Request.Path;
-        var isWebhook = path.StartsWithSegments("/api/v1/mpesa/stk/callback")
-            || path.StartsWithSegments("/api/v1/mpesa/c2b/confirmation")
-            || path.StartsWithSegments("/api/v1/mpesa/c2b/validation");
+        var isWebhook = Controllers.MpesaWebhooksController.WebhookPaths.Any(webhook => path.StartsWithSegments(webhook));
 
         if (!isWebhook)
         {

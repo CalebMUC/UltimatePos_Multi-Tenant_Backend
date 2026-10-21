@@ -1,0 +1,18 @@
+# Only src/ goes into the API image. Keep local data, secrets and build output out of it.
+**/bin/
+**/obj/
+**/*.user
+**/*.log
+**/*.log.err
+**/appsettings.Development.json
+.git/
+.vs/
+.idea/
+tests/
+docs/
+deploy/
+*.dump
+*.xlsx
+*.txt
+*.stackdump
+**/*.stackdump

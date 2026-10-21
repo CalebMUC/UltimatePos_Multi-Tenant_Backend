@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -78,6 +80,18 @@ builder.Services.AddControllers()
         };
     });
 
+// Behind a reverse proxy (Caddy in production), the caller's address and scheme come from X-Forwarded-For / X-Forwarded-Proto, so
+// the M-Pesa IP allowlist sees Safaricom rather than the proxy. Opt-in: only where the API has no public port and the proxy is the
+// only thing that can reach it, since any proxy is trusted. Elsewhere a caller could forge the header.
+var behindReverseProxy = builder.Configuration.GetValue("ReverseProxy:Enabled", false);
+if (behindReverseProxy)
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+
 // Origins allowed to call the API from a browser (the separately hosted frontend). Empty = same-origin only.
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
@@ -110,6 +124,24 @@ builder.Services.AddSwaggerGen(options => {
 
 var app = builder.Build();
 
+// `--migrate`: bring the database schema and the permission list up to date, then exit without serving. Production runs this once
+// per release (the compose `migrate` service), before the new API starts.
+if (args.Contains("--migrate"))
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<UltimatePosDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var pending = (await context.Database.GetPendingMigrationsAsync()).ToList();
+    logger.LogInformation("Applying {Count} migration(s): {Migrations}", pending.Count, pending.Count == 0 ? "none" : string.Join(", ", pending));
+    await context.Database.MigrateAsync();
+    await PlatformBootstrapper.SyncPermissionsAsync(context);
+    logger.LogInformation("The database is up to date.");
+    return;
+}
+
+if (behindReverseProxy)
+    app.UseForwardedHeaders();
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -121,7 +153,9 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 app.UseMiddleware<MpesaIpAllowlistMiddleware>();
 
-app.UseHttpsRedirection();
+// Behind the proxy, the proxy redirects HTTP to HTTPS and talks to the API over plain HTTP inside the server.
+if (!behindReverseProxy)
+    app.UseHttpsRedirection();
 
 app.UseCors();
 app.UseAuthentication();
@@ -132,6 +166,13 @@ app.UseMiddleware<BranchScopeMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// For uptime monitoring: 200 when the API is up and can reach the database, 503 when it cannot.
+app.MapGet("/api/v1/health", async (UltimatePosDbContext db) =>
+        await db.Database.CanConnectAsync()
+            ? Results.Ok(new { status = "ok" })
+            : Results.Json(new { status = "database unreachable" }, statusCode: StatusCodes.Status503ServiceUnavailable))
+    .AllowAnonymous();
 
 if (app.Environment.IsDevelopment()) { 
     using var scope =  app.Services.CreateScope();
