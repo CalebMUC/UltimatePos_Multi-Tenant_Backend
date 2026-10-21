@@ -24,6 +24,8 @@ screen for it. It does not fake success with mock data.
 | G14 | Per-business currency and timezone | No (Kenya only) | Yes | Platform decision |
 | G15 | Customer-specific prices | Maybe | Yes | Ask owner |
 | G16 | Role templates (Cashier, Storekeeper, …) | Convenience | No | Optional |
+| G17 | M-Pesa paid outside the POS, cashier types the code | Yes, until C2B is wired | Yes | **Built** (2026-10-21) |
+| G18 | Separate till and paybill on the business profile | Yes | Yes | **Built** (2026-10-21) |
 | R1 | Cancel of a purchase order is not serialised against a receipt | — | No | **Risk, fix soon** |
 | R2 | Unique M-Pesa receipt number is not enforced | — | Index | **Risk, fix soon** |
 | R3 | Two delivery orders taken at the same instant can both reserve the last stock | — | No | Low risk |
@@ -132,6 +134,32 @@ Hard-coded KES and UTC+3 are correct for Kenya. Needed only if the platform serv
 **Today:** only Admin is created with a business.
 **Proposed:** seed optional, editable roles (Manager, Cashier, Storekeeper, Accountant) from a template, as in onboarding §9. Or add
 `POST /roles/from-template`.
+
+### G17 — M-Pesa paid outside the POS *(built 2026-10-21)*
+A stopgap until till payments reach the POS through Daraja C2B. The customer pays the business's till, paybill or phone, and the
+cashier types the confirmation code from the SMS. **Nobody checks it with Safaricom**, so reconcile these sales against the M-Pesa
+statement.
+- `PaymentMethod.MpesaReference = 4`. `CreateSaleRequestDto.mpesaReference` and `DeliverDeliveryOrderRequestDto.mpesaReference`. The
+  code is stripped of spaces, upper-cased and must match `^[A-Z0-9]{10}$`. Otherwise the API returns 400 with
+  "Enter the 10-character M-Pesa code from the customer's SMS, e.g. SJK4H7LM2P."
+- The code can be on only one sale per business that is not voided or failed, enforced by the filtered unique index
+  `IX_Sales_BusinessId_MpesaReference`. A repeat returns **409 `DUPLICATE_REFERENCE`**: "M-Pesa code {code} is already on sale {saleNumber}."
+  A voided sale frees its code. The preview accepts the field and does not check it.
+- The sale is Completed at once, like cash, with no `amountTendered` or `changeDue`. `SaleDto.mpesaReference` returns the code.
+  `GET /sales?search=` matches the code. Reports group the sales as `"MpesaReference"`. Refunds work as for a till sale.
+- Deliveries accept it. The rider cash-up counts it in `paidByMpesaTill` (all M-Pesa), not in `cashCollected`.
+- Each sale records a `Sale.MpesaReferenceRecorded` audit event with the code. No notification is sent.
+
+### G18 — Till and paybill *(built 2026-10-21)*
+`BusinessProfile.MpesaTillNumber` and `MpesaPaybillNumber` are optional, 5–7 digits each, and returned on `BusinessDto`.
+`MpesaShortCode` is now derived as **till ?? paybill** and still routes C2B and STK. If a business has both, only its till routes.
+- If either new field is sent, the `mpesaShortCode` sent with it is ignored. An older client that sends only `mpesaShortCode` has it
+  stored as the till.
+- A till or paybill already used by another business (as its short code, till or paybill) or by a branch returns 409 `BUSINESS_EXISTS`.
+  The old short-code clash returned 400 and now returns this 409 too.
+- Migration `MpesaReferenceAndTillPaybill` copied every existing short code into the till. Where it was really a paybill, an admin
+  moves it in Settings.
+- A branch's own `mpesaShortCode` is unchanged.
 
 ---
 

@@ -34,6 +34,8 @@ namespace UltimatePos.Application.Business
         public const string Deliveries = "deliveries";
         /// <summary>Containers sold with a pack (the "customer has own container?" toggle) and refill quick-sale buttons.</summary>
         public const string Containers = "containers";
+        /// <summary>Bundles: several products sold at one price ("20L bottle + water", packs of 12), set up once and rung up as one item.</summary>
+        public const string Bundles = "bundles";
 
         public static readonly IReadOnlyList<string> Core =
             new[] { Dashboard, Sales, Customers, Catalog, Stock, Purchasing, Expenses, Reports, Mpesa, Branches, Settings };
@@ -41,12 +43,12 @@ namespace UltimatePos.Application.Business
         /// <summary>Sector-dependent modules. General — unclassified, including every business registered before sectors — gets them all.</summary>
         private static readonly IReadOnlyDictionary<BusinessSector, string[]> BySector = new Dictionary<BusinessSector, string[]>
         {
-            [BusinessSector.General] = new[] { Batches, Prescriptions, Deliveries, Containers },
+            [BusinessSector.General] = new[] { Batches, Prescriptions, Deliveries, Containers, Bundles },
             [BusinessSector.Pharmacy] = new[] { Batches, Prescriptions },
             [BusinessSector.Agrovet] = new[] { Batches },
-            [BusinessSector.WaterRefill] = new[] { Deliveries, Containers },
-            [BusinessSector.Minimart] = new[] { Batches },
-            [BusinessSector.Supermarket] = new[] { Batches },
+            [BusinessSector.WaterRefill] = new[] { Deliveries, Containers, Bundles },
+            [BusinessSector.Minimart] = new[] { Batches, Bundles },
+            [BusinessSector.Supermarket] = new[] { Batches, Bundles },
             [BusinessSector.Hardware] = Array.Empty<string>(),
         };
 

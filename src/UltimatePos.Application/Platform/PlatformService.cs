@@ -70,11 +70,10 @@ namespace UltimatePos.Application.Platform
                 throw new ValidationException("owner", "The business's owner is required: they become its first administrator.");
 
             BusinessService.ValidateProfile(request.BusinessName, request.KraPin, request.MaxDiscountPercent);
-            var shortCode = BusinessService.NormalizeShortCode(request.MpesaShortCode);
+            var mpesa = BusinessService.ResolveMpesaNumbers(request.MpesaTillNumber, request.MpesaPaybillNumber, request.MpesaShortCode);
             if (await _businesses.KraPinExistsAsync(request.KraPin.Trim()))
                 throw new DuplicateBusinessException($"A business with KRA PIN '{request.KraPin}' is already registered.");
-            if (shortCode is not null && await _businesses.MpesaShortCodeExistsAsync(shortCode))
-                throw new ValidationException("mpesaShortCode", $"M-Pesa short code '{shortCode}' is already used by another business.");
+            await BusinessService.EnsureMpesaNumbersFreeAsync(_businesses, mpesa, null);
 
             var (owner, ownerIsNew, temporaryPassword) = await PrepareBusinessUserAsync(request.Owner, "owner");
 
@@ -95,7 +94,9 @@ namespace UltimatePos.Application.Platform
                 LogoUrl = request.LogoUrl,
                 BackgroundImageUrl = request.BackgroundImageUrl,
                 IsVatRegistered = request.IsVatRegistered,
-                MpesaShortCode = shortCode,
+                MpesaShortCode = mpesa.ShortCode,
+                MpesaTillNumber = mpesa.Till,
+                MpesaPaybillNumber = mpesa.Paybill,
                 MaxDiscountPercent = request.MaxDiscountPercent,
                 AllowNegativeStock = request.AllowNegativeStock ?? profile.AllowNegativeStock,
                 CreatedBy = _currentUser.UserId
@@ -589,7 +590,7 @@ namespace UltimatePos.Application.Platform
             new(b.BusinessId, b.BusinessName, b.TradingName, b.BusinessType, b.Kind, b.RegistrationNumber, b.KraPin,
                 b.PhysicalAddress, b.County, b.PhoneNumber, b.Email, b.LogoUrl, b.BackgroundImageUrl, b.IsActive,
                 b.IsVatRegistered, b.MpesaShortCode, b.MaxDiscountPercent, b.IsSuspended, b.SuspensionReason, b.LicenseEndsOn, b.LicenseMaxUsers,
-                b.LicenseMaxBranches, b.AllowNegativeStock, b.Sector, BusinessModules.For(b.Sector, b.Kind));
+                b.LicenseMaxBranches, b.AllowNegativeStock, b.Sector, BusinessModules.For(b.Sector, b.Kind), b.MpesaTillNumber, b.MpesaPaybillNumber);
 
         internal static BusinessLicenseDto ToDto(BusinessLicense l) =>
             new(l.BusinessLicenseId, l.BusinessId, l.LicenseNumber, l.Kind, l.PlanName, l.MaxUsers, l.StartsOn, l.EndsOn, l.Amount, l.Currency,

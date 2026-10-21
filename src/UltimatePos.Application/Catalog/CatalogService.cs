@@ -338,7 +338,14 @@ public class CatalogService
             UnitOfMeasureId = request.UnitOfMeasureId,
             PriceType = request.PriceType,
             Price = request.Price,
-            EffectiveFrom = request.EffectiveFrom,
+            // Stored in UTC. A time sent with an offset ("+03:00") arrives as local time, which the database refuses; one sent with
+            // no zone at all is taken as UTC, like every other time the API returns.
+            EffectiveFrom = request.EffectiveFrom.Kind switch
+            {
+                DateTimeKind.Local => request.EffectiveFrom.ToUniversalTime(),
+                DateTimeKind.Unspecified => DateTime.SpecifyKind(request.EffectiveFrom, DateTimeKind.Utc),
+                _ => request.EffectiveFrom
+            },
             CreatedBy = _currentUser.UserId
         };
         return ToDto(await _repository.AddPriceTierAsync(tier));

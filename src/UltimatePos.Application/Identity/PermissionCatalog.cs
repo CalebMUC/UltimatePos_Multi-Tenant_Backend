@@ -44,6 +44,7 @@ namespace UltimatePos.Application.Identity
             ("Products.View", "Products"), ("Products.Create", "Products"), ("Products.Update", "Products"),
             ("Products.Deactivate", "Products"), ("Products.ManagePricing", "Products"), ("Products.BulkImport", "Products"),
             ("Products.ManageUnitConversions", "Products"),
+            ("Products.ManageBundles", "Products"),   // set up, re-price and retire bundles ("20L bottle + water", packs)
 
             ("Suppliers.Register", "Suppliers"), ("Suppliers.View", "Suppliers"),
             ("Suppliers.Update", "Suppliers"), ("Suppliers.Deactivate", "Suppliers"),

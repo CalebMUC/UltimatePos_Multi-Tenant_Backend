@@ -65,6 +65,8 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<StockTransferLineBatch> StockTransferLineBatches => Set<StockTransferLineBatch>();
         public DbSet<DeliveryOrder> DeliveryOrders => Set<DeliveryOrder>();
         public DbSet<DeliveryOrderLine> DeliveryOrderLines => Set<DeliveryOrderLine>();
+        public DbSet<ProductBundle> ProductBundles => Set<ProductBundle>();
+        public DbSet<ProductBundleComponent> ProductBundleComponents => Set<ProductBundleComponent>();
 
         public DbSet<Formula> Formulas => Set<Formula>();
         public DbSet<FormulaLine> FormulaLines => Set<FormulaLine>();
@@ -123,6 +125,10 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<BusinessProfile>().HasKey(b => b.BusinessId);
             modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.KraPin).IsUnique();
             modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.MpesaShortCode).IsUnique().HasFilter("\"MpesaShortCode\" IS NOT NULL");
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.MpesaTillNumber).HasMaxLength(10);
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.MpesaPaybillNumber).HasMaxLength(10);
+            modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.MpesaTillNumber).IsUnique().HasFilter("\"MpesaTillNumber\" IS NOT NULL");
+            modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.MpesaPaybillNumber).IsUnique().HasFilter("\"MpesaPaybillNumber\" IS NOT NULL");
             modelBuilder.Entity<BusinessProfile>().Property(b => b.BusinessType).HasConversion<string>();
             modelBuilder.Entity<BusinessProfile>().Property(b => b.Kind).HasConversion<string>();
             modelBuilder.Entity<BusinessProfile>().Property(b => b.Sector).HasConversion<string>();
@@ -251,6 +257,10 @@ namespace UltimatePos.Infrastructure.Persistence
             // Where each business document happened.
             modelBuilder.Entity<Sale>().HasOne(s => s.Branch).WithMany().HasForeignKey(s => s.BranchId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<Sale>().HasIndex(s => new { s.BranchId, s.CreatedAt });
+            // A typed M-Pesa code is on one live sale per business. A voided or failed sale frees it, so it can be rung up again.
+            modelBuilder.Entity<Sale>().Property(s => s.MpesaReference).HasMaxLength(20);
+            modelBuilder.Entity<Sale>().HasIndex(s => new { s.BusinessId, s.MpesaReference }).IsUnique()
+                .HasFilter("\"MpesaReference\" IS NOT NULL AND \"Status\" NOT IN ('Voided', 'Failed')");
             modelBuilder.Entity<SaleReturn>().HasOne<Branch>().WithMany().HasForeignKey(r => r.BranchId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<PurchaseOrder>().HasOne(o => o.Branch).WithMany().HasForeignKey(o => o.BranchId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<ProductionRun>().HasOne<Branch>().WithMany().HasForeignKey(r => r.BranchId).OnDelete(DeleteBehavior.Restrict);
@@ -398,6 +408,22 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<SaleLine>()
                 .HasOne(l => l.UnitOfMeasure).WithMany()
                 .HasForeignKey(l => l.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SaleLine>()
+                .HasOne<ProductBundle>().WithMany()
+                .HasForeignKey(l => l.ProductBundleId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<SaleLine>().Property(l => l.BundleName).HasMaxLength(200);
+
+            // ---- Bundles ----
+            modelBuilder.Entity<ProductBundle>().Property(b => b.Name).HasMaxLength(200);
+            modelBuilder.Entity<ProductBundle>().Property(b => b.Code).HasMaxLength(50);
+            modelBuilder.Entity<ProductBundle>().HasIndex(b => new { b.BusinessId, b.Code }).IsUnique().HasFilter("\"Code\" IS NOT NULL");
+            modelBuilder.Entity<ProductBundleComponent>()
+                .HasOne(c => c.ProductBundle).WithMany(b => b.Components).HasForeignKey(c => c.ProductBundleId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<ProductBundleComponent>()
+                .HasOne(c => c.Product).WithMany().HasForeignKey(c => c.ProductId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProductBundleComponent>()
+                .HasOne(c => c.UnitOfMeasure).WithMany().HasForeignKey(c => c.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProductBundleComponent>().HasIndex(c => new { c.ProductBundleId, c.ProductId, c.UnitOfMeasureId }).IsUnique();
 
             modelBuilder.Entity<SaleLineBatchAllocation>()
                 .HasOne(a => a.SaleLine).WithMany(l => l.BatchAllocations)
@@ -448,7 +474,7 @@ namespace UltimatePos.Infrastructure.Persistence
 
             // Every business-owned table belongs to the business by FK, so a row can never point at a business that is not there.
             foreach (var entityType in new[] { typeof(Category), typeof(UnitOfMeasure), typeof(Product), typeof(PurchaseOrder), typeof(Formula),
-                         typeof(ProductionRun), typeof(Sale), typeof(Expense), typeof(ExpenseCategory), typeof(StockBatch), typeof(SaleReturn) })
+                         typeof(ProductionRun), typeof(Sale), typeof(Expense), typeof(ExpenseCategory), typeof(StockBatch), typeof(SaleReturn), typeof(ProductBundle) })
             {
                 modelBuilder.Entity(entityType)
                     .HasOne(typeof(BusinessProfile)).WithMany()
@@ -519,6 +545,8 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<Supplier>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<PurchaseOrder>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
             modelBuilder.Entity<Formula>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<ProductBundle>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<ProductBundleComponent>().HasQueryFilter(e => e.ProductBundle.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<ProductionRun>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
             modelBuilder.Entity<Sale>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
             // A business-wide expense (no branch) is visible only to those who see every branch.

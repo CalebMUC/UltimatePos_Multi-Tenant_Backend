@@ -11,6 +11,9 @@ namespace UltimatePos.Application.Business.Dtos
     /// <param name="Kind">Required, unless the Sector suggests one (BusinessDefaults.Sectors).</param>
     /// <param name="AllowNegativeStock">Null = the Sector's default (a water refill station starts with overselling off).</param>
     /// <param name="Sector">What line of business it is in. Defaults to General; sets the units and expense categories it starts with.</param>
+    /// <param name="MpesaShortCode">Older clients only: ignored when MpesaTillNumber or MpesaPaybillNumber is given, else stored as the till.</param>
+    /// <param name="MpesaTillNumber">Buy Goods till, 5-7 digits. The short code that routes payments is the till, else the paybill.</param>
+    /// <param name="MpesaPaybillNumber">Paybill, 5-7 digits.</param>
     public record RegisterBusinessRequestDto(
     string BusinessName,
     string? TradingName,
@@ -29,10 +32,13 @@ namespace UltimatePos.Application.Business.Dtos
     decimal? MaxDiscountPercent = null,
     UltimatePos.Application.Platform.BusinessOwnerRequestDto? Owner = null,
     bool? AllowNegativeStock = null,
-    BusinessSector? Sector = null);
+    BusinessSector? Sector = null,
+    string? MpesaTillNumber = null,
+    string? MpesaPaybillNumber = null);
 
     /// <summary>Full replace of the editable profile. Kind cannot change: it decides what the business may purchase.</summary>
     /// <param name="AllowNegativeStock">Null keeps the current setting (older clients do not send it).</param>
+    /// <param name="MpesaShortCode">Older clients only: ignored when MpesaTillNumber or MpesaPaybillNumber is given, else stored as the till.</param>
     public record UpdateBusinessRequestDto(
         string BusinessName,
         string? TradingName,
@@ -48,7 +54,9 @@ namespace UltimatePos.Application.Business.Dtos
         bool IsVatRegistered = false,
         string? MpesaShortCode = null,
         decimal? MaxDiscountPercent = null,
-        bool? AllowNegativeStock = null);
+        bool? AllowNegativeStock = null,
+        string? MpesaTillNumber = null,
+        string? MpesaPaybillNumber = null);
 
     public record BusinessDto(
         Guid BusinessId, string BusinessName, string? TradingName, BusinessType BusinessType, BusinessKind Kind,
@@ -57,7 +65,8 @@ namespace UltimatePos.Application.Business.Dtos
         bool IsVatRegistered, string? MpesaShortCode, decimal? MaxDiscountPercent,
         bool IsSuspended = false, string? SuspensionReason = null, DateOnly? LicenseEndsOn = null, int? LicenseMaxUsers = null,
         int? LicenseMaxBranches = null, bool AllowNegativeStock = true, BusinessSector Sector = BusinessSector.General,
-        IReadOnlyList<string>? Modules = null); // the app areas it uses (BusinessModules), from its sector and kind
+        IReadOnlyList<string>? Modules = null, // the app areas it uses (BusinessModules), from its sector and kind
+        string? MpesaTillNumber = null, string? MpesaPaybillNumber = null); // where customers pay, for the POS payment screen
 
     /// <param name="BusinessId">Optional. Customers are always registered in the business signed in to; if given it must be that one.</param>
     /// <param name="PriceType">Which price list the customer buys at. Defaults to Wholesale for a wholesaler, Retail for a retailer.</param>

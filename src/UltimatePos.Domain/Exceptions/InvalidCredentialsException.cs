@@ -69,6 +69,12 @@ namespace UltimatePos.Domain.Exceptions
         public CreditLimitExceededException(string message) : base(message) { }
     }
 
+    /// <summary>A payment reference (a typed M-Pesa code) is already on another sale of the business (HTTP 409).</summary>
+    public class DuplicateReferenceException : Exception
+    {
+        public DuplicateReferenceException(string message) : base(message) { }
+    }
+
     /// <summary>A prescription-only product is being sold without the prescription details (HTTP 422).</summary>
     public class PrescriptionRequiredException : Exception
     {
