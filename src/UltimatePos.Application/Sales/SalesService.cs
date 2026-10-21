@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Accounting;
@@ -40,14 +41,16 @@ namespace UltimatePos.Application.Sales
         private readonly ITenantContext _tenant;
         private readonly ISystemEventRecorder _events;
         private readonly IBranchContext _branches;
+        private readonly IProductBundleRepository _bundles;
 
         public SalesService(
             ISalesRepository repository, ICatalogRepository catalogRepository, IBusinessRepository businessRepository,
             IInventoryRepository inventoryRepository, IAccountingRepository accountingRepository, IMpesaRepository mpesaRepository,
             IMpesaClient mpesaClient, ICurrentUser currentUser, ITenantContext tenant, ISystemEventRecorder events,
-            IBranchContext branches)
+            IBranchContext branches, IProductBundleRepository bundles)
         {
             _branches = branches;
+            _bundles = bundles;
             _events = events;
             _repository = repository;
             _catalogRepository = catalogRepository;
@@ -72,9 +75,11 @@ namespace UltimatePos.Application.Sales
                 plan.Lines.Select(l => new SalePreviewLineDto(
                     l.ProductId, l.ProductName, l.Sku, l.UnitOfMeasureId, l.Quantity, l.UnitPrice, l.LineTotal,
                     l.AvailableInBaseUnits, l.RequiredInBaseUnits, l.StockSufficient,
-                    l.DiscountAmount, l.TaxRate, l.TaxAmount, l.RequiresPrescription, l.IsBatchTracked)),
+                    l.DiscountAmount, l.TaxRate, l.TaxAmount, l.RequiresPrescription, l.IsBatchTracked,
+                    l.BundleId, l.BundleName, l.BundleQuantity)),
                 plan.Subtotal, plan.DiscountTotal, plan.TaxTotal, plan.RequiresPrescription,
-                plan.CustomerBalance, plan.CreditLimit, plan.CreditLimitExceeded(request.PaymentMethod));
+                plan.CustomerBalance, plan.CreditLimit, plan.CreditLimitExceeded(request.PaymentMethod),
+                Bundles(plan.Lines.Select(l => (l.BundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))));
         }
 
         public Task<SaleDto> RecordSaleAsync(CreateSaleRequestDto request) => RecordAsync(request, deliveryOrderId: null);
@@ -89,6 +94,9 @@ namespace UltimatePos.Application.Sales
         {
             if (deliveryOrderId.HasValue && request.PaymentMethod == PaymentMethod.MpesaStkPush)
                 throw new ValidationException("paymentMethod", "A delivery is completed once paid: use cash, a till payment or credit.");
+            var mpesaReference = request.PaymentMethod == PaymentMethod.MpesaReference
+                ? await RequireUnusedMpesaReferenceAsync(request.MpesaReference)
+                : null;
             var plan = await BuildSalePlanAsync(request, deliveryOrderId);
             var userId = _currentUser.UserId;
 
@@ -134,6 +142,7 @@ namespace UltimatePos.Application.Sales
                 SaleId = Guid.NewGuid(),
                 CustomerId = request.CustomerId,
                 PaymentMethod = request.PaymentMethod,
+                MpesaReference = mpesaReference,
                 PaymentDueDate = request.PaymentDueDate,
                 Subtotal = plan.Subtotal,
                 DiscountTotal = plan.DiscountTotal,
@@ -154,6 +163,9 @@ namespace UltimatePos.Application.Sales
                     TaxRate = l.TaxRate,
                     TaxAmount = l.TaxAmount,
                     LineTotal = l.LineTotal,
+                    ProductBundleId = l.BundleId,
+                    BundleName = l.BundleName,
+                    BundleQuantity = l.BundleQuantity,
                     CreatedBy = userId
                 }).ToList()
             };
@@ -172,6 +184,7 @@ namespace UltimatePos.Application.Sales
                 PaymentMethod.Credit => await RecordCreditSaleAsync(sale, userId, plan.AllowNegativeStock, deliveryOrderId),
                 PaymentMethod.MpesaTill => await RecordTillSaleAsync(sale, request, plan.AllowNegativeStock, deliveryOrderId),
                 PaymentMethod.MpesaStkPush => await InitiateStkPushSaleAsync(sale, request, userId),
+                PaymentMethod.MpesaReference => await RecordMpesaReferenceSaleAsync(sale, plan.AllowNegativeStock, deliveryOrderId),
                 _ => throw new InvalidAssignmentException("Unsupported payment method.")
             };
         }
@@ -457,6 +470,41 @@ namespace UltimatePos.Application.Sales
             return await GetSaleByIdAsync(sale.SaleId);
         }
 
+        /// <summary>
+        /// Paid to the business's M-Pesa outside the POS: the cashier typed the code from the customer's SMS. Completed at once, like cash,
+        /// without asking Safaricom. The code is kept on the sale (and in the audit log) so it can be checked against the statement.
+        /// </summary>
+        private async Task<SaleDto> RecordMpesaReferenceSaleAsync(Sale sale, bool allowNegativeStock, Guid? deliveryOrderId)
+        {
+            sale.Status = SaleStatus.Completed;
+            sale.SaleNumber = $"INV-{await _repository.GetNextDocumentNumberAsync("INV"):D6}";
+
+            _events.Record(new SystemEventDraft(SystemEventTypes.SaleMpesaReferenceRecorded,
+                $"Sale {sale.SaleNumber} of {sale.TotalAmount:0.00} was paid by M-Pesa code {sale.MpesaReference} (entered by the cashier, not checked with Safaricom).",
+                EntityType: "Sale", EntityId: sale.SaleId,
+                Data: new { sale.SaleNumber, sale.TotalAmount, sale.MpesaReference, sale.CustomerId, DeliveryOrderId = deliveryOrderId }));
+            // A second sale with the same code at the same moment is stopped by the unique index and reported like the check below.
+            await _repository.RecordCompletedSaleAsync(sale, null, Today, allowNegativeStock, deliveryOrderId: deliveryOrderId);
+            return await GetSaleByIdAsync(sale.SaleId);
+        }
+
+        private static readonly Regex MpesaReferencePattern = new("^[A-Z0-9]{10}$", RegexOptions.Compiled);
+
+        /// <summary>The code from the customer's SMS, without spaces and in upper case: "sjk4 h7lm2p" is SJK4H7LM2P.</summary>
+        private static string? NormalizeMpesaReference(string? code) =>
+            code is null ? null : string.Concat(code.Where(c => !char.IsWhiteSpace(c))).ToUpperInvariant();
+
+        /// <summary>Checks a typed M-Pesa code: 10 letters and digits, and not on another live (not voided or failed) sale of the business.</summary>
+        private async Task<string> RequireUnusedMpesaReferenceAsync(string? code)
+        {
+            var reference = NormalizeMpesaReference(code);
+            if (reference is null || !MpesaReferencePattern.IsMatch(reference))
+                throw new ValidationException("mpesaReference", "Enter the 10-character M-Pesa code from the customer's SMS, e.g. SJK4H7LM2P.");
+            if (await _repository.GetSaleNumberByMpesaReferenceAsync(reference) is { } saleNumber)
+                throw new DuplicateReferenceException($"M-Pesa code {reference} is already on sale {saleNumber}.");
+            return reference;
+        }
+
         private async Task<SaleDto> InitiateStkPushSaleAsync(Sale sale, CreateSaleRequestDto request, Guid? userId)
         {
             if (string.IsNullOrWhiteSpace(request.MpesaPhoneNumber))
@@ -500,7 +548,8 @@ namespace UltimatePos.Application.Sales
 
         private sealed record SaleLinePlan(Guid ProductId, string ProductName, string Sku, Guid UnitOfMeasureId,
             decimal Quantity, decimal UnitPrice, decimal Gross, decimal DiscountAmount, decimal LineTotal, decimal TaxRate, decimal TaxAmount,
-            decimal RequiredInBaseUnits, decimal AvailableInBaseUnits, bool IsBatchTracked, bool RequiresPrescription)
+            decimal RequiredInBaseUnits, decimal AvailableInBaseUnits, bool IsBatchTracked, bool RequiresPrescription,
+            Guid? BundleId, string? BundleName, decimal? BundleQuantity)
         {
             public bool StockSufficient => AvailableInBaseUnits >= RequiredInBaseUnits;
         }
@@ -522,10 +571,15 @@ namespace UltimatePos.Application.Sales
         private async Task<SalePlan> BuildSalePlanAsync(CreateSaleRequestDto request, Guid? deliveryOrderId = null)
         {
             var lines = (request.Lines ?? Enumerable.Empty<CreateSaleLineRequestDto>()).ToList();
-            if (lines.Count == 0)
+            var bundleRequests = (request.Bundles ?? Enumerable.Empty<CreateSaleBundleRequestDto>()).ToList();
+            if (lines.Count == 0 && bundleRequests.Count == 0)
                 throw new ValidationException("lines", "A sale needs at least one line.");
             if (lines.Any(l => l.Quantity <= 0))
                 throw new ValidationException("lines", "Quantity must be greater than zero on every line.");
+            if (bundleRequests.Any(b => b.Quantity <= 0 || b.Quantity != decimal.Truncate(b.Quantity)))
+                throw new ValidationException("bundles", "Bundles are sold whole: each quantity must be a whole number greater than zero.");
+            if (bundleRequests.GroupBy(b => b.ProductBundleId).Any(g => g.Count() > 1))
+                throw new ValidationException("bundles", "Each bundle can appear only once — combine the quantities.");
             if (!Enum.IsDefined(request.PaymentMethod))
                 throw new ValidationException("paymentMethod", "Unsupported payment method.");
             if (request.PaymentMethod == PaymentMethod.Credit && !request.CustomerId.HasValue)
@@ -554,7 +608,19 @@ namespace UltimatePos.Application.Sales
                 customerBalance = (await _accountingRepository.GetCustomerBalanceAsync(customer.CustomerId))?.OutstandingBalance ?? 0m;
             }
 
-            var productIds = lines.Select(l => l.ProductId).Distinct().ToList();
+            var bundles = bundleRequests.Count == 0
+                ? new Dictionary<Guid, ProductBundle>()
+                : (await _bundles.GetManyAsync(bundleRequests.Select(b => b.ProductBundleId))).ToDictionary(b => b.ProductBundleId);
+            foreach (var b in bundleRequests)
+            {
+                if (!bundles.TryGetValue(b.ProductBundleId, out var bundle))
+                    throw new NotFoundException($"Bundle '{b.ProductBundleId}' not found.");
+                if (!bundle.IsActive)
+                    throw new InvalidAssignmentException($"Bundle '{bundle.Name}' is no longer sold.");
+            }
+
+            var productIds = lines.Select(l => l.ProductId)
+                .Concat(bundles.Values.SelectMany(b => b.Components).Select(c => c.ProductId)).Distinct().ToList();
             var products = (await _catalogRepository.GetProductsByIdsAsync(productIds)).ToDictionary(p => p.ProductId);
             var sellable = await _inventoryRepository.GetSellableQuantitiesAsync(productIds, Today);
             // Stock held for open delivery orders at this branch is not for sale over the counter. Recording a delivery is different: the
@@ -567,29 +633,69 @@ namespace UltimatePos.Application.Sales
                         sellable[productId] = sellable.GetValueOrDefault(productId) - quantity;
             }
 
-            // First pass: price and line discount.
-            var priced = new List<(CreateSaleLineRequestDto Line, Product Product, decimal Price, decimal Gross, decimal LineDiscount, decimal RequiredBase)>();
-            foreach (var line in lines)
+            Product SellableProduct(Guid productId)
             {
-                if (!products.TryGetValue(line.ProductId, out var product))
-                    throw new NotFoundException($"Product '{line.ProductId}' not found.");
+                if (!products.TryGetValue(productId, out var product))
+                    throw new NotFoundException($"Product '{productId}' not found.");
                 if (!product.IsActive)
                     throw new InvalidAssignmentException($"Product '{product.Name}' is inactive.");
                 if (product.ItemType != ItemType.FinishedGood)
                     throw new InvalidAssignmentException($"Product '{product.Name}' is a {product.ItemType} — only finished goods can be sold directly.");
+                return product;
+            }
 
-                var price = await _catalogRepository.GetActivePriceAsync(line.ProductId, line.UnitOfMeasureId, priceType)
-                    ?? throw new InvalidAssignmentException($"No {priceType} price is set for '{product.Name}' in the unit given.");
-
-                var factor = await _catalogRepository.GetConversionFactorAsync(line.ProductId, line.UnitOfMeasureId)
+            async Task<decimal> RequiredBaseAsync(Product product, Guid unitOfMeasureId, decimal quantity)
+            {
+                var factor = await _catalogRepository.GetConversionFactorAsync(product.ProductId, unitOfMeasureId)
                     ?? throw new InvalidAssignmentException($"Product '{product.Name}' has no conversion for the unit given.");
-
-                var requiredBase = RoundQuantity(line.Quantity * factor);
+                var requiredBase = RoundQuantity(quantity * factor);
                 if (requiredBase <= 0)
                     throw new InvalidAssignmentException($"Quantity is too small — '{product.Name}' rounds to zero.");
+                return requiredBase;
+            }
+
+            // First pass: price and line discount.
+            var priced = new List<PricedLine>();
+            foreach (var line in lines)
+            {
+                var product = SellableProduct(line.ProductId);
+                var price = await _catalogRepository.GetActivePriceAsync(line.ProductId, line.UnitOfMeasureId, priceType)
+                    ?? throw new InvalidAssignmentException($"No {priceType} price is set for '{product.Name}' in the unit given.");
+                var requiredBase = await RequiredBaseAsync(product, line.UnitOfMeasureId, line.Quantity);
 
                 var gross = RoundMoney(line.Quantity * price);
-                priced.Add((line, product, price, gross, LineDiscount(line, gross, product.Name), requiredBase));
+                priced.Add(new PricedLine(product, line.UnitOfMeasureId, line.Quantity, price, gross,
+                    LineDiscount(line.DiscountAmount, line.DiscountPercent, gross, product.Name), requiredBase, null, null, null));
+            }
+
+            // A bundle becomes one line per part. Its price is split over them (BundlePricing): parts with a price of their own (the
+            // water) count at it, parts without (a bottle never sold empty) take the rest. Its discount follows the same split.
+            foreach (var b in bundleRequests)
+            {
+                var bundle = bundles[b.ProductBundleId];
+                var bundlePrice = priceType == PriceType.Wholesale && bundle.WholesalePrice is { } wholesale ? wholesale : bundle.RetailPrice;
+                var bundleGross = RoundMoney(b.Quantity * bundlePrice);
+                var bundleDiscount = LineDiscount(b.DiscountAmount, b.DiscountPercent, bundleGross, bundle.Name);
+
+                var parts = new List<(Product Product, Guid UnitOfMeasureId, decimal Quantity, decimal RequiredBase, decimal? OwnValue)>();
+                foreach (var c in bundle.Components.OrderBy(c => c.ProductBundleComponentId))
+                {
+                    var product = SellableProduct(c.ProductId);
+                    var quantity = RoundQuantity(b.Quantity * c.Quantity);
+                    var requiredBase = await RequiredBaseAsync(product, c.UnitOfMeasureId, quantity);
+                    var ownPrice = await _catalogRepository.GetActivePriceAsync(c.ProductId, c.UnitOfMeasureId, priceType)
+                        ?? (priceType == PriceType.Retail ? null : await _catalogRepository.GetActivePriceAsync(c.ProductId, c.UnitOfMeasureId, PriceType.Retail));
+                    parts.Add((product, c.UnitOfMeasureId, quantity, requiredBase, ownPrice is { } own ? RoundMoney(quantity * own) : null));
+                }
+
+                var shares = BundlePricing.Split(bundleGross, parts.Select(p => p.OwnValue).ToList());
+                var discounts = AllocateDiscount(shares, bundleDiscount);
+                for (var k = 0; k < parts.Count; k++)
+                {
+                    var (product, unitOfMeasureId, quantity, requiredBase, _) = parts[k];
+                    priced.Add(new PricedLine(product, unitOfMeasureId, quantity, Math.Round(shares[k] / quantity, 4, MidpointRounding.AwayFromZero),
+                        shares[k], discounts[k], requiredBase, bundle.ProductBundleId, bundle.Name, b.Quantity));
+                }
             }
 
             // Second pass: spread the sale-level discount over the lines in proportion to what is left of each.
@@ -605,19 +711,19 @@ namespace UltimatePos.Application.Sales
             var drawn = new Dictionary<Guid, decimal>(); // a product on two lines draws on one pool of stock
             for (var i = 0; i < priced.Count; i++)
             {
-                var (line, product, price, gross, lineDiscount, requiredBase) = priced[i];
+                var (product, unitOfMeasureId, quantity, price, gross, lineDiscount, requiredBase, bundleId, bundleName, bundleQuantity) = priced[i];
                 var discount = lineDiscount + allocations[i];
                 var lineTotal = gross - discount;
                 var taxRate = business.IsVatRegistered ? TaxRates.For(product.TaxClassification) : 0m;
                 var taxAmount = taxRate == 0 ? 0m : RoundMoney(lineTotal * taxRate / (100m + taxRate)); // prices include VAT
 
-                sellable.TryGetValue(line.ProductId, out var available);
-                var alreadyDrawn = drawn.GetValueOrDefault(line.ProductId);
-                drawn[line.ProductId] = alreadyDrawn + requiredBase;
+                sellable.TryGetValue(product.ProductId, out var available);
+                var alreadyDrawn = drawn.GetValueOrDefault(product.ProductId);
+                drawn[product.ProductId] = alreadyDrawn + requiredBase;
 
-                planLines.Add(new SaleLinePlan(product.ProductId, product.Name, product.Sku, line.UnitOfMeasureId,
-                    line.Quantity, price, gross, discount, lineTotal, taxRate, taxAmount, requiredBase, available - alreadyDrawn,
-                    product.IsBatchTracked, product.RequiresPrescription));
+                planLines.Add(new SaleLinePlan(product.ProductId, product.Name, product.Sku, unitOfMeasureId,
+                    quantity, price, gross, discount, lineTotal, taxRate, taxAmount, requiredBase, available - alreadyDrawn,
+                    product.IsBatchTracked, product.RequiresPrescription, bundleId, bundleName, bundleQuantity));
             }
 
             var plan = new SalePlan(priceType, planLines, customerBalance, creditLimit, business.AllowNegativeStock);
@@ -628,13 +734,16 @@ namespace UltimatePos.Application.Sales
             return plan;
         }
 
-        private static decimal LineDiscount(CreateSaleLineRequestDto line, decimal gross, string productName)
+        private sealed record PricedLine(Product Product, Guid UnitOfMeasureId, decimal Quantity, decimal UnitPrice, decimal Gross,
+            decimal LineDiscount, decimal RequiredBase, Guid? BundleId, string? BundleName, decimal? BundleQuantity);
+
+        private static decimal LineDiscount(decimal? discountAmount, decimal? discountPercent, decimal gross, string productName)
         {
-            if (line.DiscountAmount.HasValue && line.DiscountPercent.HasValue)
+            if (discountAmount.HasValue && discountPercent.HasValue)
                 throw new ValidationException("lines", $"Give either a discount amount or a discount percent for '{productName}', not both.");
 
-            var discount = line.DiscountAmount ?? (line.DiscountPercent is { } pct ? RoundMoney(gross * pct / 100m) : 0m);
-            if (line.DiscountPercent is < 0 or > 100)
+            var discount = discountAmount ?? (discountPercent is { } pct ? RoundMoney(gross * pct / 100m) : 0m);
+            if (discountPercent is < 0 or > 100)
                 throw new ValidationException("lines", $"The discount percent for '{productName}' must be between 0 and 100.");
             if (discount < 0 || discount > gross)
                 throw new ValidationException("lines", $"The discount for '{productName}' must be between 0 and the line value ({gross:0.00}).");
@@ -722,12 +831,23 @@ namespace UltimatePos.Application.Sales
                 s.Lines.Select(l => new SaleLineDto(l.SaleLineId, l.ProductId, l.Product.Name, l.UnitOfMeasureId, l.Quantity, l.UnitPrice, l.LineTotal,
                     l.DiscountAmount, l.TaxRate, l.TaxAmount, l.QuantityReturned, l.Product.Sku, l.UnitOfMeasure?.Symbol,
                     l.BatchAllocations.Select(a => new SaleLineBatchDto(a.StockBatchId, a.StockBatch?.BatchNumber ?? string.Empty, a.StockBatch?.ExpiryDate,
-                        a.QuantityInBaseUnits, a.QuantityReturnedInBaseUnits)).ToList())),
+                        a.QuantityInBaseUnits, a.QuantityReturnedInBaseUnits)).ToList(), l.ProductBundleId, l.BundleName, l.BundleQuantity)),
                 s.Customer?.CustomerName, s.CreatedBy,
                 s.CreatedBy is { } by && userNames.TryGetValue(by, out var name) ? name : null,
                 s.Subtotal, s.DiscountTotal, s.TaxTotal, s.ReturnedAmount,
                 s.Prescription is null ? null : ToDto(s.Prescription), s.BranchId,
-                s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name, s.PaymentDueDate);
+                s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name, s.PaymentDueDate,
+                Bundles(s.Lines.Select(l => (l.ProductBundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))),
+                s.MpesaReference);
+
+        /// <summary>The bundles on a sale, each once, from the lines their parts became. Null when the sale has none.</summary>
+        private static List<SaleBundleDto>? Bundles(IEnumerable<(Guid? BundleId, string? Name, decimal? Quantity, decimal LineTotal, decimal Discount)> lines)
+        {
+            var bundles = lines.Where(l => l.BundleId.HasValue).GroupBy(l => l.BundleId!.Value)
+                .Select(g => new SaleBundleDto(g.Key, g.First().Name ?? string.Empty, g.First().Quantity ?? 0m, g.Sum(l => l.LineTotal), g.Sum(l => l.Discount)))
+                .ToList();
+            return bundles.Count == 0 ? null : bundles;
+        }
 
         private static SalePrescriptionDto ToDto(SalePrescription p) =>
             new(p.PrescriptionNumber, p.PrescriberName, p.PrescriberRegistrationNumber, p.PrescriberFacility, p.PatientName, p.PatientPhoneNumber,

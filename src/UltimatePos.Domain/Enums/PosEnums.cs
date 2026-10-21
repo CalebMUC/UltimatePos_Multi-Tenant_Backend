@@ -23,7 +23,9 @@ namespace UltimatePos.Domain.Enums
         // Return = a credit note for goods a credit customer brought back. Only Invoice increases what the customer owes.
         public enum CustomerLedgerEntryType { Invoice, Payment, Reversal, Return }
 
-        public enum PaymentMethod { Cash, Credit, MpesaTill, MpesaStkPush }
+        // MpesaReference: paid to the business's M-Pesa outside the POS; the cashier types the code from the customer's SMS. Not checked
+        // with Safaricom (until till payments reach the POS through C2B).
+        public enum PaymentMethod { Cash, Credit, MpesaTill, MpesaStkPush, MpesaReference }
         public enum MpesaTransactionType { C2B, StkPush }
         public enum MpesaTransactionStatus { Received, Matched, Pending, Confirmed, Failed }
 

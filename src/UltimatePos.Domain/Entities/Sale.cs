@@ -28,6 +28,9 @@ namespace UltimatePos.Domain.Entities
         public decimal ReturnedAmount { get; set; }
         public decimal? AmountTendered { get; set; }
         public decimal? ChangeDue { get; set; }
+        /// <summary>MpesaReference sales: the M-Pesa code the cashier typed (10 characters, upper case). Unique per business among sales
+        /// that are not voided or failed. Null for other methods.</summary>
+        public string? MpesaReference { get; set; }
         /// <summary>Credit sales: the day the customer promised to pay by. An open invoice past it raises an alert. Null = no promise.</summary>
         public DateOnly? PaymentDueDate { get; set; }
         public string? Notes { get; set; }

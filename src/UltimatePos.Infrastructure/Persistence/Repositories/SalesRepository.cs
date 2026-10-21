@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Sales;
 using UltimatePos.Application.Sales.Dtos;
@@ -39,7 +40,18 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             if (ledgerEntry is not null)
                 await _customerLedger.ApplyAsync(ledgerEntry);
 
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (sale.MpesaReference is not null
+                && ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: MpesaReferenceIndex })
+            {
+                // Another sale took the same typed code between the check and this save.
+                await tx.RollbackAsync();
+                var other = await GetSaleNumberByMpesaReferenceAsync(sale.MpesaReference);
+                throw new DuplicateReferenceException($"M-Pesa code {sale.MpesaReference} is already on sale {other ?? "another sale"}.");
+            }
 
             // Claimed in the same transaction, and only while still unmatched: two cashiers ringing up sales against one till payment
             // at the same moment get one sale, and the other is rolled back with its stock.
@@ -69,6 +81,14 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
             await tx.CommitAsync();
         }
+
+        private const string MpesaReferenceIndex = "IX_Sales_BusinessId_MpesaReference";
+
+        public async Task<string?> GetSaleNumberByMpesaReferenceAsync(string mpesaReference) =>
+            await _context.Sales.AsNoTracking()
+                .Where(s => s.MpesaReference == mpesaReference && s.Status != SaleStatus.Voided && s.Status != SaleStatus.Failed)
+                .Select(s => s.SaleNumber)
+                .FirstOrDefaultAsync();
 
         public async Task RecordPendingSaleAsync(Sale sale)
         {
@@ -239,7 +259,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             {
                 var pattern = $"%{filter.Search.Trim()}%";
                 query = query.Where(s => EF.Functions.ILike(s.SaleNumber, pattern)
-                                         || (s.Customer != null && EF.Functions.ILike(s.Customer.CustomerName, pattern)));
+                                         || (s.Customer != null && EF.Functions.ILike(s.Customer.CustomerName, pattern))
+                                         || (s.MpesaReference != null && EF.Functions.ILike(s.MpesaReference, pattern)));
             }
 
             var totalCount = await query.CountAsync();

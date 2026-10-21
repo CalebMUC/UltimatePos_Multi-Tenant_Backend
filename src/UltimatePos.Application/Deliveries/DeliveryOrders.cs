@@ -20,13 +20,14 @@ namespace UltimatePos.Application.Deliveries
     public record DispatchDeliveryOrderRequestDto(string RiderName);
     /// <summary>
     /// Recorded when the customer has received the goods (typically by the cashier once the rider is back). Payment is Cash
-    /// (AmountTendered), MpesaTill (MpesaTransactionId of the till payment) or Credit — a promise to pay by PaymentDueDate, which needs
-    /// DeliveryOrders.AcceptCredit.
+    /// (AmountTendered), MpesaTill (MpesaTransactionId of the till payment), MpesaReference (the M-Pesa code from the customer's SMS) or
+    /// Credit — a promise to pay by PaymentDueDate, which needs DeliveryOrders.AcceptCredit.
     /// </summary>
     /// <param name="Lines">What was actually handed over, when it differs from the order (say the customer had a container after all).
     /// Left out = exactly as ordered. The sale is priced from these.</param>
     public record DeliverDeliveryOrderRequestDto(PaymentMethod PaymentMethod, decimal? AmountTendered = null, Guid? MpesaTransactionId = null,
-        DateOnly? PaymentDueDate = null, bool OverrideCreditLimit = false, IEnumerable<DeliveryOrderLineRequestDto>? Lines = null, string? Notes = null);
+        DateOnly? PaymentDueDate = null, bool OverrideCreditLimit = false, IEnumerable<DeliveryOrderLineRequestDto>? Lines = null, string? Notes = null,
+        string? MpesaReference = null);
     public record CancelDeliveryOrderRequestDto(string Reason);
 
     public record DeliveryOrderLineDto(Guid DeliveryOrderLineId, Guid ProductId, string ProductName, string Sku, Guid UnitOfMeasureId,
@@ -45,7 +46,7 @@ namespace UltimatePos.Application.Deliveries
 
     /// <summary>
     /// What each rider delivered in the period (by delivery day) and how it was paid — CashCollected is the cash they should hand in.
-    /// OutForDeliveryNow is as of now, whatever the period.
+    /// PaidByMpesaTill is everything paid by M-Pesa: a matched till payment or a typed M-Pesa code. OutForDeliveryNow is as of now, whatever the period.
     /// </summary>
     public record RiderSummaryDto(string RiderName, int DeliveredCount, decimal DeliveredTotal, decimal CashCollected, decimal PaidByMpesaTill,
         decimal OnCredit, int OutForDeliveryNow);
@@ -204,8 +205,9 @@ namespace UltimatePos.Application.Deliveries
             if (order.BranchId != _branches.RequireActiveBranchId())
                 throw new ValidationException("branchId", $"{order.OrderNumber} belongs to {order.Branch.KraBranchId} {order.Branch.Name}: switch to that branch to record it.");
 
-            if (request.PaymentMethod is not (PaymentMethod.Cash or PaymentMethod.MpesaTill or PaymentMethod.Credit))
-                throw new ValidationException("paymentMethod", "A delivery is paid in cash, by a till payment (pick it from the unmatched payments), or on credit.");
+            if (request.PaymentMethod is not (PaymentMethod.Cash or PaymentMethod.MpesaTill or PaymentMethod.MpesaReference or PaymentMethod.Credit))
+                throw new ValidationException("paymentMethod",
+                    "A delivery is paid in cash, by a till payment (pick it from the unmatched payments), by an M-Pesa code, or on credit.");
             // On credit, the sale is charged to the customer's account like any credit sale. A promised date is optional.
             if (request.PaymentMethod == PaymentMethod.Credit)
             {
@@ -227,7 +229,8 @@ namespace UltimatePos.Application.Deliveries
             var note = $"Delivery {order.OrderNumber} by {order.RiderName}" + (string.IsNullOrWhiteSpace(request.Notes) ? "" : $" — {request.Notes.Trim()}");
             var sale = await _sales.RecordDeliverySaleAsync(new CreateSaleRequestDto(order.CustomerId, request.PaymentMethod, note,
                 lines.Select(l => new CreateSaleLineRequestDto(l.ProductId, l.UnitOfMeasureId, l.Quantity)), request.AmountTendered, null,
-                request.MpesaTransactionId, OverrideCreditLimit: request.OverrideCreditLimit, PaymentDueDate: request.PaymentDueDate), deliveryOrderId);
+                request.MpesaTransactionId, OverrideCreditLimit: request.OverrideCreditLimit, PaymentDueDate: request.PaymentDueDate,
+                MpesaReference: request.MpesaReference), deliveryOrderId);
 
             // The sale (and the order's move to Delivered) has already been saved, so this event has no change of its own to ride on.
             await _events.RecordNowAsync(new SystemEventDraft(SystemEventTypes.DeliveryOrderDelivered,
@@ -235,7 +238,7 @@ namespace UltimatePos.Application.Deliveries
                 (request.PaymentMethod != PaymentMethod.Credit ? $"by {request.PaymentMethod}."
                     : request.PaymentDueDate is { } due ? $"on credit, promised by {due:yyyy-MM-dd}." : "on credit."),
                 EntityType: "DeliveryOrder", EntityId: deliveryOrderId, BranchId: order.BranchId,
-                Data: new { sale.SaleId, sale.SaleNumber, sale.TotalAmount, request.PaymentMethod, request.PaymentDueDate, order.RiderName }));
+                Data: new { sale.SaleId, sale.SaleNumber, sale.TotalAmount, request.PaymentMethod, request.PaymentDueDate, order.RiderName, sale.MpesaReference }));
             return await GetAsync(deliveryOrderId);
         }
 
@@ -265,19 +268,21 @@ namespace UltimatePos.Application.Deliveries
             var delivered = orders.Where(o => o.Status == DeliveryOrderStatus.Delivered && InPeriod(o.DeliveredAt) && o.Sale is not null).ToList();
             var outNow = orders.Where(o => o.Status == DeliveryOrderStatus.OutForDelivery).ToList();
             decimal Paid(IEnumerable<DeliveryOrder> list, PaymentMethod method) => list.Where(o => o.Sale!.PaymentMethod == method).Sum(o => o.Sale!.TotalAmount);
+            // The rider hands in cash only: a till payment and a typed M-Pesa code both went straight to the business's M-Pesa.
+            decimal PaidByMpesa(IEnumerable<DeliveryOrder> list) => Paid(list, PaymentMethod.MpesaTill) + Paid(list, PaymentMethod.MpesaReference);
 
             var riders = delivered.Select(o => o.RiderName ?? string.Empty).Concat(outNow.Select(o => o.RiderName ?? string.Empty)).Distinct();
             var byRider = riders.Select(rider =>
                 {
                     var theirs = delivered.Where(o => (o.RiderName ?? string.Empty) == rider).ToList();
                     return new RiderSummaryDto(rider, theirs.Count, theirs.Sum(o => o.Sale!.TotalAmount), Paid(theirs, PaymentMethod.Cash),
-                        Paid(theirs, PaymentMethod.MpesaTill), Paid(theirs, PaymentMethod.Credit), outNow.Count(o => (o.RiderName ?? string.Empty) == rider));
+                        PaidByMpesa(theirs), Paid(theirs, PaymentMethod.Credit), outNow.Count(o => (o.RiderName ?? string.Empty) == rider));
                 })
                 .OrderByDescending(r => r.DeliveredTotal).ThenBy(r => r.RiderName)
                 .ToList();
 
             return new DeliverySummaryDto(period.From, period.To, delivered.Count, delivered.Sum(o => o.Sale!.TotalAmount),
-                Paid(delivered, PaymentMethod.Cash), Paid(delivered, PaymentMethod.MpesaTill), Paid(delivered, PaymentMethod.Credit),
+                Paid(delivered, PaymentMethod.Cash), PaidByMpesa(delivered), Paid(delivered, PaymentMethod.Credit),
                 orders.Count(o => o.Status == DeliveryOrderStatus.Cancelled && InPeriod(o.CancelledAt)),
                 orders.Count(o => o.Status == DeliveryOrderStatus.Pending), outNow.Count, byRider);
         }

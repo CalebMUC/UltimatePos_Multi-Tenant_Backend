@@ -67,6 +67,8 @@ namespace UltimatePos.Application.Notifications
         public const string SaleVoided = "Sale.Voided";
         public const string SaleReturned = "Sale.Returned";
         public const string SaleCreditLimitOverridden = "Sale.CreditLimitOverridden";
+        /// <summary>A sale paid by an M-Pesa code the cashier typed, not checked with Safaricom: audit only, for reconciling against the statement.</summary>
+        public const string SaleMpesaReferenceRecorded = "Sale.MpesaReferenceRecorded";
         public const string MpesaStkPaymentFailed = "Mpesa.StkPaymentFailed";
         public const string MpesaTillPaymentUnmatched = "Mpesa.TillPaymentUnmatched";
         public const string CustomerPaymentRecorded = "Customer.PaymentRecorded";

@@ -133,6 +133,49 @@ There are no deposits.
 
 Caps, dispensers or cleaning products are set up the same way, only if the owner sells them.
 
+### 3.5 Bottle + water at one price, and packs (bundles)
+
+Some stations never sell an empty bottle: a customer without one pays **one price for bottle and water** ("20L Heavy-duty + water =
+1500"), and bottled water also goes out in **packs** (12 × 1L, 24 × 500ml). Set these up as **bundles**: several stocked products
+sold at one price, rung up as one item. A bundle holds no stock. Selling it takes each part from its own stock.
+
+- **Bottles are products** (`pcs`, finished good, one per type: 20L heavy-duty, 20L semi-flexible, 10L, 1L, 500ml). They need **no
+  price of their own**. Buy them on purchase orders like water; they leave stock when a bundle is sold.
+- **Create a bundle** (`Products.ManageBundles`): `POST /product-bundles`
+  `{ "name": "20L Heavy-duty bottle + water", "code": "HD20", "retailPrice": 1500, "wholesalePrice": null,
+  "components": [{ "productId": "<water>", "unitOfMeasureId": "<20L>", "quantity": 1 }, { "productId": "<HD bottle>", "unitOfMeasureId": "<pcs>", "quantity": 1 }] }`.
+  Half a litre is `{ water, l, 0.5 }`, so no 500ml unit is needed. Change it with `PUT /product-bundles/{id}`, and retire it with
+  `POST /product-bundles/{id}/deactivate`. Past sales keep the price they were sold at.
+- **Sell it:** `POST /sales` with `"bundles": [{ "productBundleId": "…", "quantity": 2 }]` (whole numbers; an optional `discountAmount`
+  or `discountPercent` covers all of them). A sale may have `lines`, `bundles` or both. A refill into the customer's own bottle is
+  still an ordinary line (water, 20L).
+- **How the money is split:** each bundle becomes one sale line per part. A part with a price of its own (the water, 20 L × 10 = 200)
+  counts at that price, and parts without one (the bottle) take the rest (1300). Revenue, VAT and cost of goods are therefore per
+  product, and *litres sold* in reports include water sold in bundles. Each line carries `productBundleId`, `bundleName` and
+  `bundleQuantity`, and the sale carries `bundles[]` (`name, quantity, total, discountAmount`) for the receipt.
+- **Stock:** with overselling off, a bundle is refused if **any** part is short (*"'20L Heavy-duty bottle' (1 available, 2
+  needed)"*), and nothing is taken. `GET /product-bundles` gives `availableQuantity`, the number of bundles the branch can sell now:
+  the scarcest part decides (users with `Stock.View`).
+- **After the sale:** a void puts back every part. A single part can be returned (a cracked bottle refunds the bottle's share, 1300).
+
+**AQUA HUB (Gavland) price list, as given by the owner on 2026-10-20** (water bought at 2/L and sold at 10/L):
+
+| Sold as | Set up as | Price |
+|---|---|---|
+| Own bottle, 1L / 10L / 20L | Water line in `l` / `10L` / `20L` | 10 / 100 / 200 |
+| 20L Heavy-duty bottle + water | Bundle: water 20L × 1 + 20L heavy-duty bottle × 1 | 1500 |
+| 20L Semi-flexible bottle + water | Bundle: water 20L × 1 + 20L semi-flexible bottle × 1 | 1300 |
+| 10L Semi-flexible bottle + water (no heavy-duty 10L) | Bundle: water 10L × 1 + 10L bottle × 1 | 250 |
+| 1L bottle + water | Bundle: water `l` × 1 + 1L bottle × 1 | 30 |
+| 500ml bottle + water | Bundle: water `l` × 0.5 + 500ml bottle × 1 | 20 |
+| Pack of 12 × 1L | Bundle: water `l` × 12 + 1L bottle × 12 | ☐ **Owner to confirm** (12 × 30 = 360 if no pack discount) |
+| Pack of 24 × 500ml | Bundle: water `l` × 12 + 500ml bottle × 24 | ☐ **Owner to confirm** (24 × 20 = 480 if no pack discount) |
+
+Still to ask the owner: the pack prices; whether a pack uses any packaging material that is stocked (shrink-wrap, carton), which
+would be one more part of the pack bundle; and whether packs are filled ahead of time. Bundles take the water out of the tank
+**when the pack is sold**, as the owner asked. If packs are filled days ahead, the tank reading will be lower than the system's
+water balance by what sits in filled packs until they are sold.
+
 ---
 
 ## 4. Water supply (suppliers and purchase orders)
@@ -396,9 +439,20 @@ The backend changes are additive. Nothing an existing screen sends or reads has 
     - Platform businesses list: a sector filter (`GET /platform/businesses?sector=`).
     - Platform dashboard: a by-sector table (`bySector`).
     - Business detail: a *Change sector* action (`PUT /platform/businesses/{id}/sector`).
-    - In the business app, read `sector` from sign-in (`businesses[].sector`) or `GET /businesses/current`. Use it to choose menus:
-      prescriptions for Pharmacy, the delivery board and refill quick buttons for WaterRefill. Hiding a menu is a convenience only;
-      the API still checks permissions.
+    - In the business app, show menus from `modules`, never from your own sector table. It comes from sign-in
+      (`businesses[].modules`) or `GET /businesses/current`. A refill station gets `deliveries` and `containers` but no
+      `production`. Full brief: [Frontend-Sector-Modules-Prompt.md](Frontend-Sector-Modules-Prompt.md). Hiding a menu is a
+      convenience only; the API still checks permissions.
+
+15. **Bundles (`bundles` module):**
+    - *Bundles* screen under the catalogue: list (`GET /product-bundles?isActive=&search=`), create and edit (name, code, retail and
+      wholesale price, parts as product + unit + quantity), deactivate and activate. Guard it with `Products.ManageBundles`.
+    - *Counter:* a tile per active bundle with its price and `availableQuantity` (disable it at 0). Put bundles in `bundles[]` on
+      `POST /sales/preview` and `POST /sales`, never as their parts. The refill station's counter becomes three choices per size:
+      *Own bottle* (water line), *Heavy-duty*, *Semi-flexible* (bundles).
+    - *Receipt and sale detail:* show `bundles[]` as one row each (name, quantity, total), and the lines whose `productBundleId` is
+      set beneath it or not at all. Returns stay per line.
+    - Delivery orders do not take bundles yet: deliver with the water line and the bottle as lines, or sell at the counter.
 
 Not needed now: bank transfer or split payment at the counter (deferred), container deposits (not used), maintenance (§11).
 
@@ -423,7 +477,11 @@ Not needed now: bank transfer or split payment at the counter (deferred), contai
 | Credit delivery needs no promised date | Owner: pay later is an ordinary credit sale on the customer's account | `DeliveryOrderService.DeliverAsync` |
 | `ProductUnitConversion.ContainerProductId`, `PUT …/unit-conversions/{id}/container` | Which container goes with which refill size, kept on the server rather than per till | Domain, `CatalogService`, `CatalogRepository`, `ProductsController`, migration `UnitConversionContainer` |
 
+| **Bundles**: `ProductBundle` and its parts, `POST/PUT/GET /product-bundles`, `bundles[]` on sales, the price split (`BundlePricing`), `Products.ManageBundles`, module `bundles` | Bottle + water at one price, and packs, taking water in litres and bottles in pieces in one item | `Domain/Entities/ProductBundle.cs`, `Application/Catalog/ProductBundles.cs`, `SalesService.BuildSalePlanAsync`, `ProductBundleRepository`, `ProductBundlesController`, migration `SaleBundles` |
+
 **Migrations:**
+- `SaleBundles`: new tables `ProductBundles` and `ProductBundleComponents`, plus nullable `SaleLines.ProductBundleId`, `BundleName`,
+  `BundleQuantity`.
 - `BusinessAllowNegativeStock`: `ALTER TABLE "Businesses" ADD "AllowNegativeStock" boolean NOT NULL DEFAULT TRUE`. Every existing
   business keeps allowing negative stock.
 - `DeliveryOrders`: new tables `DeliveryOrders` and `DeliveryOrderLines`, plus a nullable `Sales.PaymentDueDate`.

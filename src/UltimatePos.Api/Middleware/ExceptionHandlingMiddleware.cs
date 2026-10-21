@@ -41,6 +41,7 @@ public class ExceptionHandlingMiddleware
                 DuplicateBusinessException => (HttpStatusCode.Conflict, "BUSINESS_EXISTS", ex.Message),
                 InsufficientStockException => (HttpStatusCode.Conflict, "INSUFFICIENT_STOCK", ex.Message),
                 CreditLimitExceededException => (HttpStatusCode.Conflict, "CREDIT_LIMIT_EXCEEDED", ex.Message),
+                DuplicateReferenceException => (HttpStatusCode.Conflict, "DUPLICATE_REFERENCE", ex.Message),
                 PurchaseNotAllowedException => (HttpStatusCode.UnprocessableEntity, "PURCHASE_NOT_ALLOWED", ex.Message),
                 PrescriptionRequiredException => (HttpStatusCode.UnprocessableEntity, "PRESCRIPTION_REQUIRED", ex.Message),
                 // A unique index caught a duplicate that a check above it missed (usually two requests racing).

@@ -60,8 +60,12 @@ namespace UltimatePos.Domain.Entities
         public string? BackgroundImageUrl { get; set; }
         /// <summary>VAT-registered businesses show VAT on every sale line; others charge none.</summary>
         public bool IsVatRegistered { get; set; }
-        /// <summary>M-Pesa till or paybill number. Routes incoming till payments to this business.</summary>
+        /// <summary>The till or paybill that routes incoming payments (C2B, STK) to this business: always MpesaTillNumber ?? MpesaPaybillNumber.</summary>
         public string? MpesaShortCode { get; set; }
+        /// <summary>Buy Goods till number customers pay to. Shown on the POS payment screen.</summary>
+        public string? MpesaTillNumber { get; set; }
+        /// <summary>Paybill number customers pay to. Shown on the POS payment screen.</summary>
+        public string? MpesaPaybillNumber { get; set; }
         /// <summary>Largest discount a cashier may give on one sale, as a percentage of its subtotal. Null = no cap.</summary>
         public decimal? MaxDiscountPercent { get; set; }
         /// <summary>

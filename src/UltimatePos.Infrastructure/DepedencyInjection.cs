@@ -62,6 +62,7 @@ namespace UltimatePos.Infrastructure
             services.AddScoped<Application.Branches.IBranchRepository, BranchRepository>();
             services.AddScoped<IStockTransferRepository, StockTransferRepository>();
             services.AddScoped<IDeliveryOrderRepository, DeliveryOrderRepository>();
+            services.AddScoped<IProductBundleRepository, ProductBundleRepository>();
             services.AddScoped<IProductionRepository, ProductionRepository>();
 
             services.Configure<MpesaOptions>(configuration.GetSection("Mpesa"));

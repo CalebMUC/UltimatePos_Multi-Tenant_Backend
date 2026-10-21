@@ -66,17 +66,21 @@ namespace UltimatePos.Application.Business
                 throw new ForbiddenException("You can only edit the profile of the business you are signed in to.");
 
             ValidateProfile(request.BusinessName, request.KraPin, request.MaxDiscountPercent);
-            var shortCode = NormalizeShortCode(request.MpesaShortCode);
+            var mpesa = ResolveMpesaNumbers(request.MpesaTillNumber, request.MpesaPaybillNumber, request.MpesaShortCode);
             if (await _repository.KraPinExistsAsync(request.KraPin.Trim(), businessId))
                 throw new DuplicateBusinessException($"A business with KRA PIN '{request.KraPin}' is already registered.");
-            if (shortCode is not null && await _repository.MpesaShortCodeExistsAsync(shortCode, businessId))
-                throw new ValidationException("mpesaShortCode", $"M-Pesa short code '{shortCode}' is already used by another business.");
+            await EnsureMpesaNumbersFreeAsync(_repository, mpesa, businessId);
 
             _events.Record(new SystemEventDraft(SystemEventTypes.BusinessProfileUpdated, $"The business profile of {request.BusinessName.Trim()} was updated.",
                 EntityType: "Business", EntityId: businessId,
-                Data: new { request.IsVatRegistered, MpesaShortCode = shortCode, request.MaxDiscountPercent, request.AllowNegativeStock, KraPin = request.KraPin.Trim() }));
+                Data: new { request.IsVatRegistered, MpesaShortCode = mpesa.ShortCode, MpesaTillNumber = mpesa.Till, MpesaPaybillNumber = mpesa.Paybill,
+                    request.MaxDiscountPercent, request.AllowNegativeStock, KraPin = request.KraPin.Trim() }));
             return ToDto(await _repository.UpdateBusinessAsync(businessId,
-                request with { KraPin = request.KraPin.Trim(), MpesaShortCode = shortCode, PhoneNumber = PhoneNumberHelper.NormalizePhoneNumber(request.PhoneNumber) },
+                request with
+                {
+                    KraPin = request.KraPin.Trim(), MpesaShortCode = mpesa.ShortCode, MpesaTillNumber = mpesa.Till, MpesaPaybillNumber = mpesa.Paybill,
+                    PhoneNumber = PhoneNumberHelper.NormalizePhoneNumber(request.PhoneNumber)
+                },
                 _currentUser.UserId));
         }
 
@@ -124,6 +128,44 @@ namespace UltimatePos.Application.Business
             if (!trimmed.All(char.IsDigit) || trimmed.Length is < 5 or > 10)
                 throw new ValidationException("mpesaShortCode", "An M-Pesa short code is 5 to 10 digits.");
             return trimmed;
+        }
+
+        /// <summary>Where customers pay the business. ShortCode routes C2B and STK payments: the till, else the paybill.</summary>
+        internal sealed record MpesaNumbers(string? Till, string? Paybill)
+        {
+            public string? ShortCode => Till ?? Paybill;
+        }
+
+        /// <summary>
+        /// The till and paybill from a profile save. A client that sends neither (an older one) sends only the short code, which is
+        /// kept as the till; otherwise the short code it sends is ignored and follows the till and paybill.
+        /// </summary>
+        internal static MpesaNumbers ResolveMpesaNumbers(string? tillNumber, string? paybillNumber, string? shortCode)
+        {
+            var errors = new Dictionary<string, string[]>();
+            string? Number(string? value, string field, string message)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                    return null;
+                var trimmed = value.Trim();
+                if (!trimmed.All(char.IsAsciiDigit) || trimmed.Length is < 5 or > 7)
+                    errors[field] = new[] { message };
+                return trimmed;
+            }
+
+            var till = Number(tillNumber, "mpesaTillNumber", "A till number is 5–7 digits.");
+            var paybill = Number(paybillNumber, "mpesaPaybillNumber", "A paybill number is 5–7 digits.");
+            if (errors.Count > 0)
+                throw new ValidationException(errors);
+            return till is null && paybill is null ? new MpesaNumbers(NormalizeShortCode(shortCode), null) : new MpesaNumbers(till, paybill);
+        }
+
+        /// <summary>A till or paybill routes payments to one business only: refused if another business (or a branch) already uses it.</summary>
+        internal static async Task EnsureMpesaNumbersFreeAsync(IBusinessRepository repository, MpesaNumbers numbers, Guid? exceptBusinessId)
+        {
+            foreach (var (number, what) in new[] { (numbers.Till, "till"), (numbers.Paybill, "paybill") })
+                if (number is not null && await repository.MpesaShortCodeExistsAsync(number, exceptBusinessId))
+                    throw new DuplicateBusinessException($"M-Pesa {what} number {number} is already used by another business.");
         }
 
         // ---- Customers of the business signed in to ----

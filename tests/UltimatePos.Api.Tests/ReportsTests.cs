@@ -286,6 +286,16 @@ public class SalesReportTests
     }
 
     [Fact]
+    public void A_typed_mpesa_code_is_its_own_payment_method_in_the_report_and_on_the_dashboard()
+    {
+        var sales = Sales.Append(Sale("S6", Utc(3, 11), SaleStatus.Completed, PaymentMethod.MpesaReference, 4000m)).ToList();
+
+        var methods = ReportsService.BuildSalesReport(Period, sales, Lines, 10).ByPaymentMethod.ToList();
+        Assert.Equal(("MpesaReference", 1, 4000m), (methods[0].PaymentMethod, methods[0].SaleCount, methods[0].Total));
+        Assert.Equal(10_000m, UltimatePos.Application.Dashboard.DashboardService.BuildSales(Period, sales).Revenue);
+    }
+
+    [Fact]
     public void Walk_in_sales_are_their_own_customer_bucket()
     {
         var customers = ReportsService.BuildSalesReport(Period, Sales, Lines, 10).TopCustomers.ToList();

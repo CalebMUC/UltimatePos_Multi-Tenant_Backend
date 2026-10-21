@@ -28,6 +28,15 @@ namespace UltimatePos.Domain.Entities
         public decimal TaxAmount { get; set; }
         /// <summary>How much of Quantity (in the sale unit) has been returned.</summary>
         public decimal QuantityReturned { get; set; }
+
+        /// <summary>The bundle this line was sold as part of (the water or the bottle of "20L Heavy-duty bottle + water"). Null for a
+        /// line sold on its own. The lines of one bundle share it, and together their LineTotal is what the bundle was sold for.</summary>
+        public Guid? ProductBundleId { get; set; }
+        /// <summary>The bundle's name when sold, kept so a receipt reprints the same even if the bundle is renamed later.</summary>
+        public string? BundleName { get; set; }
+        /// <summary>How many of the bundle were sold.</summary>
+        public decimal? BundleQuantity { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }
 

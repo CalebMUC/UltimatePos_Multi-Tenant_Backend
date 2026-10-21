@@ -271,8 +271,16 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<decimal?>("MaxDiscountPercent")
                         .HasColumnType("numeric");
 
+                    b.Property<string>("MpesaPaybillNumber")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<string>("MpesaShortCode")
                         .HasColumnType("text");
+
+                    b.Property<string>("MpesaTillNumber")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("text");
@@ -304,9 +312,17 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.HasIndex("KraPin")
                         .IsUnique();
 
+                    b.HasIndex("MpesaPaybillNumber")
+                        .IsUnique()
+                        .HasFilter("\"MpesaPaybillNumber\" IS NOT NULL");
+
                     b.HasIndex("MpesaShortCode")
                         .IsUnique()
                         .HasFilter("\"MpesaShortCode\" IS NOT NULL");
+
+                    b.HasIndex("MpesaTillNumber")
+                        .IsUnique()
+                        .HasFilter("\"MpesaTillNumber\" IS NOT NULL");
 
                     b.ToTable("Businesses");
                 });
@@ -1137,6 +1153,87 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.ToTable("Products");
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.ProductBundle", b =>
+                {
+                    b.Property<Guid>("ProductBundleId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal>("RetailPrice")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("WholesalePrice")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("ProductBundleId");
+
+                    b.HasIndex("BusinessId", "Code")
+                        .IsUnique()
+                        .HasFilter("\"Code\" IS NOT NULL");
+
+                    b.ToTable("ProductBundles");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.ProductBundleComponent", b =>
+                {
+                    b.Property<Guid>("ProductBundleComponentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductBundleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric");
+
+                    b.Property<Guid>("UnitOfMeasureId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ProductBundleComponentId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("UnitOfMeasureId");
+
+                    b.HasIndex("ProductBundleId", "ProductId", "UnitOfMeasureId")
+                        .IsUnique();
+
+                    b.ToTable("ProductBundleComponents");
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.ProductPriceTier", b =>
                 {
                     b.Property<Guid>("ProductPriceTierId")
@@ -1591,6 +1688,10 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<Guid?>("LastUpdatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("MpesaReference")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text");
 
@@ -1629,6 +1730,10 @@ namespace UltimatePos.Infrastructure.Migrations
 
                     b.HasIndex("BusinessId", "CreatedAt");
 
+                    b.HasIndex("BusinessId", "MpesaReference")
+                        .IsUnique()
+                        .HasFilter("\"MpesaReference\" IS NOT NULL AND \"Status\" NOT IN ('Voided', 'Failed')");
+
                     b.HasIndex("BusinessId", "SaleNumber")
                         .IsUnique();
 
@@ -1641,6 +1746,13 @@ namespace UltimatePos.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BundleName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal?>("BundleQuantity")
+                        .HasColumnType("numeric");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1652,6 +1764,9 @@ namespace UltimatePos.Infrastructure.Migrations
 
                     b.Property<decimal>("LineTotal")
                         .HasColumnType("numeric");
+
+                    b.Property<Guid?>("ProductBundleId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
@@ -1684,6 +1799,8 @@ namespace UltimatePos.Infrastructure.Migrations
                         .HasColumnType("numeric");
 
                     b.HasKey("SaleLineId");
+
+                    b.HasIndex("ProductBundleId");
 
                     b.HasIndex("ProductId");
 
@@ -2870,6 +2987,42 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Navigation("Category");
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.ProductBundle", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.ProductBundleComponent", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.ProductBundle", "ProductBundle")
+                        .WithMany("Components")
+                        .HasForeignKey("ProductBundleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("UltimatePos.Domain.Entities.UnitOfMeasure", "UnitOfMeasure")
+                        .WithMany()
+                        .HasForeignKey("UnitOfMeasureId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("ProductBundle");
+
+                    b.Navigation("UnitOfMeasure");
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.ProductPriceTier", b =>
                 {
                     b.HasOne("UltimatePos.Domain.Entities.Product", "Product")
@@ -3097,6 +3250,11 @@ namespace UltimatePos.Infrastructure.Migrations
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.SaleLine", b =>
                 {
+                    b.HasOne("UltimatePos.Domain.Entities.ProductBundle", null)
+                        .WithMany()
+                        .HasForeignKey("ProductBundleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("UltimatePos.Domain.Entities.Product", "Product")
                         .WithMany()
                         .HasForeignKey("ProductId")
@@ -3473,6 +3631,11 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Navigation("PriceTiers");
 
                     b.Navigation("UnitConversions");
+                });
+
+            modelBuilder.Entity("UltimatePos.Domain.Entities.ProductBundle", b =>
+                {
+                    b.Navigation("Components");
                 });
 
             modelBuilder.Entity("UltimatePos.Domain.Entities.ProductionRun", b =>

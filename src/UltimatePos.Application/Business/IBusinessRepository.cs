@@ -11,7 +11,7 @@ namespace UltimatePos.Application.Business
     public interface IBusinessRepository
     {
         Task<bool> KraPinExistsAsync(string kraPin, Guid? exceptBusinessId = null);
-        /// <summary>Used by another business, or (with <paramref name="includeBranches"/>) as any branch's own till: a short code routes to one place.</summary>
+        /// <summary>Used by another business (as its short code, till or paybill), or (with <paramref name="includeBranches"/>) as any branch's own till: a short code routes to one place.</summary>
         Task<bool> MpesaShortCodeExistsAsync(string shortCode, Guid? exceptBusinessId = null, bool includeBranches = true);
 
         Task<IEnumerable<BusinessProfile>> GetBusinessesAsync();
