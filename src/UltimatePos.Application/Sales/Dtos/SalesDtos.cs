@@ -69,12 +69,14 @@ namespace UltimatePos.Application.Sales.Dtos
         string? CustomerName = null, Guid? CreatedBy = null, string? CreatedByName = null,
         decimal Subtotal = 0, decimal DiscountTotal = 0, decimal TaxTotal = 0, decimal ReturnedAmount = 0,
         SalePrescriptionDto? Prescription = null, Guid BranchId = default, string? KraBranchId = null, string? BranchName = null,
-        DateOnly? PaymentDueDate = null, IEnumerable<SaleBundleDto>? Bundles = null, string? MpesaReference = null);
+        DateOnly? PaymentDueDate = null, IEnumerable<SaleBundleDto>? Bundles = null, string? MpesaReference = null,
+        DeliveryMode DeliveryMode = DeliveryMode.Counter);
 
     /// <summary>Filters for the sales list. from/to are local calendar days (inclusive), resolved with utcOffsetMinutes.
     /// Search matches the sale number, the customer's name or a typed M-Pesa code.</summary>
     public record SaleQuery(Guid? CustomerId = null, SaleStatus? Status = null, DateOnly? From = null, DateOnly? To = null,
-        Guid? CreatedBy = null, PaymentMethod? PaymentMethod = null, string? Search = null, int UtcOffsetMinutes = 180);
+        Guid? CreatedBy = null, PaymentMethod? PaymentMethod = null, string? Search = null, int UtcOffsetMinutes = 180,
+        DeliveryMode? DeliveryMode = null);
 
     // ---- Returns ----
 

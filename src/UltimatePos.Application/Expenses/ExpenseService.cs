@@ -106,6 +106,7 @@ namespace UltimatePos.Application.Expenses
 
             var reference = NormalizeReference(request.PaymentMethod, request.PaymentReference);
             var details = ValidateDetails(request.PayeeName, request.SupplierInvoiceNumber, request.EtimsControlNumber, request.ReceiptUrl, request.Notes);
+            var rider = OptionalText(request.RiderName, "Rider name", MaxRiderNameLength);
 
             var category = await GetCategoryOrThrowAsync(request.ExpenseCategoryId);
             if (!category.IsActive)
@@ -127,6 +128,7 @@ namespace UltimatePos.Application.Expenses
                 PaymentReference = reference,
                 SupplierId = supplier?.SupplierId,
                 PayeeName = details.PayeeName,
+                RiderName = rider,
                 SupplierInvoiceNumber = details.SupplierInvoiceNumber,
                 EtimsControlNumber = details.EtimsControlNumber,
                 ReceiptUrl = details.ReceiptUrl,
@@ -171,6 +173,7 @@ namespace UltimatePos.Application.Expenses
             var description = RequireText(request.Description, "Description", 500);
             var reference = NormalizeReference(existing.PaymentMethod, request.PaymentReference);
             var details = ValidateDetails(request.PayeeName, request.SupplierInvoiceNumber, request.EtimsControlNumber, request.ReceiptUrl, request.Notes);
+            var rider = request.RiderName is null ? existing.RiderName : OptionalText(request.RiderName, "Rider name", MaxRiderNameLength);
 
             // A category or supplier that was deactivated AFTER this expense was posted must not block fixing a typo —
             // only a change TO an inactive one is refused.
@@ -182,7 +185,7 @@ namespace UltimatePos.Application.Expenses
             await EnsureNotDuplicateAsync(existing.PaymentMethod, reference, supplier, details.SupplierInvoiceNumber, expenseId);
 
             await _repository.UpdateExpenseAsync(expenseId, category.ExpenseCategoryId, description, reference, supplier?.SupplierId,
-                details.PayeeName, details.SupplierInvoiceNumber, details.EtimsControlNumber, details.ReceiptUrl, details.Notes, _currentUser.UserId);
+                details.PayeeName, details.SupplierInvoiceNumber, details.EtimsControlNumber, details.ReceiptUrl, details.Notes, rider, _currentUser.UserId);
 
             return await GetExpenseByIdAsync(expenseId);
         }
@@ -307,6 +310,8 @@ namespace UltimatePos.Application.Expenses
             return method == ExpensePaymentMethod.Mpesa ? value?.ToUpperInvariant() : value;
         }
 
+        private const int MaxRiderNameLength = 100;
+
         private sealed record Details(string? PayeeName, string? SupplierInvoiceNumber, string? EtimsControlNumber, string? ReceiptUrl, string? Notes);
 
         private static Details ValidateDetails(string? payeeName, string? invoiceNumber, string? etimsControlNumber, string? receiptUrl, string? notes)
@@ -369,6 +374,6 @@ namespace UltimatePos.Application.Expenses
             new(e.ExpenseId, e.ExpenseNumber, e.ExpenseDate, e.ExpenseCategoryId, e.Category.Code, e.Category.Name, e.Description,
                 e.Amount, e.PaymentMethod.ToString(), e.PaymentReference, e.SupplierId, e.Supplier?.SupplierName, e.PayeeName,
                 e.SupplierInvoiceNumber, e.EtimsControlNumber, e.ReceiptUrl, e.Notes, e.Status.ToString(), e.CreatedAt,
-                e.VoidedAt, e.VoidReason, e.BranchId);
+                e.VoidedAt, e.VoidReason, e.BranchId, e.RiderName);
     }
 }

@@ -251,6 +251,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 query = query.Where(s => s.CreatedBy == filter.CreatedBy.Value);
             if (filter.PaymentMethod.HasValue)
                 query = query.Where(s => s.PaymentMethod == filter.PaymentMethod.Value);
+            if (filter.DeliveryMode.HasValue)
+                query = query.Where(s => s.DeliveryMode == filter.DeliveryMode.Value);
             if (fromUtc.HasValue)
                 query = query.Where(s => s.CreatedAt >= fromUtc.Value);
             if (toUtcExclusive.HasValue)

@@ -22,6 +22,8 @@ namespace UltimatePos.Application.Business
         public const string Mpesa = "mpesa";
         public const string Branches = "branches";
         public const string Settings = "settings";
+        /// <summary>The day's float and the end-of-day cash count (cash sessions).</summary>
+        public const string CashUp = "cashUp";
 
         // Depending on what the business is.
         /// <summary>Formulas and production runs. Manufacturers only, whatever the sector: a trader cannot buy raw materials.</summary>
@@ -38,7 +40,7 @@ namespace UltimatePos.Application.Business
         public const string Bundles = "bundles";
 
         public static readonly IReadOnlyList<string> Core =
-            new[] { Dashboard, Sales, Customers, Catalog, Stock, Purchasing, Expenses, Reports, Mpesa, Branches, Settings };
+            new[] { Dashboard, Sales, Customers, Catalog, Stock, Purchasing, Expenses, Reports, Mpesa, Branches, Settings, CashUp };
 
         /// <summary>Sector-dependent modules. General — unclassified, including every business registered before sectors — gets them all.</summary>
         private static readonly IReadOnlyDictionary<BusinessSector, string[]> BySector = new Dictionary<BusinessSector, string[]>

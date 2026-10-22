@@ -17,6 +17,8 @@ namespace UltimatePos.Domain.Entities
         public Guid? CustomerId { get; set; }
         public PaymentMethod PaymentMethod { get; set; }
         public SaleStatus Status { get; set; } = SaleStatus.Completed;
+        /// <summary>Rider: the sale a delivery order became when the rider came back with the payment.</summary>
+        public DeliveryMode DeliveryMode { get; set; } = DeliveryMode.Counter;
         /// <summary>Sum of quantity x unit price before discounts. Prices are VAT-inclusive.</summary>
         public decimal Subtotal { get; set; }
         public decimal DiscountTotal { get; set; }

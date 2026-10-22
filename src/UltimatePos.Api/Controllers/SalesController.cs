@@ -45,10 +45,10 @@ namespace UltimatePos.Api.Controllers
             [FromQuery] Guid? customerId = null, [FromQuery] SaleStatus? status = null,
             [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, [FromQuery] Guid? createdBy = null,
             [FromQuery] PaymentMethod? paymentMethod = null, [FromQuery] string? search = null,
-            [FromQuery] int utcOffsetMinutes = 180)
+            [FromQuery] int utcOffsetMinutes = 180, [FromQuery] DeliveryMode? deliveryMode = null)
         {
             var paged = await _salesService.GetSalesAsync(page, pageSize,
-                new SaleQuery(customerId, status, from, to, createdBy, paymentMethod, search, utcOffsetMinutes));
+                new SaleQuery(customerId, status, from, to, createdBy, paymentMethod, search, utcOffsetMinutes, deliveryMode));
             var meta = new PagingMeta(paged.Page, paged.PageSize, paged.TotalCount, paged.TotalPages);
             return Ok(ApiResponse<IEnumerable<SaleDto>>.Ok(paged.Items, meta));
         }

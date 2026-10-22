@@ -93,7 +93,7 @@ namespace UltimatePos.Application.Sales
         private async Task<SaleDto> RecordAsync(CreateSaleRequestDto request, Guid? deliveryOrderId)
         {
             if (deliveryOrderId.HasValue && request.PaymentMethod == PaymentMethod.MpesaStkPush)
-                throw new ValidationException("paymentMethod", "A delivery is completed once paid: use cash, a till payment or credit.");
+                throw new ValidationException("paymentMethod", "A delivery is completed once paid: use cash, an M-Pesa code, a till payment or credit.");
             var mpesaReference = request.PaymentMethod == PaymentMethod.MpesaReference
                 ? await RequireUnusedMpesaReferenceAsync(request.MpesaReference)
                 : null;
@@ -142,6 +142,7 @@ namespace UltimatePos.Application.Sales
                 SaleId = Guid.NewGuid(),
                 CustomerId = request.CustomerId,
                 PaymentMethod = request.PaymentMethod,
+                DeliveryMode = deliveryOrderId.HasValue ? DeliveryMode.Rider : DeliveryMode.Counter,
                 MpesaReference = mpesaReference,
                 PaymentDueDate = request.PaymentDueDate,
                 Subtotal = plan.Subtotal,
@@ -838,7 +839,7 @@ namespace UltimatePos.Application.Sales
                 s.Prescription is null ? null : ToDto(s.Prescription), s.BranchId,
                 s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name, s.PaymentDueDate,
                 Bundles(s.Lines.Select(l => (l.ProductBundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))),
-                s.MpesaReference);
+                s.MpesaReference, s.DeliveryMode);
 
         /// <summary>The bundles on a sale, each once, from the lines their parts became. Null when the sale has none.</summary>
         private static List<SaleBundleDto>? Bundles(IEnumerable<(Guid? BundleId, string? Name, decimal? Quantity, decimal LineTotal, decimal Discount)> lines)

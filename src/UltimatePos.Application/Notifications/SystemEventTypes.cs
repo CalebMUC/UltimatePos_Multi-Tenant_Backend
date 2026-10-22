@@ -79,6 +79,15 @@ namespace UltimatePos.Application.Notifications
         public const string DeliveryOrderDispatched = "DeliveryOrder.Dispatched";
         public const string DeliveryOrderDelivered = "DeliveryOrder.Delivered";
         public const string DeliveryOrderCancelled = "DeliveryOrder.Cancelled";
+        /// <summary>The rider brought an order back undelivered.</summary>
+        public const string DeliveryOrderReturned = "DeliveryOrder.Returned";
+
+        // Cash drawer
+        public const string CashSessionOpened = "CashSession.Opened";
+        public const string CashSessionMovementRecorded = "CashSession.MovementRecorded";
+        public const string CashSessionClosed = "CashSession.Closed";
+        /// <summary>A drawer counted out short or over.</summary>
+        public const string CashSessionVariance = "CashSession.Variance";
 
         // Purchasing and expenses
         public const string PurchaseOrderReceived = "PurchaseOrder.Received";
