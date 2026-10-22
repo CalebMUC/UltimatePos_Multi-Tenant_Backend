@@ -32,7 +32,7 @@ public class DashboardPermissionTests
         var allowed = DashboardSections.Sales | DashboardSections.Stock | DashboardSections.StockValue;
 
         Assert.Equal(new[] { "Sales", "Stock" }, DashboardPermissions.NamesIn(allowed));
-        Assert.Equal(new[] { "Profit", "Receivables", "Production" }, DashboardPermissions.NamesNotIn(allowed));
+        Assert.Equal(new[] { "Profit", "Receivables", "Production", "Customers" }, DashboardPermissions.NamesNotIn(allowed));
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class DashboardPermissionTests
 
         Assert.True(all.Contains("Dashboard.View"));
         Assert.Equal(all.Count, all.Distinct().Count());
-        Assert.Equal(6, all.Count); // Dashboard.View, Sales.View, Costing.View, Customers.ViewLedger, Stock.View, Production.View
+        Assert.Equal(7, all.Count); // Dashboard.View, Sales.View, Costing.View, Customers.ViewLedger, Stock.View, Production.View, Customers.ViewInsights
     }
 }
 

@@ -37,6 +37,7 @@ namespace UltimatePos.Application
             services.AddScoped<StockTransferService>();
             services.AddScoped<DeliveryOrderService>();
             services.AddScoped<CashSessions.CashSessionService>();
+            services.AddScoped<Customers.CustomerInsightsService>();
             services.AddScoped<ProductBundleService>();
 
             services.AddScoped<AuthService>();

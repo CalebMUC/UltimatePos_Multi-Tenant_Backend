@@ -21,6 +21,13 @@ namespace UltimatePos.Domain.Entities
         public PriceType PriceType { get; set; } = PriceType.Retail;
         /// <summary>Most the customer may owe on credit sales. Null = no limit.</summary>
         public decimal? CreditLimit { get; set; }
+        /// <summary>A standing discount the business gives this customer, as a percentage off every sale to them (counter and delivery).
+        /// Applied by the server; the cashier needs no discount permission for it. Null = none.</summary>
+        public decimal? DiscountPercent { get; set; }
+        /// <summary>Why it was given ("Loyal: buys 20L three times a week").</summary>
+        public string? DiscountNote { get; set; }
+        public DateTime? DiscountSetAt { get; set; }
+        public Guid? DiscountSetBy { get; set; }
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }

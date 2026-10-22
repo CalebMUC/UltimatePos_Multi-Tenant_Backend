@@ -22,6 +22,9 @@ namespace UltimatePos.Domain.Entities
         /// <summary>Sum of quantity x unit price before discounts. Prices are VAT-inclusive.</summary>
         public decimal Subtotal { get; set; }
         public decimal DiscountTotal { get; set; }
+        /// <summary>The customer's standing discount applied to this sale: the rate at the time, and the part of DiscountTotal it made up.</summary>
+        public decimal? CustomerDiscountPercent { get; set; }
+        public decimal CustomerDiscountAmount { get; set; }
         /// <summary>VAT contained in TotalAmount. Zero when the business is not VAT-registered.</summary>
         public decimal TaxTotal { get; set; }
         /// <summary>What the customer pays: Subtotal - DiscountTotal, VAT included.</summary>

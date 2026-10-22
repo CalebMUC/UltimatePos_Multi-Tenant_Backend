@@ -72,6 +72,8 @@ namespace UltimatePos.Application.Notifications
                 Link: "/deliveries?orderId={entityId}"),
             new(SystemEventTypes.CashSessionVariance, "Cash count difference", new[] { "CashSessions.Open" },
                 NotificationChannels.InApp | NotificationChannels.Email, ExcludeActor: true, Link: "/cash-sessions/{entityId}"),
+            new(SystemEventTypes.CustomerDiscountChanged, "Customer discount changed", new[] { "Customers.ManageDiscount" }, ExcludeActor: true,
+                Link: "/customers/{entityId}"),
             new(SystemEventTypes.ExpenseVoided, "Expense voided", new[] { "Expenses.Void" }, ExcludeActor: true, Link: "/expenses/{entityId}"),
 
             // Users and security

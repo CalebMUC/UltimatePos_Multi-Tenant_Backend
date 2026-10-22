@@ -20,5 +20,6 @@ namespace UltimatePos.Application.Dashboard.Dtos
     // A section the caller is not allowed to see is null, and its name is in HiddenSections. Sections lists what is included.
     public record DashboardSummaryDto(DateOnly From, DateOnly To, IEnumerable<string> Sections, IEnumerable<string> HiddenSections,
         DashboardSalesDto? Sales, DashboardProfitDto? Profit, DashboardReceivablesDto? Receivables,
-        DashboardStockDto? Stock, DashboardProductionDto? Production);
+        DashboardStockDto? Stock, DashboardProductionDto? Production,
+        UltimatePos.Application.Customers.DashboardCustomersDto? Customers = null);
 }

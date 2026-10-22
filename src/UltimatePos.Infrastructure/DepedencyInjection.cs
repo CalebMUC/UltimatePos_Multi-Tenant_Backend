@@ -63,6 +63,7 @@ namespace UltimatePos.Infrastructure
             services.AddScoped<IStockTransferRepository, StockTransferRepository>();
             services.AddScoped<IDeliveryOrderRepository, DeliveryOrderRepository>();
             services.AddScoped<Application.CashSessions.ICashSessionRepository, CashSessionRepository>();
+            services.AddScoped<Application.Customers.ICustomerInsightsRepository, CustomerInsightsRepository>();
             services.AddScoped<IProductBundleRepository, ProductBundleRepository>();
             services.AddScoped<IProductionRepository, ProductionRepository>();
 

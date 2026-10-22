@@ -20,11 +20,13 @@ namespace UltimatePos.Application.Dashboard
     {
         private readonly IReportsRepository _repository;
         private readonly CostingService _costingService;
+        private readonly Customers.CustomerInsightsService _customers;
 
-        public DashboardService(IReportsRepository repository, CostingService costingService)
+        public DashboardService(IReportsRepository repository, CostingService costingService, Customers.CustomerInsightsService customers)
         {
             _repository = repository;
             _costingService = costingService;
+            _customers = customers;
         }
 
         // =====================================================================
@@ -42,10 +44,11 @@ namespace UltimatePos.Application.Dashboard
             var receivables = allowed.HasFlag(DashboardSections.Receivables) ? await LoadReceivablesAsync() : null;
             var stock = allowed.HasFlag(DashboardSections.Stock) ? await LoadStockAsync(allowed.HasFlag(DashboardSections.StockValue)) : null;
             var production = allowed.HasFlag(DashboardSections.Production) ? await LoadProductionAsync(period) : null;
+            var customers = allowed.HasFlag(DashboardSections.Customers) ? await LoadCustomersAsync(period) : null;
 
             return new DashboardSummaryDto(period.From, period.To,
                 DashboardPermissions.NamesIn(allowed), DashboardPermissions.NamesNotIn(allowed),
-                sales, profit, receivables, stock, production);
+                sales, profit, receivables, stock, production, customers);
         }
 
         // =====================================================================
@@ -66,6 +69,10 @@ namespace UltimatePos.Application.Dashboard
         public Task<DashboardProductionDto> GetProductionAsync(DateOnly? from, DateOnly? to, int utcOffsetMinutes) =>
             LoadProductionAsync(ResolvePeriod(from, to, utcOffsetMinutes));
 
+        /// <summary>Always the 90 days up to the period's last day: buying habits need more than one day to show.</summary>
+        public Task<Customers.DashboardCustomersDto> GetCustomersAsync(DateOnly? from, DateOnly? to, int utcOffsetMinutes) =>
+            LoadCustomersAsync(ResolvePeriod(from, to, utcOffsetMinutes));
+
         // =====================================================================
         // Loading
         // =====================================================================
@@ -85,6 +92,9 @@ namespace UltimatePos.Application.Dashboard
             var valuation = includeValue ? await _costingService.GetStockValuationAsync(null) : null;
             return BuildStock(alerts, valuation);
         }
+
+        private Task<Customers.DashboardCustomersDto> LoadCustomersAsync(ReportPeriod period) =>
+            _customers.GetDashboardAsync(period.To, (int)period.Offset.TotalMinutes);
 
         private async Task<DashboardProductionDto> LoadProductionAsync(ReportPeriod period) =>
             BuildProduction(period, await _repository.GetProductionRunsAsync(period.FromUtc, period.ToUtcExclusive, null));

@@ -86,6 +86,16 @@ namespace UltimatePos.Api.Controllers
             return Ok(ApiResponse<DashboardProductionDto>.Ok(result));
         }
 
+        // How customers have been buying, over the 90 days up to the end date: top customers, discount candidates, those slipping away.
+        [Authorize(Policy = "PERMISSION:Customers.ViewInsights")]
+        [HttpGet("customers")]
+        public async Task<IActionResult> GetCustomers([FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+            [FromQuery] int utcOffsetMinutes = ReportPeriod.DefaultUtcOffsetMinutes)
+        {
+            var result = await _dashboardService.GetCustomersAsync(from, to, utcOffsetMinutes);
+            return Ok(ApiResponse<UltimatePos.Application.Customers.DashboardCustomersDto>.Ok(result));
+        }
+
         private async Task<DashboardSections> ResolveAllowedSectionsAsync()
         {
             var allowed = DashboardSections.None;

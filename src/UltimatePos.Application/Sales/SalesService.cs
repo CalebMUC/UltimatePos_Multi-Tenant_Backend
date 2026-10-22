@@ -79,7 +79,8 @@ namespace UltimatePos.Application.Sales
                     l.BundleId, l.BundleName, l.BundleQuantity)),
                 plan.Subtotal, plan.DiscountTotal, plan.TaxTotal, plan.RequiresPrescription,
                 plan.CustomerBalance, plan.CreditLimit, plan.CreditLimitExceeded(request.PaymentMethod),
-                Bundles(plan.Lines.Select(l => (l.BundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))));
+                Bundles(plan.Lines.Select(l => (l.BundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))),
+                plan.CustomerDiscountPercent, plan.CustomerDiscountTotal);
         }
 
         public Task<SaleDto> RecordSaleAsync(CreateSaleRequestDto request) => RecordAsync(request, deliveryOrderId: null);
@@ -100,7 +101,8 @@ namespace UltimatePos.Application.Sales
             var plan = await BuildSalePlanAsync(request, deliveryOrderId);
             var userId = _currentUser.UserId;
 
-            if (plan.DiscountTotal > 0 && !_currentUser.HasPermission(ApplyDiscountPermission))
+            // The customer's standing discount was given by a manager; only a discount the cashier adds needs the permission.
+            if (plan.DiscountTotal - plan.CustomerDiscountTotal > 0 && !_currentUser.HasPermission(ApplyDiscountPermission))
                 throw new ForbiddenException("You do not have permission to give discounts.");
 
             // Batch-tracked stock (medicines) is never sold beyond what is in unexpired lots. Other stock may go negative, as
@@ -147,6 +149,8 @@ namespace UltimatePos.Application.Sales
                 PaymentDueDate = request.PaymentDueDate,
                 Subtotal = plan.Subtotal,
                 DiscountTotal = plan.DiscountTotal,
+                CustomerDiscountPercent = plan.CustomerDiscountPercent,
+                CustomerDiscountAmount = plan.CustomerDiscountTotal,
                 TaxTotal = plan.TaxTotal,
                 TotalAmount = plan.Total,
                 Notes = request.Notes,
@@ -556,7 +560,7 @@ namespace UltimatePos.Application.Sales
         }
 
         private sealed record SalePlan(PriceType PriceType, IReadOnlyList<SaleLinePlan> Lines, decimal? CustomerBalance, decimal? CreditLimit,
-            bool AllowNegativeStock)
+            bool AllowNegativeStock, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountTotal = 0)
         {
             public decimal Subtotal => Lines.Sum(l => l.Gross);
             public decimal DiscountTotal => Lines.Sum(l => l.DiscountAmount);
@@ -597,7 +601,7 @@ namespace UltimatePos.Application.Sales
                 ?? throw new NotFoundException("Business not found.");
 
             var priceType = PriceType.Retail;
-            decimal? customerBalance = null, creditLimit = null;
+            decimal? customerBalance = null, creditLimit = null, standingPercent = null;
             if (request.CustomerId.HasValue)
             {
                 var customer = await _businessRepository.GetCustomerByIdAsync(request.CustomerId.Value)
@@ -606,6 +610,7 @@ namespace UltimatePos.Application.Sales
                     throw new InvalidAssignmentException("This customer is deactivated.");
                 priceType = customer.PriceType;
                 creditLimit = customer.CreditLimit;
+                standingPercent = customer.DiscountPercent is > 0 ? customer.DiscountPercent : null;
                 customerBalance = (await _accountingRepository.GetCustomerBalanceAsync(customer.CustomerId))?.OutstandingBalance ?? 0m;
             }
 
@@ -655,6 +660,9 @@ namespace UltimatePos.Application.Sales
                 return requiredBase;
             }
 
+            // The customer's standing discount: a share of what is left of each line after any discount typed on it.
+            decimal Standing(decimal net) => standingPercent is { } pct ? RoundMoney(net * pct / 100m) : 0m;
+
             // First pass: price and line discount.
             var priced = new List<PricedLine>();
             foreach (var line in lines)
@@ -665,8 +673,9 @@ namespace UltimatePos.Application.Sales
                 var requiredBase = await RequiredBaseAsync(product, line.UnitOfMeasureId, line.Quantity);
 
                 var gross = RoundMoney(line.Quantity * price);
+                var lineDiscount = LineDiscount(line.DiscountAmount, line.DiscountPercent, gross, product.Name);
                 priced.Add(new PricedLine(product, line.UnitOfMeasureId, line.Quantity, price, gross,
-                    LineDiscount(line.DiscountAmount, line.DiscountPercent, gross, product.Name), requiredBase, null, null, null));
+                    lineDiscount, requiredBase, null, null, null, Standing(gross - lineDiscount)));
             }
 
             // A bundle becomes one line per part. Its price is split over them (BundlePricing): parts with a price of their own (the
@@ -695,7 +704,7 @@ namespace UltimatePos.Application.Sales
                 {
                     var (product, unitOfMeasureId, quantity, requiredBase, _) = parts[k];
                     priced.Add(new PricedLine(product, unitOfMeasureId, quantity, Math.Round(shares[k] / quantity, 4, MidpointRounding.AwayFromZero),
-                        shares[k], discounts[k], requiredBase, bundle.ProductBundleId, bundle.Name, b.Quantity));
+                        shares[k], discounts[k], requiredBase, bundle.ProductBundleId, bundle.Name, b.Quantity, Standing(shares[k] - discounts[k])));
                 }
             }
 
@@ -703,17 +712,17 @@ namespace UltimatePos.Application.Sales
             var saleDiscount = request.DiscountAmount ?? 0m;
             if (saleDiscount < 0)
                 throw new ValidationException("discountAmount", "A discount cannot be negative.");
-            var afterLineDiscounts = priced.Sum(p => p.Gross - p.LineDiscount);
+            var afterLineDiscounts = priced.Sum(p => p.Gross - p.LineDiscount - p.StandingDiscount);
             if (saleDiscount > afterLineDiscounts)
                 throw new ValidationException("discountAmount", "The discount cannot be more than the sale total.");
-            var allocations = AllocateDiscount(priced.Select(p => p.Gross - p.LineDiscount).ToList(), RoundMoney(saleDiscount));
+            var allocations = AllocateDiscount(priced.Select(p => p.Gross - p.LineDiscount - p.StandingDiscount).ToList(), RoundMoney(saleDiscount));
 
             var planLines = new List<SaleLinePlan>();
             var drawn = new Dictionary<Guid, decimal>(); // a product on two lines draws on one pool of stock
             for (var i = 0; i < priced.Count; i++)
             {
-                var (product, unitOfMeasureId, quantity, price, gross, lineDiscount, requiredBase, bundleId, bundleName, bundleQuantity) = priced[i];
-                var discount = lineDiscount + allocations[i];
+                var (product, unitOfMeasureId, quantity, price, gross, lineDiscount, requiredBase, bundleId, bundleName, bundleQuantity, standing) = priced[i];
+                var discount = lineDiscount + standing + allocations[i];
                 var lineTotal = gross - discount;
                 var taxRate = business.IsVatRegistered ? TaxRates.For(product.TaxClassification) : 0m;
                 var taxAmount = taxRate == 0 ? 0m : RoundMoney(lineTotal * taxRate / (100m + taxRate)); // prices include VAT
@@ -727,7 +736,9 @@ namespace UltimatePos.Application.Sales
                     product.IsBatchTracked, product.RequiresPrescription, bundleId, bundleName, bundleQuantity));
             }
 
-            var plan = new SalePlan(priceType, planLines, customerBalance, creditLimit, business.AllowNegativeStock);
+            var standingTotal = priced.Sum(p => p.StandingDiscount);
+            var plan = new SalePlan(priceType, planLines, customerBalance, creditLimit, business.AllowNegativeStock,
+                standingTotal > 0 ? standingPercent : null, standingTotal);
 
             if (business.MaxDiscountPercent is { } cap && plan.Subtotal > 0 && plan.DiscountTotal / plan.Subtotal * 100m > cap)
                 throw new ValidationException("discountAmount", $"Discounts on one sale cannot exceed {cap:0.##}% of its value.");
@@ -736,7 +747,7 @@ namespace UltimatePos.Application.Sales
         }
 
         private sealed record PricedLine(Product Product, Guid UnitOfMeasureId, decimal Quantity, decimal UnitPrice, decimal Gross,
-            decimal LineDiscount, decimal RequiredBase, Guid? BundleId, string? BundleName, decimal? BundleQuantity);
+            decimal LineDiscount, decimal RequiredBase, Guid? BundleId, string? BundleName, decimal? BundleQuantity, decimal StandingDiscount = 0);
 
         private static decimal LineDiscount(decimal? discountAmount, decimal? discountPercent, decimal gross, string productName)
         {
@@ -839,7 +850,7 @@ namespace UltimatePos.Application.Sales
                 s.Prescription is null ? null : ToDto(s.Prescription), s.BranchId,
                 s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name, s.PaymentDueDate,
                 Bundles(s.Lines.Select(l => (l.ProductBundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))),
-                s.MpesaReference, s.DeliveryMode);
+                s.MpesaReference, s.DeliveryMode, s.CustomerDiscountPercent, s.CustomerDiscountAmount);
 
         /// <summary>The bundles on a sale, each once, from the lines their parts became. Null when the sale has none.</summary>
         private static List<SaleBundleDto>? Bundles(IEnumerable<(Guid? BundleId, string? Name, decimal? Quantity, decimal LineTotal, decimal Discount)> lines)

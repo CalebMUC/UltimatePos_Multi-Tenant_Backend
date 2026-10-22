@@ -5,6 +5,8 @@ using UltimatePos.Application.Accounting.Dtos;
 using UltimatePos.Application.Business;
 using UltimatePos.Application.Business.Dtos;
 using UltimatePos.Application.Common.Dtos;
+using UltimatePos.Application.Customers;
+using UltimatePos.Application.Reports;
 
 namespace UltimatePos.Api.Controllers;
 
@@ -14,9 +16,47 @@ public class CustomersController : ControllerBase
 {
     private readonly BusinessService _businessService;
     private readonly AccountingService _accountingService;
-    public CustomersController(BusinessService businessService, AccountingService accountingService) { 
+    private readonly CustomerInsightsService _insights;
+    public CustomersController(BusinessService businessService, AccountingService accountingService, CustomerInsightsService insights) {
         _businessService = businessService;
         _accountingService = accountingService;
+        _insights = insights;
+    }
+
+    /// <summary>
+    /// Customers who bought in the period (from/to: local days; default the last 90), with how often, how much and how recently, a
+    /// segment relative to the others, and a suggestion (consider a discount, win back, review a discount). Ranked by spend by default.
+    /// </summary>
+    [Authorize(Policy = "PERMISSION:Customers.ViewInsights")]
+    [HttpGet("insights")]
+    public async Task<IActionResult> GetInsights([FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, [FromQuery] CustomerSegment? segment = null,
+        [FromQuery] CustomerSuggestedAction? suggestedAction = null, [FromQuery] string? search = null,
+        [FromQuery] CustomerInsightsSort sort = CustomerInsightsSort.Spend, [FromQuery] int utcOffsetMinutes = ReportPeriod.DefaultUtcOffsetMinutes)
+    {
+        var paged = await _insights.GetCustomersAsync(page, pageSize,
+            new CustomerInsightsQuery(from, to, segment, suggestedAction, search, sort, utcOffsetMinutes));
+        var meta = new PagingMeta(paged.Page, paged.PageSize, paged.TotalCount, paged.TotalPages);
+        return Ok(ApiResponse<IEnumerable<CustomerBuyingSummaryDto>>.Ok(paged.Items, meta));
+    }
+
+    /// <summary>One customer's buying (default the last 365 days): by month, top products, payment mix, segment and the reasons for it.</summary>
+    [Authorize(Policy = "PERMISSION:Customers.ViewInsights")]
+    [HttpGet("{id:guid}/insights")]
+    public async Task<IActionResult> GetCustomerInsights(Guid id, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+        [FromQuery] int utcOffsetMinutes = ReportPeriod.DefaultUtcOffsetMinutes)
+    {
+        var result = await _insights.GetCustomerAsync(id, from, to, utcOffsetMinutes);
+        return Ok(ApiResponse<CustomerInsightsDto>.Ok(result));
+    }
+
+    /// <summary>Gives, changes or (null / 0) removes the customer's standing discount, applied to every sale to them from now on.</summary>
+    [Authorize(Policy = "PERMISSION:Customers.ManageDiscount")]
+    [HttpPut("{id:guid}/discount")]
+    public async Task<IActionResult> SetDiscount(Guid id, SetCustomerDiscountRequestDto request)
+    {
+        var result = await _insights.SetDiscountAsync(id, request);
+        return Ok(ApiResponse<CustomerDto>.Ok(result));
     }
 
 

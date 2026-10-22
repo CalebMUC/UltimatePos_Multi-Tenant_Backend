@@ -513,7 +513,7 @@ public class ReportsPostgresTests : IClassFixture<ReportsDatabase>
     public async Task Dashboard_summary_with_every_section()
     {
         var all = DashboardSections.Sales | DashboardSections.Profit | DashboardSections.Receivables | DashboardSections.Stock
-            | DashboardSections.StockValue | DashboardSections.Production;
+            | DashboardSections.StockValue | DashboardSections.Production | DashboardSections.Customers;
         var (summary, _) = await RunAsync(sp => sp.GetRequiredService<DashboardService>().GetSummaryAsync(October1, October31, Nairobi, all));
 
         Assert.Equal((3, 3400m, 2000m, 1, 1), (summary.Sales!.SaleCount, summary.Sales.Revenue, summary.Sales.CreditSalesAmount, summary.Sales.VoidedCount, summary.Sales.PendingCount));
@@ -523,6 +523,7 @@ public class ReportsPostgresTests : IClassFixture<ReportsDatabase>
         // The value comes from the stock valuation, which (unlike the alert counts) includes deactivated products: + 50 x 100 for Sugar.
         Assert.Equal((8970m, 1), (summary.Stock.TotalStockValue, summary.Stock.ProductsMissingCost));
         Assert.Equal((2, 8600m), (summary.Production!.RunCount, summary.Production.TotalCost));
+        Assert.Equal(October31, summary.Customers!.To); // the customer panel covers the 90 days to the end date
         Assert.Empty(summary.HiddenSections);
     }
 

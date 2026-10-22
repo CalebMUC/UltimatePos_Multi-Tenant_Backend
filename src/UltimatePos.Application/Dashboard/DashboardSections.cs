@@ -19,6 +19,8 @@ namespace UltimatePos.Application.Dashboard
         /// <summary>Not a section of its own: the stock VALUE inside the Stock section, which is cost data.</summary>
         StockValue = 16,
         Production = 32,
+        /// <summary>How customers have been buying: top customers, regulars, those slipping away, and discount candidates.</summary>
+        Customers = 64,
     }
 
     public static class DashboardPermissions
@@ -35,6 +37,7 @@ namespace UltimatePos.Application.Dashboard
             (DashboardSections.Stock, "Stock.View"),
             (DashboardSections.StockValue, "Costing.View"),
             (DashboardSections.Production, "Production.View"),
+            (DashboardSections.Customers, "Customers.ViewInsights"),
         };
 
         public static string PermissionFor(DashboardSections section) =>
@@ -44,7 +47,8 @@ namespace UltimatePos.Application.Dashboard
         public static IEnumerable<string> All => Required.Select(r => r.Permission).Append(View).Distinct();
 
         private static readonly DashboardSections[] Visible =
-            { DashboardSections.Sales, DashboardSections.Profit, DashboardSections.Receivables, DashboardSections.Stock, DashboardSections.Production };
+            { DashboardSections.Sales, DashboardSections.Profit, DashboardSections.Receivables, DashboardSections.Stock, DashboardSections.Production,
+              DashboardSections.Customers };
 
         /// <summary>Names of the sections in <paramref name="allowed"/> (StockValue is a detail of Stock, so it is not listed).</summary>
         public static IReadOnlyList<string> NamesIn(DashboardSections allowed) =>

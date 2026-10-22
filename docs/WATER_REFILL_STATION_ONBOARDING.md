@@ -315,6 +315,21 @@ difference, and whether the trips account for the fuel. Without it, riders well 
 The report shows where fuel and trips do not add up. It does not prove a trip was unnecessary: the station has no distances or
 routes. Trips: `GET /delivery-orders/trips?from=&to=&riderName=`.
 
+### 6.3 How customers buy, and loyalty discounts
+
+`GET /customers/insights` ranks the customers who bought in a period (default the last 90 days) by spend. For each it gives how often,
+how much and how recently they buy, a **segment** relative to the station's other customers (Top, Regular, Slipping, New, Occasional)
+and a **suggestion**: *consider a discount* for valuable regulars with none, *win back* for those staying away longer than usual,
+*review the discount* for discounted customers who no longer buy regularly. `GET /customers/{id}/insights` shows one customer by month,
+what they buy (in litres), how they pay, and the reasons behind the suggestion. The dashboard has a *Customers* panel over the last 90
+days (`GET /dashboard/customers`), which also shows how much revenue comes from walk-ins who cannot be rewarded.
+
+The owner decides. `PUT /customers/{id}/discount { discountPercent, note }` (`Customers.ManageDiscount`) gives a customer a **standing
+discount**. Every later sale to them, at the counter or by delivery, is discounted by it on the server, with no discount permission
+needed by the cashier. It is shown on the sale (`customerDiscountPercent`, `customerDiscountAmount`). It is capped by the business's
+`maxDiscountPercent`, needs a note, is audited, and can be removed (`null`). Viewing insights needs `Customers.ViewInsights`. The system
+never chooses a percentage.
+
 ---
 
 ## 7. Expenses
@@ -381,7 +396,7 @@ with `POST /auth/Register` (`roleName`), and change roles with `PUT /users/{id}/
 | Role | Permissions |
 |---|---|
 | **Owner** | `Admin` (everything) |
-| **Manager** | Sales.*, Customers.*, Suppliers.*, PurchaseOrders.*, Stock.View, **Stock.Adjust**, Expenses.*, ExpenseCategories.View, Dashboard.View, Costing.View, all *Reports.View, Mpesa.View, Sales.ApplyDiscount, Sales.OverrideCreditLimit, Sales.Void, DeliveryOrders.*, including **DeliveryOrders.AcceptCredit**, CashSessions.* (**CashSessions.Open** allocates the float) |
+| **Manager** | Customers.ViewInsights, Customers.ManageDiscount (owner's choice), Sales.*, Customers.*, Suppliers.*, PurchaseOrders.*, Stock.View, **Stock.Adjust**, Expenses.*, ExpenseCategories.View, Dashboard.View, Costing.View, all *Reports.View, Mpesa.View, Sales.ApplyDiscount, Sales.OverrideCreditLimit, Sales.Void, DeliveryOrders.*, including **DeliveryOrders.AcceptCredit**, CashSessions.* (**CashSessions.Open** allocates the float) |
 | **Cashier** | Sales.Create, Sales.View, Customers.View, Customers.Register, Customers.RecordPayment, Products.View, Stock.View, Mpesa.View, Dashboard.View, DeliveryOrders.View, .Create, .Dispatch, .Deliver, .Return, .Cancel (**not** AcceptCredit), CashSessions.View, .RecordMovement, .Close (**not** Open) |
 | **Storekeeper** | Suppliers.View, PurchaseOrders.View, PurchaseOrders.Receive, Stock.View, Products.View |
 | **Accountant** | Expenses.*, ExpenseCategories.*, Suppliers.ViewLedger, Suppliers.RecordPayment, Customers.ViewLedger, Costing.View, SalesReports.View, CustomerReports.View, InventoryReports.View, PurchaseReports.View, Dashboard.View |
@@ -524,6 +539,7 @@ Not needed now: bank transfer or split payment at the counter (deferred), contai
 | Credit delivery needs no promised date | Owner: pay later is an ordinary credit sale on the customer's account | `DeliveryOrderService.DeliverAsync` |
 | `ProductUnitConversion.ContainerProductId`, `PUT …/unit-conversions/{id}/container` | Which container goes with which refill size, kept on the server rather than per till | Domain, `CatalogService`, `CatalogRepository`, `ProductsController`, migration `UnitConversionContainer` |
 
+| **Customer insights and standing discount**: `GET /customers/insights`, `GET /customers/{id}/insights`, dashboard `Customers` section, `PUT /customers/{id}/discount`, `Customer.DiscountPercent` applied in the sale plan, `Customers.ViewInsights`, `Customers.ManageDiscount` | "See how a customer has been buying and decide to give them a discount" | `Application/Customers/CustomerInsights.cs`, `CustomerInsightsRepository`, `SalesService.BuildSalePlanAsync`, `CustomersController`, `DashboardService`, migration `CustomerDiscountAndInsights` |
 | **Delivery by rider at the till**: an order sent straight out with `riderName`, `expectedPaymentMethod`, bundles on orders, `Sale.DeliveryMode` (`GET /sales?deliveryMode=`), the M-Pesa code required to complete | "A rider sale is not completed until the rider is back"; "the delivery must show on the Deliveries page" | `Application/Deliveries/DeliveryOrders.cs`, `SalesService.RecordAsync`, migration `DeliveryModeTripsReturnsCashSessions` |
 | **Returned** status (`POST /delivery-orders/{id}/return`, `DeliveryOrders.Return`, `DeliveryOrder.Returned` alert) | "A rider dispatches water and it comes back" | `DeliveryOrderService.ReturnAsync`, `DeliveryOrderRepository.ReturnAsync` |
 | **Trips** (`DeliveryTrip`, `POST /delivery-orders/trips`, `GET …/trips`), `Expense.RiderName`, `GET /delivery-orders/fuel-report` | "Trips per rider against the fuel paid" | `Domain/Entities/DeliveryOrder.cs`, `DeliveryOrderService.GetFuelReportAsync`, `ExpenseService` |
@@ -531,6 +547,8 @@ Not needed now: bank transfer or split payment at the counter (deferred), contai
 | **Bundles**: `ProductBundle` and its parts, `POST/PUT/GET /product-bundles`, `bundles[]` on sales, the price split (`BundlePricing`), `Products.ManageBundles`, module `bundles` | Bottle + water at one price, and packs, taking water in litres and bottles in pieces in one item | `Domain/Entities/ProductBundle.cs`, `Application/Catalog/ProductBundles.cs`, `SalesService.BuildSalePlanAsync`, `ProductBundleRepository`, `ProductBundlesController`, migration `SaleBundles` |
 
 **Migrations:**
+- `CustomerDiscountAndInsights`: nullable `Customers.DiscountPercent`, `DiscountNote`, `DiscountSetAt`, `DiscountSetBy`; nullable
+  `Sales.CustomerDiscountPercent` and `Sales.CustomerDiscountAmount` (default 0).
 - `DeliveryModeTripsReturnsCashSessions`: new tables `DeliveryTrips`, `CashSessions` (one open per branch, unique partial index) and
   `CashSessionMovements`; nullable `DeliveryOrders.ExpectedPaymentMethod`, `DeliveryTripId`, `ReturnedAt`, `ReturnedBy`, `ReturnReason`;
   nullable `DeliveryOrderLines.ProductBundleId`, `BundleQuantity`; `Sales.DeliveryMode` (text, default `Counter`; sales already made

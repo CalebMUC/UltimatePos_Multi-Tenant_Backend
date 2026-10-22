@@ -495,6 +495,18 @@ namespace UltimatePos.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("DiscountNote")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("DiscountPercent")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime?>("DiscountSetAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DiscountSetBy")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Email")
                         .HasColumnType("text");
 
@@ -1841,6 +1853,12 @@ namespace UltimatePos.Infrastructure.Migrations
 
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal>("CustomerDiscountAmount")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("CustomerDiscountPercent")
+                        .HasColumnType("numeric");
 
                     b.Property<Guid?>("CustomerId")
                         .HasColumnType("uuid");

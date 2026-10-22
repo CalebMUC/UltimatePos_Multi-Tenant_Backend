@@ -73,6 +73,8 @@ namespace UltimatePos.Application.Notifications
         public const string MpesaTillPaymentUnmatched = "Mpesa.TillPaymentUnmatched";
         public const string CustomerPaymentRecorded = "Customer.PaymentRecorded";
         public const string PaymentPromiseOverdue = "Customer.PaymentPromiseOverdue";
+        /// <summary>A customer's standing discount was given, changed or removed.</summary>
+        public const string CustomerDiscountChanged = "Customer.DiscountChanged";
 
         // Deliveries
         public const string DeliveryOrderCreated = "DeliveryOrder.Created";

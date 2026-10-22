@@ -22,7 +22,7 @@ screen for it. It does not fake success with mock data.
 | G12 | One dashboard call for the station's cards | Nice to have | No | Optional |
 | G13 | Supplier lead time and reorder recommendation | Nice to have | Small | Optional |
 | G14 | Per-business currency and timezone | No (Kenya only) | Yes | Platform decision |
-| G15 | Customer-specific prices | Maybe | Yes | Ask owner |
+| G15 | Customer-specific prices | Maybe | Yes | **Partly built**: a standing % discount per customer (2026-10-22); per-product prices still ask owner |
 | G16 | Role templates (Cashier, Storekeeper, …) | Convenience | No | Optional |
 | G17 | M-Pesa paid outside the POS, cashier types the code | Yes, until C2B is wired | Yes | **Built** (2026-10-21) |
 | G18 | Separate till and paybill on the business profile | Yes | Yes | **Built** (2026-10-21) |

@@ -37,6 +37,8 @@ namespace UltimatePos.Application.Identity
             ("Customers.Register", "Customers"), ("Customers.View", "Customers"),
             ("Customers.Update", "Customers"), ("Customers.Deactivate", "Customers"),
             ("Customers.ViewLedger", "Customers"), ("Customers.RecordPayment", "Customers"),
+            ("Customers.ViewInsights", "Customers"),     // how each customer has been buying (their sales, ranked against others)
+            ("Customers.ManageDiscount", "Customers"),   // give, change or remove a customer's standing discount (owners, managers)
 
             ("Categories.View", "Categories"), ("Categories.Create", "Categories"), ("Categories.Update", "Categories"),
             ("Categories.Deactivate", "Categories"), ("Categories.BulkImport", "Categories"),

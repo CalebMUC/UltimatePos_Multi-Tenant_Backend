@@ -93,9 +93,16 @@ namespace UltimatePos.Application.Business.Dtos
         PriceType? PriceType = null,
         decimal? CreditLimit = null);
 
+    /// <param name="DiscountPercent">The customer's standing discount, applied to every sale to them. Null = none.</param>
     public record CustomerDto(
         Guid CustomerId, Guid BusinessId, string CustomerName, string? KraPin, string? ContactPerson,
-        string? PhoneNumber, string? Email, string? PhysicalAddress, bool IsActive, PriceType PriceType, decimal? CreditLimit);
+        string? PhoneNumber, string? Email, string? PhysicalAddress, bool IsActive, PriceType PriceType, decimal? CreditLimit,
+        decimal? DiscountPercent = null, string? DiscountNote = null, DateTime? DiscountSetAt = null);
+
+    /// <summary>Sets (or, with DiscountPercent null or 0, removes) the customer's standing discount. Needs Customers.ManageDiscount.</summary>
+    /// <param name="DiscountPercent">Off every sale to the customer, up to 2 decimals. At most the business's MaxDiscountPercent.</param>
+    /// <param name="Note">Why: required when giving a discount, so the decision can be reviewed later.</param>
+    public record SetCustomerDiscountRequestDto(decimal? DiscountPercent, string? Note);
 
     public record BusinessLicenseStatusDto(UltimatePos.Application.Platform.BusinessAccessDto Access, int? MaxUsers,
         IEnumerable<UltimatePos.Application.Platform.BusinessLicenseDto> Licenses, int? MaxBranches = null, int OpenBranches = 0);

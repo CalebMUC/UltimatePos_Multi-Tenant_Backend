@@ -243,6 +243,6 @@ namespace UltimatePos.Application.Business
 
         private static CustomerDto ToDto(Customer c) =>
             new(c.CustomerId, c.BusinessId, c.CustomerName, c.KraPin, c.ContactPerson, c.PhoneNumber, c.Email, c.PhysicalAddress, c.IsActive,
-                c.PriceType, c.CreditLimit);
+                c.PriceType, c.CreditLimit, c.DiscountPercent, c.DiscountNote, c.DiscountSetAt);
     }
 }
