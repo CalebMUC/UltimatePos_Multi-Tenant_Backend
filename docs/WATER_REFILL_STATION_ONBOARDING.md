@@ -260,10 +260,22 @@ it is paid. The customer-ageing report shows `paymentDueDate` and `isPromiseOver
 
 ```
 Customer orders ─► POST /delivery-orders            Pending: the water (and any container) is set aside for this order
+   or at the till, delivery by rider: POST /delivery-orders { …, riderName }  OutForDelivery at once, on a trip (§6.2)
                    POST /delivery-orders/{id}/dispatch { riderName }        OutForDelivery
-   rider back ─►   POST /delivery-orders/{id}/deliver  { payment }          Delivered = an ordinary sale; stock leaves now, once
-   or ─────────►   POST /delivery-orders/{id}/cancel   { reason }           Cancelled: the reserved stock is free again
+   rider back ─►   POST /delivery-orders/{id}/deliver  { payment }          Delivered = the sale is completed; stock leaves now, once
+   came back ──►   POST /delivery-orders/{id}/return   { reason }           Returned: nothing delivered, the reserved stock is free again
+   or ─────────►   POST /delivery-orders/{id}/cancel   { reason }           Cancelled (before it left): the reserved stock is free again
 ```
+
+**Delivery by rider at the till (owner, 2026-10-21).** The cashier picks the *mode of delivery* when charging: at the counter (an
+ordinary sale) or by rider. A rider sale is a delivery order, sent with `riderName` and `expectedPaymentMethod` (how the customer will
+pay: cash, M-Pesa code, till or credit). It shows on the Deliveries page at once and is **not completed**: no money is recorded and
+the water has not left stock, it is only held back. It becomes a completed sale (`deliveryMode: Rider`) only when the cashier records
+the payment the rider brought back: the cash, or the **M-Pesa code**, which is required (400 without it). If the rider comes back
+with it undelivered, it is marked **Returned** (`DeliveryOrders.Return`) with a reason, and the water is sellable again. If the
+customer took only part of it, the delivery is recorded with what was handed over, and the rest is simply not sold. Sending an
+order out at the till also needs `DeliveryOrders.Dispatch`. Bundles (bottle + water) can be ordered for delivery and are charged at
+the bundle price.
 
 1. **Order** (`DeliveryOrders.Create`): `{ customerId, deliveryAddress, contactPhone?, notes?, lines }`. The customer must be
    registered: register a new one at the phone first (`POST /customers`, name and phone).
@@ -287,7 +299,21 @@ Customer orders ─► POST /delivery-orders            Pending: the water (and 
 5. **Cancel** (`DeliveryOrders.Cancel`) a called-off or failed delivery, with a reason. Nothing had left stock, so the reservation is
    simply released.
 6. **Rider cash-up:** `GET /delivery-orders/summary?from=&to=`. Per rider, it shows deliveries, value, **cash to hand in**, till
-   payments and credit, plus how many orders are out now. Lists: `GET /delivery-orders?status=&riderName=&customerId=&from=&to=`.
+   payments and credit, returned orders and trips, plus how many orders are out now and the cash they should bring back
+   (`cashExpectedNow`). Lists: `GET /delivery-orders?status=&riderName=&customerId=&deliveryTripId=&from=&to=`.
+
+### 6.2 Trips and fuel
+
+Orders a rider takes out together are one **trip** (`TRP-000001`): `POST /delivery-orders/trips { riderName, deliveryOrderIds }`, or
+an order rung up at the till joins a trip still out with `deliveryTripId`. A single dispatch is a trip of one. Fuel is recorded as an
+expense (Transport & Fuel, `TRN`) **tagged with the rider** (`riderName` on the expense).
+
+`GET /delivery-orders/fuel-report?from=&to=&expenseCategoryId=&expectedFuelPerTrip=` puts each rider's trips next to their fuel:
+trips, orders carried, delivered, returned, **wasted trips** (came back with nothing delivered), **single-order trips** (could have
+been combined), fuel spent and fuel per trip. With the owner's expected fuel cost per trip, it shows the expected fuel, the
+difference, and whether the trips account for the fuel. Without it, riders well above the station's average per trip are flagged.
+The report shows where fuel and trips do not add up. It does not prove a trip was unnecessary: the station has no distances or
+routes. Trips: `GET /delivery-orders/trips?from=&to=&riderName=`.
 
 ---
 
@@ -320,9 +346,29 @@ operating costs. See the vendor rule in §4.
   sale with its `mpesaTransactionId`. The amount must match. **One payment can pay for only one sale**, even when two cashiers pick it
   at the same moment (§13).
 - **Repeated Safaricom callbacks** are accepted quietly and settle the sale once.
-- **Daily cash-up:** `GET /reports/sales?from=&to=` (`byPaymentMethod`, `byCashier`) gives the day's takings per method and per
-  cashier. A full cash-up report (cash sales + customer payments in cash − cash expenses, M-Pesa received vs matched) does not exist
-  yet (gap G10).
+- **Daily takings:** `GET /reports/sales?from=&to=` (`byPaymentMethod`, `byCashier`) gives the day's takings per method and per
+  cashier.
+
+### 8.1 The day's float and the cash-up
+
+A manager opens the day at the branch with the **float** for giving change: `POST /cash-sessions/open { openingFloat }`
+(`CashSessions.Open`). One session is open per branch. During the day, cash put in or taken out that is not a sale is recorded as
+a pay-in or pay-out with a reason: banking, a float top-up, change given to a rider and handed back
+(`POST /cash-sessions/{id}/movements`, `CashSessions.RecordMovement`).
+
+At the end of the day the drawer is counted: `POST /cash-sessions/{id}/close { countedCash }` (`CashSessions.Close`). The API works out
+what should be there:
+
+```
+expected = opening float + cash sales (net of change; rider deliveries paid in cash included) + customer payments in cash + pay-ins
+           − cash refunds − cash expenses recorded at the branch − cash supplier payments − pay-outs
+variance = counted − expected        (negative = short; any difference alerts holders of CashSessions.Open)
+```
+
+Each figure counts cash only, at that branch, while the session was open. `GET /cash-sessions/current` shows the running figures
+before closing, and `cashStillWithRiders`: what deliveries still out should bring back. Record those deliveries before counting. A
+closed day keeps its figures. Sales are not blocked when no session is open. Customer and supplier payments count towards a branch
+from this release on (older ones have no branch).
 
 ---
 
@@ -335,8 +381,8 @@ with `POST /auth/Register` (`roleName`), and change roles with `PUT /users/{id}/
 | Role | Permissions |
 |---|---|
 | **Owner** | `Admin` (everything) |
-| **Manager** | Sales.*, Customers.*, Suppliers.*, PurchaseOrders.*, Stock.View, **Stock.Adjust**, Expenses.*, ExpenseCategories.View, Dashboard.View, Costing.View, all *Reports.View, Mpesa.View, Sales.ApplyDiscount, Sales.OverrideCreditLimit, Sales.Void, DeliveryOrders.*, including **DeliveryOrders.AcceptCredit** |
-| **Cashier** | Sales.Create, Sales.View, Customers.View, Customers.Register, Customers.RecordPayment, Products.View, Stock.View, Mpesa.View, Dashboard.View, DeliveryOrders.View, .Create, .Dispatch, .Deliver, .Cancel (**not** AcceptCredit) |
+| **Manager** | Sales.*, Customers.*, Suppliers.*, PurchaseOrders.*, Stock.View, **Stock.Adjust**, Expenses.*, ExpenseCategories.View, Dashboard.View, Costing.View, all *Reports.View, Mpesa.View, Sales.ApplyDiscount, Sales.OverrideCreditLimit, Sales.Void, DeliveryOrders.*, including **DeliveryOrders.AcceptCredit**, CashSessions.* (**CashSessions.Open** allocates the float) |
+| **Cashier** | Sales.Create, Sales.View, Customers.View, Customers.Register, Customers.RecordPayment, Products.View, Stock.View, Mpesa.View, Dashboard.View, DeliveryOrders.View, .Create, .Dispatch, .Deliver, .Return, .Cancel (**not** AcceptCredit), CashSessions.View, .RecordMovement, .Close (**not** Open) |
 | **Storekeeper** | Suppliers.View, PurchaseOrders.View, PurchaseOrders.Receive, Stock.View, Products.View |
 | **Accountant** | Expenses.*, ExpenseCategories.*, Suppliers.ViewLedger, Suppliers.RecordPayment, Customers.ViewLedger, Costing.View, SalesReports.View, CustomerReports.View, InventoryReports.View, PurchaseReports.View, Dashboard.View |
 
@@ -367,8 +413,9 @@ Business data is isolated per tenant: every query is filtered to the signed-in b
 | Expense breakdown | `GET /expenses/summary` |
 | Customer balances | `GET /reports/customer-aging` |
 | Gross profit and operating expenses | `GET /dashboard/profit`: revenue (net of VAT), cost of goods sold (cost per litre when sold), gross profit, operating expenses, net operating profit |
-| Cash and M-Pesa reconciliation | Partly (`byPaymentMethod`, unmatched till payments). Full cash-up: gap G10 |
+| Cash and M-Pesa reconciliation | Cash: `GET /cash-sessions/{id}` (§8.1). M-Pesa: `byPaymentMethod`, unmatched till payments |
 | Deliveries per rider, cash to hand in | `GET /delivery-orders/summary` |
+| Trips per rider against fuel | `GET /delivery-orders/fuel-report` (§6.2) |
 | Promises to pay that are overdue | Alerts, and `GET /reports/customer-aging?includeInvoices=true` → `isPromiseOverdue` |
 
 Profit is **never** "sales minus what was paid to vendors today". It uses the cost recorded when each litre left stock, plus expenses.
@@ -477,9 +524,18 @@ Not needed now: bank transfer or split payment at the counter (deferred), contai
 | Credit delivery needs no promised date | Owner: pay later is an ordinary credit sale on the customer's account | `DeliveryOrderService.DeliverAsync` |
 | `ProductUnitConversion.ContainerProductId`, `PUT …/unit-conversions/{id}/container` | Which container goes with which refill size, kept on the server rather than per till | Domain, `CatalogService`, `CatalogRepository`, `ProductsController`, migration `UnitConversionContainer` |
 
+| **Delivery by rider at the till**: an order sent straight out with `riderName`, `expectedPaymentMethod`, bundles on orders, `Sale.DeliveryMode` (`GET /sales?deliveryMode=`), the M-Pesa code required to complete | "A rider sale is not completed until the rider is back"; "the delivery must show on the Deliveries page" | `Application/Deliveries/DeliveryOrders.cs`, `SalesService.RecordAsync`, migration `DeliveryModeTripsReturnsCashSessions` |
+| **Returned** status (`POST /delivery-orders/{id}/return`, `DeliveryOrders.Return`, `DeliveryOrder.Returned` alert) | "A rider dispatches water and it comes back" | `DeliveryOrderService.ReturnAsync`, `DeliveryOrderRepository.ReturnAsync` |
+| **Trips** (`DeliveryTrip`, `POST /delivery-orders/trips`, `GET …/trips`), `Expense.RiderName`, `GET /delivery-orders/fuel-report` | "Trips per rider against the fuel paid" | `Domain/Entities/DeliveryOrder.cs`, `DeliveryOrderService.GetFuelReportAsync`, `ExpenseService` |
+| **Cash sessions**: float, pay-ins/outs, close with expected and variance, `CashSessions.*`, module `cashUp`, `BranchId` on customer and supplier payments | "Allocate a float at the start of the day and account for it at the end" (gap G10) | `Domain/Entities/CashSession.cs`, `Application/CashSessions/CashSessions.cs`, `CashSessionRepository`, `CashSessionsController`, `AccountingService` |
 | **Bundles**: `ProductBundle` and its parts, `POST/PUT/GET /product-bundles`, `bundles[]` on sales, the price split (`BundlePricing`), `Products.ManageBundles`, module `bundles` | Bottle + water at one price, and packs, taking water in litres and bottles in pieces in one item | `Domain/Entities/ProductBundle.cs`, `Application/Catalog/ProductBundles.cs`, `SalesService.BuildSalePlanAsync`, `ProductBundleRepository`, `ProductBundlesController`, migration `SaleBundles` |
 
 **Migrations:**
+- `DeliveryModeTripsReturnsCashSessions`: new tables `DeliveryTrips`, `CashSessions` (one open per branch, unique partial index) and
+  `CashSessionMovements`; nullable `DeliveryOrders.ExpectedPaymentMethod`, `DeliveryTripId`, `ReturnedAt`, `ReturnedBy`, `ReturnReason`;
+  nullable `DeliveryOrderLines.ProductBundleId`, `BundleQuantity`; `Sales.DeliveryMode` (text, default `Counter`; sales already made
+  from delivery orders are set to `Rider`); nullable `Expenses.RiderName`; nullable `BranchId` on `CustomerLedgerEntries` and
+  `SupplierLedgerEntries`.
 - `SaleBundles`: new tables `ProductBundles` and `ProductBundleComponents`, plus nullable `SaleLines.ProductBundleId`, `BundleName`,
   `BundleQuantity`.
 - `BusinessAllowNegativeStock`: `ALTER TABLE "Businesses" ADD "AllowNegativeStock" boolean NOT NULL DEFAULT TRUE`. Every existing
@@ -490,8 +546,10 @@ Not needed now: bank transfer or split payment at the counter (deferred), contai
 All are additive. The API applies migrations on startup (`DbSeeder.SeedAsync`). It can also be applied with
 `dotnet ef database update --project src/UltimatePos.Infrastructure --startup-project src/UltimatePos.Api`.
 
-**Tests:** `tests/UltimatePos.Api.Tests/WaterRefillStationPostgresTests.cs` (integration, real PostgreSQL), plus two report tests in
-`ReportsTests.cs`. They cover:
+**Tests:** `tests/UltimatePos.Api.Tests/WaterRefillStationPostgresTests.cs` and `WaterDeliveryAndCashUpPostgresTests.cs`
+(integration, real PostgreSQL), plus two report tests in `ReportsTests.cs`. `WaterDeliveryAndCashUpPostgresTests` covers a rider sale
+that is not a sale until the cash comes back, the M-Pesa code required to complete, returns, bundles by rider, the dispatch permission
+at the till, trips and the fuel report, and the float and cash-up with its variance. The others cover:
 - 1L, 10L and 20L deductions, and the 53 L mixed sale
 - oversell refusal, including five concurrent sales
 - the default of allowing negative stock, and the setting surviving an older client

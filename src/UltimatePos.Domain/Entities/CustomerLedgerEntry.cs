@@ -20,6 +20,8 @@ namespace UltimatePos.Domain.Entities
         public SettlementMethod? PaymentMethod { get; set; }
         /// <summary>For payments: M-Pesa code, bank reference or cheque number.</summary>
         public string? PaymentReference { get; set; }
+        /// <summary>For payments: the branch it was taken at, so a cash payment counts in that till's cash-up. Null on older entries.</summary>
+        public Guid? BranchId { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }
 

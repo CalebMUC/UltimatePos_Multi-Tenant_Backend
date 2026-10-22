@@ -22,11 +22,13 @@ namespace UltimatePos.Application.Accounting
         private readonly ICurrentUser _currentUser;
 
         private readonly ISystemEventRecorder _events;
+        private readonly IBranchContext _branches;
 
         public AccountingService(IAccountingRepository repository, IBusinessRepository businessRepository,
-            IPurchasingRepository purchasingRepository, ICurrentUser currentUser, ISystemEventRecorder events)
+            IPurchasingRepository purchasingRepository, ICurrentUser currentUser, ISystemEventRecorder events, IBranchContext branches)
         {
             _events = events;
+            _branches = branches;
             _repository = repository;
             _businessRepository = businessRepository;
             _purchasingRepository = purchasingRepository;
@@ -76,6 +78,8 @@ namespace UltimatePos.Application.Accounting
                 Notes = request.Notes,
                 PaymentMethod = request.PaymentMethod,
                 PaymentReference = string.IsNullOrWhiteSpace(request.PaymentReference) ? null : request.PaymentReference.Trim(),
+                // Where the money was taken: a cash payment counts in that branch's cash-up.
+                BranchId = _branches.ActiveBranchId,
                 CreatedBy = _currentUser.UserId
             });
 
@@ -129,6 +133,7 @@ namespace UltimatePos.Application.Accounting
                 PaymentMethod = request.PaymentMethod,
                 PaymentReference = string.IsNullOrWhiteSpace(request.PaymentReference) ? null : request.PaymentReference.Trim(),
                 Notes = request.Notes,
+                BranchId = _branches.ActiveBranchId,
                 CreatedBy = _currentUser.UserId
             });
 

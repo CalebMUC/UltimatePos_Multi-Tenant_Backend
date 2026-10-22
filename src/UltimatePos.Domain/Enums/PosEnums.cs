@@ -39,5 +39,14 @@ namespace UltimatePos.Domain.Enums
         public enum SupplierLedgerEntryType { Bill, Payment, Reversal }
         // How the customer was paid back for returned goods. CreditNote credits a registered customer's account instead of paying out.
         public enum RefundMethod { Cash, Mpesa, CreditNote }
+
+        // How the goods reached the customer. Rider: rung up at the till as a delivery order, and a sale only once the rider is back with
+        // the money (or the M-Pesa code).
+        public enum DeliveryMode { Counter, Rider }
+
+        // A till's day: Open from the float being counted in until the cash is counted out.
+        public enum CashSessionStatus { Open, Closed }
+        // Cash put into (float top-up, rider handing back change) or taken out of (banking, change given to a rider) the drawer during the day.
+        public enum CashMovementType { PayIn, PayOut }
     }
 }

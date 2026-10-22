@@ -119,6 +119,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             else if (filter.MissingEtims == false)
                 query = query.Where(e => e.EtimsControlNumber != null);
 
+            if (!string.IsNullOrWhiteSpace(filter.RiderName))
+                query = query.Where(e => e.RiderName != null && EF.Functions.ILike(e.RiderName, filter.RiderName.Trim()));
             if (!string.IsNullOrWhiteSpace(filter.Search))
             {
                 var term = filter.Search.ToLower();
@@ -141,7 +143,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
         public async Task UpdateExpenseAsync(Guid expenseId, Guid expenseCategoryId, string description, string? paymentReference,
             Guid? supplierId, string? payeeName, string? supplierInvoiceNumber, string? etimsControlNumber, string? receiptUrl,
-            string? notes, Guid? updatedBy)
+            string? notes, string? riderName, Guid? updatedBy)
         {
             var expense = await _context.Expenses.FirstOrDefaultAsync(e => e.ExpenseId == expenseId)
                 ?? throw new NotFoundException($"Expense '{expenseId}' not found.");
@@ -152,6 +154,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             expense.PaymentReference = paymentReference;
             expense.SupplierId = supplierId;
             expense.PayeeName = payeeName;
+            expense.RiderName = riderName;
             expense.SupplierInvoiceNumber = supplierInvoiceNumber;
             expense.EtimsControlNumber = etimsControlNumber;
             expense.ReceiptUrl = receiptUrl;

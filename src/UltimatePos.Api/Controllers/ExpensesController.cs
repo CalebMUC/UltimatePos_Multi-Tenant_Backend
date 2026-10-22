@@ -30,9 +30,9 @@ namespace UltimatePos.Api.Controllers
             [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
             [FromQuery] Guid? categoryId = null, [FromQuery] Guid? supplierId = null,
             [FromQuery] ExpensePaymentMethod? paymentMethod = null, [FromQuery] ExpenseStatus? status = null,
-            [FromQuery] string? search = null, [FromQuery] bool? missingEtims = null)
+            [FromQuery] string? search = null, [FromQuery] bool? missingEtims = null, [FromQuery] string? riderName = null)
         {
-            var filter = new ExpenseFilter(from, to, categoryId, supplierId, paymentMethod, status, search, missingEtims);
+            var filter = new ExpenseFilter(from, to, categoryId, supplierId, paymentMethod, status, search, missingEtims, riderName);
             var paged = await _expenseService.GetExpensesAsync(page, pageSize, filter);
             var meta = new PagingMeta(paged.Page, paged.PageSize, paged.TotalCount, paged.TotalPages);
             return Ok(ApiResponse<IEnumerable<ExpenseDto>>.Ok(paged.Items, meta));

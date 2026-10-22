@@ -17,7 +17,7 @@ screen for it. It does not fake success with mock data.
 | G7 | Close a purchase order short, with a discrepancy reason | Yes | Small | Recommended |
 | G8 | Receive without an order, in one call | Nice to have | No | Optional |
 | G9 | Landed cost (delivery charges in stock cost) | No, while transport is an expense | Yes | Optional |
-| G10 | Daily cash-up / reconciliation report | Yes | No | Recommended |
+| G10 | Daily cash-up / reconciliation report | Yes | Yes | **Cash built** as cash sessions (2026-10-22); M-Pesa side and per cashier not yet |
 | G11 | Approval workflow for stock adjustments and expenses | Owner's choice | Yes | Ask owner |
 | G12 | One dashboard call for the station's cards | Nice to have | No | Optional |
 | G13 | Supplier lead time and reorder recommendation | Nice to have | Small | Optional |
@@ -101,7 +101,10 @@ by value into `unitCostPerBaseUnit`, and **not** posted as an expense. Choose on
 never both.
 
 ### G10 — Daily cash-up
-**Proposed:** `GET /reports/cash-up?date=&branchId=&cashierId=`, with no schema change:
+**Built (2026-10-22), cash side:** cash sessions per branch: an opening float, pay-ins and pay-outs, and a close that fixes expected,
+counted and variance (`/cash-sessions`, onboarding §8.1). **Still open:** the M-Pesa reconciliation and a per-cashier split below.
+
+**Originally proposed:** `GET /reports/cash-up?date=&branchId=&cashierId=`, with no schema change:
 - cash sales, customer payments in cash, cash refunds and cash expenses, giving the **expected cash in the drawer**
 - M-Pesa: till payments received, matched and unmatched, and STK confirmed
 - per cashier

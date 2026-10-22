@@ -68,6 +68,10 @@ namespace UltimatePos.Application.Notifications
                 SubjectChannels: NotificationChannels.InApp, Link: "/sales/{entityId}"),
             new(SystemEventTypes.MpesaTillPaymentUnmatched, "Unmatched M-Pesa payment", new[] { "Mpesa.View" }, Link: "/mpesa"),
             new(SystemEventTypes.PaymentPromiseOverdue, "Promised payment overdue", new[] { "Customers.RecordPayment" }, Link: "/sales/{entityId}"),
+            new(SystemEventTypes.DeliveryOrderReturned, "Delivery came back", new[] { "DeliveryOrders.Create" }, ExcludeActor: true,
+                Link: "/deliveries?orderId={entityId}"),
+            new(SystemEventTypes.CashSessionVariance, "Cash count difference", new[] { "CashSessions.Open" },
+                NotificationChannels.InApp | NotificationChannels.Email, ExcludeActor: true, Link: "/cash-sessions/{entityId}"),
             new(SystemEventTypes.ExpenseVoided, "Expense voided", new[] { "Expenses.Void" }, ExcludeActor: true, Link: "/expenses/{entityId}"),
 
             // Users and security

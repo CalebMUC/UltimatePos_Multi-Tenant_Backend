@@ -35,6 +35,9 @@ namespace UltimatePos.Domain.Entities
         public Guid? SupplierId { get; set; }
         /// <summary>Optional free-text payee, for people and businesses that are not registered suppliers.</summary>
         public string? PayeeName { get; set; }
+        /// <summary>The rider the cost was for (fuel, a puncture), by name as on the delivery trips. Fuel per rider is weighed against
+        /// the trips they made.</summary>
+        public string? RiderName { get; set; }
         /// <summary>The payee's own invoice number.</summary>
         public string? SupplierInvoiceNumber { get; set; }
         /// <summary>Control number of the payee's eTIMS invoice. Without a valid eTIMS invoice the cost is generally not tax-deductible.</summary>

@@ -13,6 +13,9 @@ namespace UltimatePos.Infrastructure.Persistence
 {
     public class UltimatePosDbContext : DbContext
     {
+        /// <summary>The unique index that allows one open cash session per branch.</summary>
+        public const string CashSessionOpenIndex = "IX_CashSessions_BranchId_Open";
+
         private readonly ITenantContext _tenant;
 
         private readonly IBranchContext _branch;
@@ -65,6 +68,9 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<StockTransferLineBatch> StockTransferLineBatches => Set<StockTransferLineBatch>();
         public DbSet<DeliveryOrder> DeliveryOrders => Set<DeliveryOrder>();
         public DbSet<DeliveryOrderLine> DeliveryOrderLines => Set<DeliveryOrderLine>();
+        public DbSet<DeliveryTrip> DeliveryTrips => Set<DeliveryTrip>();
+        public DbSet<CashSession> CashSessions => Set<CashSession>();
+        public DbSet<CashSessionMovement> CashSessionMovements => Set<CashSessionMovement>();
         public DbSet<ProductBundle> ProductBundles => Set<ProductBundle>();
         public DbSet<ProductBundleComponent> ProductBundleComponents => Set<ProductBundleComponent>();
 
@@ -306,6 +312,33 @@ namespace UltimatePos.Infrastructure.Persistence
                 .HasOne(l => l.Product).WithMany().HasForeignKey(l => l.ProductId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<DeliveryOrderLine>()
                 .HasOne(l => l.UnitOfMeasure).WithMany().HasForeignKey(l => l.UnitOfMeasureId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DeliveryOrderLine>()
+                .HasOne(l => l.ProductBundle).WithMany().HasForeignKey(l => l.ProductBundleId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DeliveryOrder>().Property(o => o.ExpectedPaymentMethod).HasConversion<string>();
+            modelBuilder.Entity<DeliveryOrder>()
+                .HasOne(o => o.Trip).WithMany(t => t.Orders).HasForeignKey(o => o.DeliveryTripId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DeliveryTrip>().HasIndex(t => new { t.BusinessId, t.TripNumber }).IsUnique();
+            modelBuilder.Entity<DeliveryTrip>().HasIndex(t => new { t.BranchId, t.DispatchedAt });
+            modelBuilder.Entity<DeliveryTrip>().Property(t => t.RiderName).HasMaxLength(100);
+            modelBuilder.Entity<DeliveryTrip>()
+                .HasOne<BusinessProfile>().WithMany().HasForeignKey(t => t.BusinessId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DeliveryTrip>()
+                .HasOne<Branch>().WithMany().HasForeignKey(t => t.BranchId).OnDelete(DeleteBehavior.Restrict);
+
+            // ---- Cash sessions (float and cash-up) ----
+            modelBuilder.Entity<CashSession>().Property(c => c.Status).HasConversion<string>();
+            modelBuilder.Entity<CashSession>().HasIndex(c => new { c.BusinessId, c.SessionNumber }).IsUnique();
+            // One open drawer per branch: two people opening the day at once get one session.
+            modelBuilder.Entity<CashSession>().HasIndex(c => c.BranchId).IsUnique().HasFilter("\"Status\" = 'Open'")
+                .HasDatabaseName(CashSessionOpenIndex);
+            modelBuilder.Entity<CashSession>().HasIndex(c => new { c.BranchId, c.OpenedAt });
+            modelBuilder.Entity<CashSession>()
+                .HasOne<BusinessProfile>().WithMany().HasForeignKey(c => c.BusinessId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<CashSession>()
+                .HasOne(c => c.Branch).WithMany().HasForeignKey(c => c.BranchId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<CashSessionMovement>().Property(m => m.MovementType).HasConversion<string>();
+            modelBuilder.Entity<CashSessionMovement>()
+                .HasOne(m => m.CashSession).WithMany(c => c.Movements).HasForeignKey(m => m.CashSessionId).OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<StockBatch>()
                 .HasOne(b => b.Product).WithMany()
                 .HasForeignKey(b => b.ProductId).OnDelete(DeleteBehavior.Restrict);
@@ -392,6 +425,7 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<Sale>().HasIndex(s => new { s.BusinessId, s.CreatedAt });
             modelBuilder.Entity<Sale>().Property(s => s.PaymentMethod).HasConversion<string>();
             modelBuilder.Entity<Sale>().Property(s => s.Status).HasConversion<string>();
+            modelBuilder.Entity<Sale>().Property(s => s.DeliveryMode).HasConversion<string>();
             modelBuilder.Entity<CustomerLedgerEntry>().Property(e => e.EntryType).HasConversion<string>();
             modelBuilder.Entity<CustomerLedgerEntry>().Property(e => e.PaymentMethod).HasConversion<string>();
 
@@ -599,6 +633,10 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<DeliveryOrder>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
             modelBuilder.Entity<DeliveryOrderLine>().HasQueryFilter(e => e.DeliveryOrder.BusinessId == CurrentBusinessId
                 && (BranchUnrestricted || VisibleBranchIds.Contains(e.DeliveryOrder.BranchId)));
+            modelBuilder.Entity<DeliveryTrip>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
+            modelBuilder.Entity<CashSession>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
+            modelBuilder.Entity<CashSessionMovement>().HasQueryFilter(e => e.CashSession.BusinessId == CurrentBusinessId
+                && (BranchUnrestricted || VisibleBranchIds.Contains(e.CashSession.BranchId)));
             modelBuilder.Entity<CustomerLedgerEntry>().HasQueryFilter(e => e.Customer.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<CustomerBalance>().HasQueryFilter(e => e.Customer.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<SupplierLedgerEntry>().HasQueryFilter(e => e.Supplier.BusinessId == CurrentBusinessId);

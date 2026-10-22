@@ -6,9 +6,10 @@ using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Application.Expenses
 {
-    /// <summary>Dates are inclusive on both ends. MissingEtims: true = only expenses with no eTIMS control number, false = only those with one.</summary>
+    /// <summary>Dates are inclusive on both ends. MissingEtims: true = only expenses with no eTIMS control number, false = only those with one.
+    /// RiderName: only expenses tagged with this rider (case-insensitive).</summary>
     public record ExpenseFilter(DateOnly? From, DateOnly? To, Guid? ExpenseCategoryId, Guid? SupplierId,
-        ExpensePaymentMethod? PaymentMethod, ExpenseStatus? Status, string? Search, bool? MissingEtims);
+        ExpensePaymentMethod? PaymentMethod, ExpenseStatus? Status, string? Search, bool? MissingEtims, string? RiderName = null);
 
     /// <summary>One posted expense reduced to what summaries and the profit-and-loss report need.</summary>
     public record ExpenseSummaryRow(Guid ExpenseCategoryId, string CategoryCode, string CategoryName,
@@ -35,7 +36,8 @@ namespace UltimatePos.Application.Expenses
         Task<Expense?> GetExpenseByIdAsync(Guid expenseId);
         Task<(IEnumerable<Expense> Items, int TotalCount)> GetExpensesAsync(ExpenseFilter filter, int page, int pageSize);
         Task UpdateExpenseAsync(Guid expenseId, Guid expenseCategoryId, string description, string? paymentReference, Guid? supplierId,
-            string? payeeName, string? supplierInvoiceNumber, string? etimsControlNumber, string? receiptUrl, string? notes, Guid? updatedBy);
+            string? payeeName, string? supplierInvoiceNumber, string? etimsControlNumber, string? receiptUrl, string? notes, string? riderName,
+            Guid? updatedBy);
         Task VoidExpenseAsync(Guid expenseId, string reason, Guid? voidedBy);
 
         // ---- Duplicate-entry guards (posted expenses only) ----

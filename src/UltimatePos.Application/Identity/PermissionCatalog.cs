@@ -67,8 +67,13 @@ namespace UltimatePos.Application.Identity
             ("DeliveryOrders.View", "DeliveryOrders"), ("DeliveryOrders.Create", "DeliveryOrders"),
             ("DeliveryOrders.Dispatch", "DeliveryOrders"), ("DeliveryOrders.Deliver", "DeliveryOrders"),
             ("DeliveryOrders.Cancel", "DeliveryOrders"),
+            ("DeliveryOrders.Return", "DeliveryOrders"),         // record an order the rider brought back undelivered
             ("DeliveryOrders.AcceptCredit", "DeliveryOrders"),   // complete a delivery on a promise to pay later (managers)
             ("Mpesa.Configure", "Mpesa"), ("Mpesa.View", "Mpesa"),
+            ("CashSessions.View", "CashSessions"),
+            ("CashSessions.Open", "CashSessions"),               // allocate the day's float (managers)
+            ("CashSessions.RecordMovement", "CashSessions"),     // cash paid into or out of the drawer: banking, a rider's change
+            ("CashSessions.Close", "CashSessions"),              // count the drawer at the end of the day
 
             ("Costing.View", "Costing"), ("Costing.Revalue", "Costing"),
 

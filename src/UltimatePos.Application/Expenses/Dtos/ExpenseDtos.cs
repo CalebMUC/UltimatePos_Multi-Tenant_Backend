@@ -16,21 +16,25 @@ namespace UltimatePos.Application.Expenses.Dtos
     /// <param name="EtimsControlNumber">Control number of the payee's eTIMS invoice, if they issued one.</param>
     /// <param name="BranchId">The branch the expense belongs to. Defaults to the branch signed in to.</param>
     /// <param name="BusinessWide">Not one branch's cost (head-office rent, licences). Needs Branches.AccessAll; leave BranchId out.</param>
+    /// <param name="RiderName">The rider the cost was for (their fuel), as named on delivery trips. Fuel is weighed against their trips.</param>
     public record CreateExpenseRequestDto(DateOnly ExpenseDate, Guid ExpenseCategoryId, string Description, decimal Amount,
         ExpensePaymentMethod PaymentMethod, string? PaymentReference, Guid? SupplierId, string? PayeeName,
         string? SupplierInvoiceNumber, string? EtimsControlNumber, string? ReceiptUrl, string? Notes,
-        Guid? BranchId = null, bool BusinessWide = false);
+        Guid? BranchId = null, bool BusinessWide = false, string? RiderName = null);
 
     /// <summary>Date, amount and payment method cannot be changed on a posted expense — void it and enter a new one.</summary>
+    /// <param name="RiderName">Null keeps the rider it is tagged with (older clients do not send it); empty removes the tag.</param>
     public record UpdateExpenseRequestDto(Guid ExpenseCategoryId, string Description, string? PaymentReference, Guid? SupplierId,
-        string? PayeeName, string? SupplierInvoiceNumber, string? EtimsControlNumber, string? ReceiptUrl, string? Notes);
+        string? PayeeName, string? SupplierInvoiceNumber, string? EtimsControlNumber, string? ReceiptUrl, string? Notes,
+        string? RiderName = null);
 
     public record VoidExpenseRequestDto(string Reason);
 
     public record ExpenseDto(Guid ExpenseId, string ExpenseNumber, DateOnly ExpenseDate, Guid ExpenseCategoryId, string CategoryCode,
         string CategoryName, string Description, decimal Amount, string PaymentMethod, string? PaymentReference, Guid? SupplierId,
         string? SupplierName, string? PayeeName, string? SupplierInvoiceNumber, string? EtimsControlNumber, string? ReceiptUrl,
-        string? Notes, string Status, DateTime CreatedAt, DateTime? VoidedAt, string? VoidReason, Guid? BranchId = null);
+        string? Notes, string Status, DateTime CreatedAt, DateTime? VoidedAt, string? VoidReason, Guid? BranchId = null,
+        string? RiderName = null);
 
     // ---- Summary (also used by the profit-and-loss report) ----
     public record ExpenseCategoryTotalDto(Guid ExpenseCategoryId, string Code, string Name, int ExpenseCount, decimal Total, decimal PercentOfTotal);

@@ -20,6 +20,8 @@ namespace UltimatePos.Domain.Entities
         public string? SupplierInvoiceNumber { get; set; }
         public SettlementMethod? PaymentMethod { get; set; }
         public string? PaymentReference { get; set; }
+        /// <summary>For payments: the branch it was paid from, so a cash payment counts in that till's cash-up. Null on older entries.</summary>
+        public Guid? BranchId { get; set; }
         public string? Notes { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }
