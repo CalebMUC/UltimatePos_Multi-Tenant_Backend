@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using UltimatePos.Application.Business.Dtos;
 using UltimatePos.Domain.Entities;
+using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Application.Business
 {
@@ -19,6 +20,7 @@ namespace UltimatePos.Application.Business
         Task<BusinessProfile?> GetBusinessByIdAsync(Guid businessId);
         Task<BusinessProfile?> GetBusinessByMpesaShortCodeAsync(string shortCode);
         Task<BusinessProfile> UpdateBusinessAsync(Guid businessId, UpdateBusinessRequestDto request, Guid? updatedBy);
+        Task<BusinessProfile> UpdateMonthlyDiscountAsync(Guid businessId, decimal? threshold, decimal? percent, MonthlyDiscountScope scope, Guid? updatedBy);
         /// <summary>Licences of the business in scope, newest first.</summary>
         Task<IReadOnlyList<BusinessLicense>> GetLicensesAsync();
 

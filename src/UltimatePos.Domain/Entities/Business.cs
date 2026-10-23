@@ -69,6 +69,15 @@ namespace UltimatePos.Domain.Entities
         /// <summary>Largest discount a cashier may give on one sale, as a percentage of its subtotal. Null = no cap.</summary>
         public decimal? MaxDiscountPercent { get; set; }
         /// <summary>
+        /// Monthly-spend reward: once a registered customer's completed purchases in a calendar month (East Africa Time, net of returns)
+        /// reach MonthlyDiscountThreshold, their later purchases that month get MonthlyDiscountPercent off (or only the next one, by
+        /// MonthlyDiscountScope). The purchase that reaches the threshold pays full price; a new month starts again from zero.
+        /// Null threshold or percent = off.
+        /// </summary>
+        public decimal? MonthlyDiscountThreshold { get; set; }
+        public decimal? MonthlyDiscountPercent { get; set; }
+        public Enums.PosEnums.MonthlyDiscountScope MonthlyDiscountScope { get; set; } = Enums.PosEnums.MonthlyDiscountScope.RestOfMonth;
+        /// <summary>
         /// True = a sale may take a product that is not batch-tracked below zero (the cashier is never stopped; a count corrects it
         /// later). False = such a sale is refused, so the business never sells more than it holds (e.g. a refill station's water).
         /// Batch-tracked stock is never oversold either way. An M-Pesa STK sale is checked when the prompt is sent; once the customer

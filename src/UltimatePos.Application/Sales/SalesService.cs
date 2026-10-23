@@ -80,7 +80,7 @@ namespace UltimatePos.Application.Sales
                 plan.Subtotal, plan.DiscountTotal, plan.TaxTotal, plan.RequiresPrescription,
                 plan.CustomerBalance, plan.CreditLimit, plan.CreditLimitExceeded(request.PaymentMethod),
                 Bundles(plan.Lines.Select(l => (l.BundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))),
-                plan.CustomerDiscountPercent, plan.CustomerDiscountTotal);
+                plan.CustomerDiscountPercent, plan.CustomerDiscountTotal, plan.CustomerDiscountSource, plan.CustomerMonth);
         }
 
         public Task<SaleDto> RecordSaleAsync(CreateSaleRequestDto request) => RecordAsync(request, deliveryOrderId: null);
@@ -151,6 +151,7 @@ namespace UltimatePos.Application.Sales
                 DiscountTotal = plan.DiscountTotal,
                 CustomerDiscountPercent = plan.CustomerDiscountPercent,
                 CustomerDiscountAmount = plan.CustomerDiscountTotal,
+                CustomerDiscountSource = plan.CustomerDiscountSource,
                 TaxTotal = plan.TaxTotal,
                 TotalAmount = plan.Total,
                 Notes = request.Notes,
@@ -560,7 +561,8 @@ namespace UltimatePos.Application.Sales
         }
 
         private sealed record SalePlan(PriceType PriceType, IReadOnlyList<SaleLinePlan> Lines, decimal? CustomerBalance, decimal? CreditLimit,
-            bool AllowNegativeStock, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountTotal = 0)
+            bool AllowNegativeStock, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountTotal = 0,
+            CustomerDiscountSource? CustomerDiscountSource = null, CustomerMonthlySpendDto? CustomerMonth = null)
         {
             public decimal Subtotal => Lines.Sum(l => l.Gross);
             public decimal DiscountTotal => Lines.Sum(l => l.DiscountAmount);
@@ -602,6 +604,7 @@ namespace UltimatePos.Application.Sales
 
             var priceType = PriceType.Retail;
             decimal? customerBalance = null, creditLimit = null, standingPercent = null;
+            CustomerMonthlySpendDto? customerMonth = null;
             if (request.CustomerId.HasValue)
             {
                 var customer = await _businessRepository.GetCustomerByIdAsync(request.CustomerId.Value)
@@ -611,6 +614,7 @@ namespace UltimatePos.Application.Sales
                 priceType = customer.PriceType;
                 creditLimit = customer.CreditLimit;
                 standingPercent = customer.DiscountPercent is > 0 ? customer.DiscountPercent : null;
+                customerMonth = await CustomerMonthAsync(business, customer.CustomerId);
                 customerBalance = (await _accountingRepository.GetCustomerBalanceAsync(customer.CustomerId))?.OutstandingBalance ?? 0m;
             }
 
@@ -660,8 +664,15 @@ namespace UltimatePos.Application.Sales
                 return requiredBase;
             }
 
-            // The customer's standing discount: a share of what is left of each line after any discount typed on it.
-            decimal Standing(decimal net) => standingPercent is { } pct ? RoundMoney(net * pct / 100m) : 0m;
+            // The customer's automatic discount: their standing discount or the monthly-spend reward, whichever is larger (they do not
+            // add up). A share of what is left of each line after any discount typed on it.
+            CustomerDiscountSource? source = null;
+            decimal? customerPercent = null;
+            if (standingPercent is { } standingRate)
+                (customerPercent, source) = (standingRate, CustomerDiscountSource.Standing);
+            if (customerMonth is { Qualifies: true } month && month.Percent > (customerPercent ?? 0m))
+                (customerPercent, source) = (month.Percent, CustomerDiscountSource.MonthlySpend);
+            decimal Standing(decimal net) => customerPercent is { } pct ? RoundMoney(net * pct / 100m) : 0m;
 
             // First pass: price and line discount.
             var priced = new List<PricedLine>();
@@ -738,13 +749,18 @@ namespace UltimatePos.Application.Sales
 
             var standingTotal = priced.Sum(p => p.StandingDiscount);
             var plan = new SalePlan(priceType, planLines, customerBalance, creditLimit, business.AllowNegativeStock,
-                standingTotal > 0 ? standingPercent : null, standingTotal);
+                standingTotal > 0 ? customerPercent : null, standingTotal, standingTotal > 0 ? source : null, customerMonth);
 
-            if (business.MaxDiscountPercent is { } cap && plan.Subtotal > 0 && plan.DiscountTotal / plan.Subtotal * 100m > cap)
+            // The cap limits what a cashier gives; the customer's automatic discount was set by the owner and is not counted against it.
+            if (business.MaxDiscountPercent is { } cap && plan.Subtotal > 0
+                && (plan.DiscountTotal - plan.CustomerDiscountTotal) / plan.Subtotal * 100m > cap)
                 throw new ValidationException("discountAmount", $"Discounts on one sale cannot exceed {cap:0.##}% of its value.");
 
             return plan;
         }
+
+        private Task<CustomerMonthlySpendDto?> CustomerMonthAsync(BusinessProfile business, Guid customerId) =>
+            MonthlySpendReward.ForCustomerAsync(_repository, business, customerId, Today);
 
         private sealed record PricedLine(Product Product, Guid UnitOfMeasureId, decimal Quantity, decimal UnitPrice, decimal Gross,
             decimal LineDiscount, decimal RequiredBase, Guid? BundleId, string? BundleName, decimal? BundleQuantity, decimal StandingDiscount = 0);
@@ -850,7 +866,7 @@ namespace UltimatePos.Application.Sales
                 s.Prescription is null ? null : ToDto(s.Prescription), s.BranchId,
                 s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name, s.PaymentDueDate,
                 Bundles(s.Lines.Select(l => (l.ProductBundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))),
-                s.MpesaReference, s.DeliveryMode, s.CustomerDiscountPercent, s.CustomerDiscountAmount);
+                s.MpesaReference, s.DeliveryMode, s.CustomerDiscountPercent, s.CustomerDiscountAmount, s.CustomerDiscountSource);
 
         /// <summary>The bundles on a sale, each once, from the lines their parts became. Null when the sale has none.</summary>
         private static List<SaleBundleDto>? Bundles(IEnumerable<(Guid? BundleId, string? Name, decimal? Quantity, decimal LineTotal, decimal Discount)> lines)

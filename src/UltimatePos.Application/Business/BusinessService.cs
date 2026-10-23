@@ -84,6 +84,41 @@ namespace UltimatePos.Application.Business
                 _currentUser.UserId));
         }
 
+        /// <summary>
+        /// Switches the monthly-spend reward on (threshold and percent) or off (both null). Sales from now on follow it; sales already made
+        /// keep their prices. Not capped by MaxDiscountPercent, which limits what cashiers give.
+        /// </summary>
+        public async Task<BusinessDto> UpdateMonthlyDiscountAsync(UpdateMonthlyDiscountRequestDto request)
+        {
+            var businessId = _tenant.RequireBusinessId();
+            var on = request.Threshold.HasValue || request.Percent.HasValue;
+            var errors = new Dictionary<string, string[]>();
+            if (on)
+            {
+                if (request.Threshold is not > 0)
+                    errors["threshold"] = new[] { "How much must a customer spend in a month? Give an amount greater than zero." };
+                else if (decimal.Round(request.Threshold.Value, 2) != request.Threshold.Value)
+                    errors["threshold"] = new[] { "The amount has at most 2 decimal places." };
+                if (request.Percent is not (> 0 and < 100) || decimal.Round(request.Percent.Value, 2) != request.Percent.Value)
+                    errors["percent"] = new[] { "The discount is a percentage between 0 and 100, with at most 2 decimals." };
+            }
+            if (!Enum.IsDefined(request.Scope))
+                errors["scope"] = new[] { "Scope is RestOfMonth or NextPurchaseOnly." };
+            if (errors.Count > 0)
+                throw new ValidationException(errors);
+
+            var business = await _repository.GetBusinessByIdAsync(businessId)
+                ?? throw new NotFoundException("Business not found.");
+            _events.Record(new SystemEventDraft(SystemEventTypes.BusinessProfileUpdated,
+                on ? $"Monthly-spend reward: {request.Percent:0.##}% off once a customer spends {request.Threshold:0.00} in a month ({request.Scope})."
+                   : "The monthly-spend reward was switched off.",
+                EntityType: "Business", EntityId: businessId,
+                Data: new { From = new { business.MonthlyDiscountThreshold, business.MonthlyDiscountPercent, business.MonthlyDiscountScope },
+                    To = new { request.Threshold, request.Percent, request.Scope } }));
+            return ToDto(await _repository.UpdateMonthlyDiscountAsync(businessId, on ? request.Threshold : null, on ? request.Percent : null,
+                request.Scope, _currentUser.UserId));
+        }
+
         /// <summary>The signed-in business's licence position and history, for its own Settings → Licence page.</summary>
         public async Task<BusinessLicenseStatusDto> GetCurrentLicenseAsync()
         {

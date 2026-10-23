@@ -66,7 +66,16 @@ namespace UltimatePos.Application.Business.Dtos
         bool IsSuspended = false, string? SuspensionReason = null, DateOnly? LicenseEndsOn = null, int? LicenseMaxUsers = null,
         int? LicenseMaxBranches = null, bool AllowNegativeStock = true, BusinessSector Sector = BusinessSector.General,
         IReadOnlyList<string>? Modules = null, // the app areas it uses (BusinessModules), from its sector and kind
-        string? MpesaTillNumber = null, string? MpesaPaybillNumber = null); // where customers pay, for the POS payment screen
+        string? MpesaTillNumber = null, string? MpesaPaybillNumber = null, // where customers pay, for the POS payment screen
+        decimal? MonthlyDiscountThreshold = null, decimal? MonthlyDiscountPercent = null, // the monthly-spend reward; null = off
+        MonthlyDiscountScope MonthlyDiscountScope = MonthlyDiscountScope.RestOfMonth);
+
+    /// <summary>
+    /// The monthly-spend reward. Both Threshold and Percent set = on: once a registered customer has spent Threshold in a calendar month,
+    /// later purchases that month get Percent off (Scope: all of them, or only the next one). Both null = off.
+    /// </summary>
+    public record UpdateMonthlyDiscountRequestDto(decimal? Threshold, decimal? Percent,
+        MonthlyDiscountScope Scope = MonthlyDiscountScope.RestOfMonth);
 
     /// <param name="BusinessId">Optional. Customers are always registered in the business signed in to; if given it must be that one.</param>
     /// <param name="PriceType">Which price list the customer buys at. Defaults to Wholesale for a wholesaler, Retail for a retailer.</param>

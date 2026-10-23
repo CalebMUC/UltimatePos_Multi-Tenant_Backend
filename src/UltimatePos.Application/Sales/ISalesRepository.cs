@@ -36,6 +36,9 @@ namespace UltimatePos.Application.Sales
         /// <summary>The number of the business's sale, not voided or failed, that carries this typed M-Pesa code; null if none.</summary>
         Task<string?> GetSaleNumberByMpesaReferenceAsync(string mpesaReference);
 
+        /// <summary>A customer's completed purchases in the window: what they came to net of returns, and how many had the monthly reward.</summary>
+        Task<(decimal Spent, int MonthlyDiscountsUsed)> GetCustomerSpendAsync(Guid customerId, DateTime fromUtc, DateTime toUtcExclusive);
+
         Task<(IEnumerable<Sale> Items, int TotalCount)> GetSalesAsync(int page, int pageSize, SaleQuery query, DateTime? fromUtc, DateTime? toUtcExclusive);
         Task<Sale?> GetSaleByIdAsync(Guid saleId);
         Task<Dictionary<Guid, string>> GetUserNamesAsync(IEnumerable<Guid> userIds);

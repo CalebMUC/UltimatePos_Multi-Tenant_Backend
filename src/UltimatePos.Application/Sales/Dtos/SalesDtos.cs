@@ -53,7 +53,15 @@ namespace UltimatePos.Application.Sales.Dtos
     public record SalePreviewDto(Guid? CustomerId, PriceType PriceType, decimal TotalAmount, bool AllStockSufficient, IEnumerable<SalePreviewLineDto> Lines,
         decimal Subtotal = 0, decimal DiscountTotal = 0, decimal TaxTotal = 0, bool RequiresPrescription = false,
         decimal? CustomerBalance = null, decimal? CreditLimit = null, bool CreditLimitExceeded = false,
-        IEnumerable<SaleBundleDto>? Bundles = null, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountTotal = 0);
+        IEnumerable<SaleBundleDto>? Bundles = null, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountTotal = 0,
+        CustomerDiscountSource? CustomerDiscountSource = null, CustomerMonthlySpendDto? CustomerMonth = null);
+
+    /// <summary>
+    /// A registered customer's month so far against the monthly-spend reward (null when the business has none). Spent is completed purchases
+    /// this calendar month, net of returns, before this sale. Qualifies: this sale gets the reward.
+    /// </summary>
+    public record CustomerMonthlySpendDto(string Month, decimal Spent, decimal Threshold, decimal Percent, MonthlyDiscountScope Scope,
+        decimal RemainingToThreshold, bool Qualifies);
 
     public record SaleLineBatchDto(Guid StockBatchId, string BatchNumber, DateOnly? ExpiryDate, decimal QuantityInBaseUnits, decimal QuantityReturnedInBaseUnits);
 
@@ -70,7 +78,8 @@ namespace UltimatePos.Application.Sales.Dtos
         decimal Subtotal = 0, decimal DiscountTotal = 0, decimal TaxTotal = 0, decimal ReturnedAmount = 0,
         SalePrescriptionDto? Prescription = null, Guid BranchId = default, string? KraBranchId = null, string? BranchName = null,
         DateOnly? PaymentDueDate = null, IEnumerable<SaleBundleDto>? Bundles = null, string? MpesaReference = null,
-        DeliveryMode DeliveryMode = DeliveryMode.Counter, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountAmount = 0);
+        DeliveryMode DeliveryMode = DeliveryMode.Counter, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountAmount = 0,
+        CustomerDiscountSource? CustomerDiscountSource = null);
 
     /// <summary>Filters for the sales list. from/to are local calendar days (inclusive), resolved with utcOffsetMinutes.
     /// Search matches the sale number, the customer's name or a typed M-Pesa code.</summary>

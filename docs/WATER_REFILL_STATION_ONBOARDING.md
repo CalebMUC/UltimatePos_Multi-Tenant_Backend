@@ -330,6 +330,16 @@ needed by the cashier. It is shown on the sale (`customerDiscountPercent`, `cust
 `maxDiscountPercent`, needs a note, is audited, and can be removed (`null`). Viewing insights needs `Customers.ViewInsights`. The system
 never chooses a percentage.
 
+**Monthly-spend reward (owner, 2026-10-23): 20% off after 4,000 in a month.** Switched on with
+`PUT /businesses/current/monthly-discount { "threshold": 4000, "percent": 20, "scope": 0 }` (`Businesses.Update`). Once a registered
+customer's completed purchases in the calendar month (East Africa Time, every branch, net of returns) reach 4,000, their later purchases
+that month are 20% off, applied by the server. The purchase that reaches 4,000 pays full price. On the 1st the count starts again
+and prices are normal. `scope: 1` gives the reward on the next purchase only, once a month. *Confirm with the owner which they mean:*
+"the next purchase" could be either. Walk-ins are not rewarded. A customer with a standing discount gets the larger of the two, not
+both. The sale records which rule applied (`customerDiscountSource`: `0` standing, `1` monthly), and the till's preview shows the
+month so far (`customerMonth`: spent, remaining, qualifies). `maxDiscountPercent` caps only the discounts cashiers type, not these
+automatic ones.
+
 ---
 
 ## 7. Expenses
@@ -547,6 +557,8 @@ Not needed now: bank transfer or split payment at the counter (deferred), contai
 | **Bundles**: `ProductBundle` and its parts, `POST/PUT/GET /product-bundles`, `bundles[]` on sales, the price split (`BundlePricing`), `Products.ManageBundles`, module `bundles` | Bottle + water at one price, and packs, taking water in litres and bottles in pieces in one item | `Domain/Entities/ProductBundle.cs`, `Application/Catalog/ProductBundles.cs`, `SalesService.BuildSalePlanAsync`, `ProductBundleRepository`, `ProductBundlesController`, migration `SaleBundles` |
 
 **Migrations:**
+- `MonthlySpendDiscount`: nullable `Businesses.MonthlyDiscountThreshold`, `MonthlyDiscountPercent`; `Businesses.MonthlyDiscountScope`
+  (text, default `RestOfMonth`); nullable `Sales.CustomerDiscountSource` (existing customer-discount sales set to `Standing`).
 - `CustomerDiscountAndInsights`: nullable `Customers.DiscountPercent`, `DiscountNote`, `DiscountSetAt`, `DiscountSetBy`; nullable
   `Sales.CustomerDiscountPercent` and `Sales.CustomerDiscountAmount` (default 0).
 - `DeliveryModeTripsReturnsCashSessions`: new tables `DeliveryTrips`, `CashSessions` (one open per branch, unique partial index) and

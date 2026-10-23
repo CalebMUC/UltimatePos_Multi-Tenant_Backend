@@ -4,6 +4,7 @@ using UltimatePos.Application.Business.Dtos;
 using UltimatePos.Application.Identity;
 using UltimatePos.Domain.Entities;
 using UltimatePos.Domain.Exceptions;
+using static UltimatePos.Domain.Enums.PosEnums;
 
 namespace UltimatePos.Infrastructure.Persistence.Repositories;
 
@@ -35,6 +36,20 @@ public class BusinessRepository : IBusinessRepository
 
     public async Task<BusinessProfile?> GetBusinessByMpesaShortCodeAsync(string shortCode) =>
         await _context.Businesses.AsNoTracking().FirstOrDefaultAsync(b => b.MpesaShortCode == shortCode && b.IsActive);
+
+    public async Task<BusinessProfile> UpdateMonthlyDiscountAsync(Guid businessId, decimal? threshold, decimal? percent, MonthlyDiscountScope scope,
+        Guid? updatedBy)
+    {
+        var business = await _context.Businesses.FirstOrDefaultAsync(b => b.BusinessId == businessId)
+            ?? throw new NotFoundException($"Business '{businessId}' not found.");
+        business.MonthlyDiscountThreshold = threshold;
+        business.MonthlyDiscountPercent = percent;
+        business.MonthlyDiscountScope = scope;
+        business.LastUpdatedAt = DateTime.UtcNow;
+        business.LastUpdatedBy = updatedBy;
+        await _context.SaveChangesAsync();
+        return business;
+    }
 
     public async Task<BusinessProfile> UpdateBusinessAsync(Guid businessId, UpdateBusinessRequestDto request, Guid? updatedBy)
     {

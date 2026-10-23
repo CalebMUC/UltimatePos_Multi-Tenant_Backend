@@ -15,10 +15,13 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         private readonly StockLedger _stockLedger;
         private readonly CustomerLedger _customerLedger;
         private readonly IBranchContext _branches;
+        private readonly ITenantContext _tenant;
 
-        public SalesRepository(UltimatePosDbContext context, StockLedger stockLedger, CustomerLedger customerLedger, IBranchContext branches)
+        public SalesRepository(UltimatePosDbContext context, StockLedger stockLedger, CustomerLedger customerLedger, IBranchContext branches,
+            ITenantContext tenant)
         {
             _branches = branches;
+            _tenant = tenant;
             _context = context;
             _stockLedger = stockLedger;
             _customerLedger = customerLedger;
@@ -89,6 +92,22 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 .Where(s => s.MpesaReference == mpesaReference && s.Status != SaleStatus.Voided && s.Status != SaleStatus.Failed)
                 .Select(s => s.SaleNumber)
                 .FirstOrDefaultAsync();
+
+        public async Task<(decimal Spent, int MonthlyDiscountsUsed)> GetCustomerSpendAsync(Guid customerId, DateTime fromUtc, DateTime toUtcExclusive)
+        {
+            var businessId = _tenant.RequireBusinessId();
+            var month = await _context.Sales.AsNoTracking().IgnoreQueryFilters() // every branch: the reward is the customer's, not a branch's
+                .Where(s => s.BusinessId == businessId && s.CustomerId == customerId && s.Status == SaleStatus.Completed
+                            && s.CreatedAt >= fromUtc && s.CreatedAt < toUtcExclusive)
+                .GroupBy(_ => 1)
+                .Select(g => new
+                {
+                    Spent = g.Sum(s => s.TotalAmount - s.ReturnedAmount),
+                    Used = g.Count(s => s.CustomerDiscountSource == CustomerDiscountSource.MonthlySpend)
+                })
+                .FirstOrDefaultAsync();
+            return (month?.Spent ?? 0m, month?.Used ?? 0);
+        }
 
         public async Task RecordPendingSaleAsync(Sale sale)
         {

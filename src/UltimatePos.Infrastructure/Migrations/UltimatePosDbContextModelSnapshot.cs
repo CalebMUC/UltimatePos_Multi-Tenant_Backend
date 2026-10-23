@@ -271,6 +271,16 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<decimal?>("MaxDiscountPercent")
                         .HasColumnType("numeric");
 
+                    b.Property<decimal?>("MonthlyDiscountPercent")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("MonthlyDiscountScope")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("MonthlyDiscountThreshold")
+                        .HasColumnType("numeric");
+
                     b.Property<string>("MpesaPaybillNumber")
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
@@ -1859,6 +1869,9 @@ namespace UltimatePos.Infrastructure.Migrations
 
                     b.Property<decimal?>("CustomerDiscountPercent")
                         .HasColumnType("numeric");
+
+                    b.Property<string>("CustomerDiscountSource")
+                        .HasColumnType("text");
 
                     b.Property<Guid?>("CustomerId")
                         .HasColumnType("uuid");

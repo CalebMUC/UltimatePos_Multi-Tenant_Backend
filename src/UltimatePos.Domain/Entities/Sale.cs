@@ -25,6 +25,8 @@ namespace UltimatePos.Domain.Entities
         /// <summary>The customer's standing discount applied to this sale: the rate at the time, and the part of DiscountTotal it made up.</summary>
         public decimal? CustomerDiscountPercent { get; set; }
         public decimal CustomerDiscountAmount { get; set; }
+        /// <summary>Which rule gave CustomerDiscountPercent. Null when there was none.</summary>
+        public CustomerDiscountSource? CustomerDiscountSource { get; set; }
         /// <summary>VAT contained in TotalAmount. Zero when the business is not VAT-registered.</summary>
         public decimal TaxTotal { get; set; }
         /// <summary>What the customer pays: Subtotal - DiscountTotal, VAT included.</summary>

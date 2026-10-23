@@ -48,5 +48,10 @@ namespace UltimatePos.Domain.Enums
         public enum CashSessionStatus { Open, Closed }
         // Cash put into (float top-up, rider handing back change) or taken out of (banking, change given to a rider) the drawer during the day.
         public enum CashMovementType { PayIn, PayOut }
+
+        // Where a sale's automatic customer discount came from: the customer's own standing discount, or the monthly-spend reward.
+        public enum CustomerDiscountSource { Standing, MonthlySpend }
+        // Once a customer's spend in the month reaches the threshold: every later purchase that month, or just the next one.
+        public enum MonthlyDiscountScope { RestOfMonth, NextPurchaseOnly }
     }
 }

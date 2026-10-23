@@ -44,7 +44,8 @@ namespace UltimatePos.Application.Customers
         CustomerBuyingSummaryDto? Summary, IEnumerable<CustomerMonthDto> ByMonth, IEnumerable<CustomerProductDto> TopProducts,
         IEnumerable<CustomerPaymentMixDto> ByPaymentMethod, int DeliveredByRider, int BoughtAtCounter, decimal ReturnedAmount,
         decimal? Balance, decimal? CreditLimit, decimal? DiscountPercent, string? DiscountNote, DateTime? DiscountSetAt,
-        decimal? MaxDiscountPercent, decimal? TypicalDaysBetweenPurchases, IEnumerable<string> Reasons);
+        decimal? MaxDiscountPercent, decimal? TypicalDaysBetweenPurchases, IEnumerable<string> Reasons,
+        UltimatePos.Application.Sales.Dtos.CustomerMonthlySpendDto? ThisMonth = null);
 
     /// <summary>from/to: local days, inclusive. Left out: the last 90 days.</summary>
     public record CustomerInsightsQuery(DateOnly? From = null, DateOnly? To = null, CustomerSegment? Segment = null,
@@ -93,16 +94,19 @@ namespace UltimatePos.Application.Customers
         private readonly ICustomerInsightsRepository _repository;
         private readonly IBusinessRepository _businessRepository;
         private readonly IAccountingRepository _accountingRepository;
+        private readonly Sales.ISalesRepository _salesRepository;
         private readonly ITenantContext _tenant;
         private readonly ICurrentUser _currentUser;
         private readonly ISystemEventRecorder _events;
 
         public CustomerInsightsService(ICustomerInsightsRepository repository, IBusinessRepository businessRepository,
-            IAccountingRepository accountingRepository, ITenantContext tenant, ICurrentUser currentUser, ISystemEventRecorder events)
+            IAccountingRepository accountingRepository, ITenantContext tenant, ICurrentUser currentUser, ISystemEventRecorder events,
+            Sales.ISalesRepository salesRepository)
         {
             _repository = repository;
             _businessRepository = businessRepository;
             _accountingRepository = accountingRepository;
+            _salesRepository = salesRepository;
             _tenant = tenant;
             _currentUser = currentUser;
             _events = events;
@@ -172,7 +176,9 @@ namespace UltimatePos.Application.Customers
             return new CustomerInsightsDto(customer.CustomerId, customer.CustomerName, customer.PhoneNumber, period.From, period.To, summary,
                 byMonth, topProducts, mix, sales.Count(s => s.DeliveryMode == DeliveryMode.Rider), sales.Count(s => s.DeliveryMode == DeliveryMode.Counter),
                 sales.Sum(s => s.ReturnedAmount), balance?.OutstandingBalance, customer.CreditLimit, customer.DiscountPercent, customer.DiscountNote,
-                customer.DiscountSetAt, business?.MaxDiscountPercent, typical, Reasons(summary, typical, summaries.Count));
+                customer.DiscountSetAt, business?.MaxDiscountPercent, typical, Reasons(summary, typical, summaries.Count),
+                business is null ? null : await Sales.MonthlySpendReward.ForCustomerAsync(_salesRepository, business, customerId,
+                    ReportPeriod.TodayAt(ReportPeriod.DefaultUtcOffsetMinutes)));
         }
 
         // ---- The dashboard panel ----

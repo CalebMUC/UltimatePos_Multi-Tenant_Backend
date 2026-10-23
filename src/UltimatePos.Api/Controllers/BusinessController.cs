@@ -50,6 +50,18 @@ public class BusinessController : ControllerBase
         return Ok(ApiResponse<BusinessDto>.Ok(result));
     }
 
+    /// <summary>
+    /// The monthly-spend reward of the business signed in to: { threshold, percent, scope }. Once a registered customer has spent threshold
+    /// in a calendar month, their later purchases that month (scope 0) or only the next one (scope 1) get percent off. Both null = off.
+    /// </summary>
+    [Authorize(Policy = "PERMISSION:Businesses.Update")]
+    [HttpPut("current/monthly-discount")]
+    public async Task<IActionResult> UpdateMonthlyDiscount(UpdateMonthlyDiscountRequestDto request)
+    {
+        var result = await _businessService.UpdateMonthlyDiscountAsync(request);
+        return Ok(ApiResponse<BusinessDto>.Ok(result));
+    }
+
     /// <summary>The signed-in business's licence: where it stands, and its history.</summary>
     [Authorize(Policy = "PERMISSION:Businesses.View")]
     [HttpGet("current/license")]
