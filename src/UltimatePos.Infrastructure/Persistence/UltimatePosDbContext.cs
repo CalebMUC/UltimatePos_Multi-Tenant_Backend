@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using System;
 using System.Collections.Generic;
@@ -47,6 +47,7 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<BusinessProfile> Businesses => Set<BusinessProfile>();
         public DbSet<Customer> Customers => Set<Customer>();
         public DbSet<Category> Categories => Set<Category>();
+        public DbSet<Brand> Brands => Set<Brand>();
         public DbSet<UnitOfMeasure> UnitsOfMeasure => Set<UnitOfMeasure>();
         public DbSet<Product> Products => Set<Product>();
         public DbSet<ProductUnitConversion> ProductUnitConversions => Set<ProductUnitConversion>();
@@ -164,6 +165,12 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<Product>()
                 .HasOne(p => p.Category).WithMany(c => c.Products)
                 .HasForeignKey(p => p.CategoryId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Brand>().Property(b => b.Name).HasMaxLength(100);
+            modelBuilder.Entity<Brand>().HasIndex(b => new { b.BusinessId, b.Name }).IsUnique();
+            modelBuilder.Entity<Product>()
+                .HasOne(p => p.Brand).WithMany()
+                .HasForeignKey(p => p.BrandId).OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<Product>()
                 .HasOne(p => p.BaseUnitOfMeasure).WithMany()
@@ -510,7 +517,7 @@ namespace UltimatePos.Infrastructure.Persistence
 
             // Every business-owned table belongs to the business by FK, so a row can never point at a business that is not there.
             foreach (var entityType in new[] { typeof(Category), typeof(UnitOfMeasure), typeof(Product), typeof(PurchaseOrder), typeof(Formula),
-                         typeof(ProductionRun), typeof(Sale), typeof(Expense), typeof(ExpenseCategory), typeof(StockBatch), typeof(SaleReturn), typeof(ProductBundle) })
+                         typeof(ProductionRun), typeof(Sale), typeof(Expense), typeof(ExpenseCategory), typeof(StockBatch), typeof(SaleReturn), typeof(ProductBundle), typeof(Brand) })
             {
                 modelBuilder.Entity(entityType)
                     .HasOne(typeof(BusinessProfile)).WithMany()
@@ -575,6 +582,7 @@ namespace UltimatePos.Infrastructure.Persistence
         private void ConfigureTenantFilters(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<Category>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<Brand>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<UnitOfMeasure>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<Product>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<Customer>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);

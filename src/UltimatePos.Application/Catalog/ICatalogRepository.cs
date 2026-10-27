@@ -27,6 +27,17 @@ namespace UltimatePos.Application.Catalog
         Task<UnitOfMeasure> SetUnitOfMeasureActiveStatusAsync(Guid unitOfMeasureId, bool isActive, Guid? updatedBy);
         Task<Dictionary<string, Guid>> GetUnitSymbolMapAsync();
 
+        Task<Brand> CreateBrandAsync(Brand brand);
+        /// <summary>Brands by name, with how many products each has. Search matches the name.</summary>
+        Task<IEnumerable<(Brand Brand, int ProductCount)>> GetBrandsAsync(string? search, bool? isActive);
+        Task<Brand?> GetBrandByIdAsync(Guid brandId);
+        /// <summary>Case-insensitive.</summary>
+        Task<bool> BrandNameExistsAsync(string name, Guid? exceptBrandId = null);
+        Task<Brand> UpdateBrandAsync(Guid brandId, string name, Guid? updatedBy);
+        Task<Brand> SetBrandActiveStatusAsync(Guid brandId, bool isActive, Guid? updatedBy);
+        /// <summary>Every brand by name (case-insensitive), for the bulk upload.</summary>
+        Task<Dictionary<string, Brand>> GetBrandNameMapAsync();
+
         Task<int> GetNextSkuNumberAsync(string prefix);
         Task<Product> CreateProductAsync(Product product);
         Task<(IEnumerable<Product> Items, int TotalCount)> GetProductsAsync(int page, int pageSize, ProductQuery query);
@@ -38,7 +49,8 @@ namespace UltimatePos.Application.Catalog
         Task<Product> SetProductActiveStatusAsync(Guid productId, bool isActive, Guid? updatedBy);
         Task<decimal> GetQuantityOnHandAsync(Guid productId);
         Task<HashSet<(string Name, Guid CategoryId)>> GetProductNameCategoryPairsAsync();
-        Task CreateProductsAsync(IEnumerable<Product> products, IEnumerable<ProductPriceTier> priceTiers);
+        /// <summary>Saves the products, their prices and any brands the upload introduced, in one go.</summary>
+        Task CreateProductsAsync(IEnumerable<Product> products, IEnumerable<ProductPriceTier> priceTiers, IEnumerable<Brand> newBrands);
 
         Task<IEnumerable<ProductPriceTier>> GetPriceTiersAsync(Guid productId);
         Task<ProductPriceTier> AddPriceTierAsync(ProductPriceTier tier);

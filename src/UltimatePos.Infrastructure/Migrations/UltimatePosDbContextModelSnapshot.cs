@@ -123,6 +123,43 @@ namespace UltimatePos.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.Brand", b =>
+                {
+                    b.Property<Guid>("BrandId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastUpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("BrandId");
+
+                    b.HasIndex("BusinessId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Brands");
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.BusinessLicense", b =>
                 {
                     b.Property<Guid>("BusinessLicenseId")
@@ -1264,6 +1301,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<Guid>("BaseUnitOfMeasureId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("BrandId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
 
@@ -1328,6 +1368,8 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.HasKey("ProductId");
 
                     b.HasIndex("BaseUnitOfMeasureId");
+
+                    b.HasIndex("BrandId");
 
                     b.HasIndex("CategoryId");
 
@@ -2915,6 +2957,15 @@ namespace UltimatePos.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("UltimatePos.Domain.Entities.Brand", b =>
+                {
+                    b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("UltimatePos.Domain.Entities.BusinessLicense", b =>
                 {
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
@@ -3231,6 +3282,11 @@ namespace UltimatePos.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("UltimatePos.Domain.Entities.Brand", "Brand")
+                        .WithMany()
+                        .HasForeignKey("BrandId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("UltimatePos.Domain.Entities.BusinessProfile", null)
                         .WithMany()
                         .HasForeignKey("BusinessId")
@@ -3244,6 +3300,8 @@ namespace UltimatePos.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("BaseUnitOfMeasure");
+
+                    b.Navigation("Brand");
 
                     b.Navigation("Category");
                 });

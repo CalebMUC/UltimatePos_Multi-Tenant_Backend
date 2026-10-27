@@ -15,6 +15,8 @@ namespace UltimatePos.Domain.Entities
         public string Sku { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public Guid CategoryId { get; set; }
+        /// <summary>The brand it is sold under (Soko, Pembe). Optional.</summary>
+        public Guid? BrandId { get; set; }
         public ItemType ItemType { get; set; }
         public TaxClassification TaxClassification { get; set; }
         public Guid BaseUnitOfMeasureId { get; set; }
@@ -38,6 +40,7 @@ namespace UltimatePos.Domain.Entities
         public Guid? LastUpdatedBy { get; set; }
 
         public Category Category { get; set; } = null!;
+        public Brand? Brand { get; set; }
         public UnitOfMeasure BaseUnitOfMeasure { get; set; } = null!;
         public ICollection<ProductUnitConversion> UnitConversions { get; set; } = new List<ProductUnitConversion>();
         public ICollection<ProductPriceTier> PriceTiers { get; set; } = new List<ProductPriceTier>();

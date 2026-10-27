@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Catalog.Dtos;
 using UltimatePos.Domain.Entities;
@@ -100,6 +100,57 @@ public class CatalogRepository : ICatalogRepository
     public async Task<Dictionary<string, Guid>> GetUnitSymbolMapAsync() =>
         await _context.UnitsOfMeasure.AsNoTracking().ToDictionaryAsync(u => u.Symbol, u => u.UnitOfMeasureId, StringComparer.OrdinalIgnoreCase);
 
+    public async Task<Brand> CreateBrandAsync(Brand brand)
+    {
+        _context.Brands.Add(brand);
+        await _context.SaveChangesAsync();
+        return brand;
+    }
+
+    public async Task<IEnumerable<(Brand Brand, int ProductCount)>> GetBrandsAsync(string? search, bool? isActive)
+    {
+        var query = _context.Brands.AsNoTracking().AsQueryable();
+        if (isActive.HasValue)
+            query = query.Where(b => b.IsActive == isActive.Value);
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(b => EF.Functions.ILike(b.Name, $"%{search.Trim()}%"));
+        var rows = await query.OrderBy(b => b.Name)
+            .Select(b => new { Brand = b, Count = _context.Products.Count(p => p.BrandId == b.BrandId) })
+            .ToListAsync();
+        return rows.Select(r => (r.Brand, r.Count));
+    }
+
+    public async Task<Brand?> GetBrandByIdAsync(Guid brandId) =>
+        await _context.Brands.AsNoTracking().FirstOrDefaultAsync(b => b.BrandId == brandId);
+
+    public async Task<bool> BrandNameExistsAsync(string name, Guid? exceptBrandId = null) =>
+        await _context.Brands.AnyAsync(b => b.Name.ToLower() == name.ToLower() && (exceptBrandId == null || b.BrandId != exceptBrandId));
+
+    public async Task<Brand> UpdateBrandAsync(Guid brandId, string name, Guid? updatedBy)
+    {
+        var brand = await _context.Brands.FirstOrDefaultAsync(b => b.BrandId == brandId)
+            ?? throw new NotFoundException($"Brand '{brandId}' not found.");
+        brand.Name = name;
+        brand.LastUpdatedBy = updatedBy;
+        brand.LastUpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return brand;
+    }
+
+    public async Task<Brand> SetBrandActiveStatusAsync(Guid brandId, bool isActive, Guid? updatedBy)
+    {
+        var brand = await _context.Brands.FirstOrDefaultAsync(b => b.BrandId == brandId)
+            ?? throw new NotFoundException($"Brand '{brandId}' not found.");
+        brand.IsActive = isActive;
+        brand.LastUpdatedBy = updatedBy;
+        brand.LastUpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return brand;
+    }
+
+    public async Task<Dictionary<string, Brand>> GetBrandNameMapAsync() =>
+        await _context.Brands.AsNoTracking().ToDictionaryAsync(b => b.Name, StringComparer.OrdinalIgnoreCase);
+
     public async Task<int> GetNextSkuNumberAsync(string prefix)
     {
         return await _context.NextSequenceNumberAsync(prefix);
@@ -117,10 +168,13 @@ public class CatalogRepository : ICatalogRepository
         var query = _context.Products.AsNoTracking()
             .Include(p => p.Category)
             .Include(p => p.BaseUnitOfMeasure)
+            .Include(p => p.Brand)
             .AsQueryable();
 
         if (filter.CategoryId.HasValue)
             query = query.Where(p => p.CategoryId == filter.CategoryId.Value);
+        if (filter.BrandId.HasValue)
+            query = query.Where(p => p.BrandId == filter.BrandId.Value);
         if (filter.ItemType.HasValue)
             query = query.Where(p => p.ItemType == filter.ItemType.Value);
         if (filter.IsActive.HasValue)
@@ -134,7 +188,8 @@ public class CatalogRepository : ICatalogRepository
             var pattern = $"%{filter.Search.Trim()}%";
             query = query.Where(p => EF.Functions.ILike(p.Name, pattern) || EF.Functions.ILike(p.Sku, pattern)
                                      || (p.Barcode != null && EF.Functions.ILike(p.Barcode, pattern))
-                                     || (p.GenericName != null && EF.Functions.ILike(p.GenericName, pattern)));
+                                     || (p.GenericName != null && EF.Functions.ILike(p.GenericName, pattern))
+                                     || (p.Brand != null && EF.Functions.ILike(p.Brand.Name, pattern)));
         }
 
         var descending = string.Equals(filter.SortDirection, "desc", StringComparison.OrdinalIgnoreCase);
@@ -157,6 +212,7 @@ public class CatalogRepository : ICatalogRepository
         await _context.Products.AsNoTracking()
             .Include(p => p.Category)
             .Include(p => p.BaseUnitOfMeasure)
+            .Include(p => p.Brand)
             .Include(p => p.UnitConversions).ThenInclude(c => c.PackUnitOfMeasure)
             .Include(p => p.UnitConversions).ThenInclude(c => c.ContainerProduct).ThenInclude(cp => cp!.BaseUnitOfMeasure)
             .Include(p => p.PriceTiers)
@@ -216,6 +272,10 @@ public class CatalogRepository : ICatalogRepository
         product.Strength = request.Strength;
         product.DosageForm = request.DosageForm;
         product.Manufacturer = request.Manufacturer;
+        if (request.RemoveBrand)
+            product.BrandId = null;
+        else if (request.BrandId.HasValue)
+            product.BrandId = request.BrandId;
         product.LastUpdatedBy = updatedBy;
         product.LastUpdatedAt = DateTime.UtcNow;
 
@@ -229,8 +289,9 @@ public class CatalogRepository : ICatalogRepository
         return pairs.Select(p => (p.Name, p.CategoryId)).ToHashSet();
     }
 
-    public async Task CreateProductsAsync(IEnumerable<Product> products, IEnumerable<ProductPriceTier> priceTiers)
+    public async Task CreateProductsAsync(IEnumerable<Product> products, IEnumerable<ProductPriceTier> priceTiers, IEnumerable<Brand> newBrands)
     {
+        _context.Brands.AddRange(newBrands);
         _context.Products.AddRange(products);
         _context.ProductPriceTiers.AddRange(priceTiers);
         await _context.SaveChangesAsync();

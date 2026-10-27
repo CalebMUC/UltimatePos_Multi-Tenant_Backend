@@ -6,7 +6,7 @@ namespace UltimatePos.Infrastructure.Import;
 public class ClosedXmlProductImportParser : IProductImportParser
 {
     public IEnumerable<(int RowNumber, string Name, string CategoryCode, string ItemType, string TaxClassification,
-        string UnitSymbol, decimal? ReorderLevel, decimal? WholesalePrice, decimal? RetailPrice, string? Description)> Parse(Stream fileStream)
+        string UnitSymbol, decimal? ReorderLevel, decimal? WholesalePrice, decimal? RetailPrice, string? Description, string? Brand)> Parse(Stream fileStream)
     {
         using var workbook = new XLWorkbook(fileStream);
         var worksheet = workbook.Worksheet(1);
@@ -25,8 +25,10 @@ public class ClosedXmlProductImportParser : IProductImportParser
             var retailPrice = ParseDecimal(row.Cell(8));
             var descriptionRaw = row.Cell(9).GetString().Trim();
             var description = string.IsNullOrWhiteSpace(descriptionRaw) ? null : descriptionRaw;
+            var brandRaw = row.Cell(10).GetString().Trim();
+            var brand = string.IsNullOrWhiteSpace(brandRaw) ? null : brandRaw;
 
-            yield return (rowNumber, name, categoryCode, itemType, taxClassification, unitSymbol, reorderLevel, wholesalePrice, retailPrice,description);
+            yield return (rowNumber, name, categoryCode, itemType, taxClassification, unitSymbol, reorderLevel, wholesalePrice, retailPrice, description, brand);
         }
     }
 
@@ -36,7 +38,8 @@ public class ClosedXmlProductImportParser : IProductImportParser
     {
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add("Products");
-        string[] headers = { "Name", "Category Code", "Item Type", "Tax Classification", "Unit Symbol", "Reorder Level", "Wholesale Price", "Retail Price" };
+        string[] headers = { "Name", "Category Code", "Item Type", "Tax Classification", "Unit Symbol", "Reorder Level", "Wholesale Price", "Retail Price",
+            "Description", "Brand" };
         for (var i = 0; i < headers.Length; i++)
             sheet.Cell(1, i + 1).Value = headers[i];
 
@@ -48,6 +51,14 @@ public class ClosedXmlProductImportParser : IProductImportParser
         sheet.Cell(2, 6).Value = 20;
         sheet.Cell(2, 7).Value = 2400;
         sheet.Cell(2, 8).Value = 2650;
+        sheet.Cell(3, 1).Value = "Soko Maize Meal 2kg";
+        sheet.Cell(3, 2).Value = "FLR";
+        sheet.Cell(3, 3).Value = "FinishedGood";
+        sheet.Cell(3, 4).Value = "Standard";
+        sheet.Cell(3, 5).Value = "pcs";
+        sheet.Cell(3, 6).Value = 10;
+        sheet.Cell(3, 8).Value = 190;
+        sheet.Cell(3, 10).Value = "Soko";
         sheet.Columns().AdjustToContents();
 
         using var stream = new MemoryStream();

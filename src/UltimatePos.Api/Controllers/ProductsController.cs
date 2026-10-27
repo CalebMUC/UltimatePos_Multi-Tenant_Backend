@@ -17,16 +17,17 @@ public class ProductsController : ControllerBase
 
     [Authorize(Policy = "PERMISSION:Products.View")]
     [HttpGet("get-products")]
-    // search matches name, SKU, barcode and generic name. sortBy: name (default), sku, createdAt, category; sortDirection: asc | desc.
+    // search matches name, SKU, barcode, generic name and brand. sortBy: name (default), sku, createdAt, category; sortDirection: asc | desc.
     public async Task<IActionResult> GetProducts(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] Guid? categoryId = null, [FromQuery] ItemType? itemType = null,
         [FromQuery] string? search = null, [FromQuery] bool? isActive = null,
         [FromQuery] bool? isBatchTracked = null, [FromQuery] bool? requiresPrescription = null,
-        [FromQuery] string? sortBy = null, [FromQuery] string? sortDirection = null)
+        [FromQuery] string? sortBy = null, [FromQuery] string? sortDirection = null,
+        [FromQuery] Guid? brandId = null)
     {
         var paged = await _catalogService.GetProductsAsync(page, pageSize,
-            new ProductQuery(categoryId, itemType, search, isActive, isBatchTracked, requiresPrescription, sortBy, sortDirection));
+            new ProductQuery(categoryId, itemType, search, isActive, isBatchTracked, requiresPrescription, sortBy, sortDirection, brandId));
         var meta = new PagingMeta(paged.Page, paged.PageSize, paged.TotalCount, paged.TotalPages);
         return Ok(ApiResponse<IEnumerable<ProductDto>>.Ok(paged.Items, meta));
     }
