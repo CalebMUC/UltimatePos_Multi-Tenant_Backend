@@ -1,4 +1,4 @@
-namespace UltimatePos.Application.Identity
+﻿namespace UltimatePos.Application.Identity
 {
     /// <summary>
     /// Every permission the API checks. Keep in step with the controller [Authorize] attributes; DbSeeder and the
@@ -47,6 +47,7 @@ namespace UltimatePos.Application.Identity
             ("Products.Deactivate", "Products"), ("Products.ManagePricing", "Products"), ("Products.BulkImport", "Products"),
             ("Products.ManageUnitConversions", "Products"),
             ("Products.ManageBundles", "Products"),   // set up, re-price and retire bundles ("20L bottle + water", packs)
+            ("Products.ManageBrands", "Products"),    // add, rename and retire brands (Soko, Pembe); viewing them needs Products.View
 
             ("Suppliers.Register", "Suppliers"), ("Suppliers.View", "Suppliers"),
             ("Suppliers.Update", "Suppliers"), ("Suppliers.Deactivate", "Suppliers"),

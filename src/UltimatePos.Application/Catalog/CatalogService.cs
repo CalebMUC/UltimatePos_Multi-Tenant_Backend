@@ -1,4 +1,4 @@
-using UltimatePos.Application.Catalog.Dtos;
+﻿using UltimatePos.Application.Catalog.Dtos;
 using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Domain.Entities;
@@ -180,6 +180,68 @@ public class CatalogService
     public async Task<IEnumerable<UnitOfMeasureDto>> GetUnitsOfMeasureAsync() =>
         (await _repository.GetUnitsOfMeasureAsync()).Select(ToDto);
 
+    // ---- Brands ----
+
+    public async Task<BrandDto> CreateBrandAsync(CreateBrandRequestDto request)
+    {
+        var name = await ValidateBrandNameAsync(request.Name, null);
+        var created = await _repository.CreateBrandAsync(new Brand { Name = name, CreatedBy = _currentUser.UserId });
+        return ToDto(created, 0);
+    }
+
+    public async Task<IEnumerable<BrandDto>> GetBrandsAsync(string? search, bool? isActive)
+    {
+        if (search is { Length: > 100 })
+            throw new ValidationException("search", "Search text cannot exceed 100 characters.");
+        return (await _repository.GetBrandsAsync(search, isActive)).Select(b => ToDto(b.Brand, b.ProductCount));
+    }
+
+    /// <summary>Renaming a brand renames it on every product that carries it; product names themselves are not touched.</summary>
+    public async Task<BrandDto> UpdateBrandAsync(Guid brandId, UpdateBrandRequestDto request)
+    {
+        if (await _repository.GetBrandByIdAsync(brandId) is null)
+            throw new NotFoundException($"Brand '{brandId}' not found.");
+        var name = await ValidateBrandNameAsync(request.Name, brandId);
+        await _repository.UpdateBrandAsync(brandId, name, _currentUser.UserId);
+        return await GetBrandDtoAsync(brandId);
+    }
+
+    /// <summary>A deactivated brand stays on the products that have it, but cannot be given to another product.</summary>
+    public async Task<BrandDto> SetBrandActiveStatusAsync(Guid brandId, bool isActive)
+    {
+        await _repository.SetBrandActiveStatusAsync(brandId, isActive, _currentUser.UserId);
+        return await GetBrandDtoAsync(brandId);
+    }
+
+    private async Task<BrandDto> GetBrandDtoAsync(Guid brandId)
+    {
+        var (brand, count) = (await _repository.GetBrandsAsync(null, null)).First(b => b.Brand.BrandId == brandId);
+        return ToDto(brand, count);
+    }
+
+    private async Task<string> ValidateBrandNameAsync(string? raw, Guid? brandId)
+    {
+        var name = Clean(raw);
+        if (name is null)
+            throw new ValidationException("name", "Name is required.");
+        if (name.Length > 100)
+            throw new ValidationException("name", "A brand name is at most 100 characters.");
+        if (await _repository.BrandNameExistsAsync(name, brandId))
+            throw new ValidationException("name", $"Brand '{name}' already exists.");
+        return name;
+    }
+
+    /// <summary>A brand being given to a product must be this business's, and active. Keeping the brand it already has is always fine.</summary>
+    private async Task ValidateProductBrandAsync(Guid? brandId, Guid? currentBrandId = null)
+    {
+        if (brandId is not { } id || id == currentBrandId)
+            return;
+        var brand = await _repository.GetBrandByIdAsync(id)
+            ?? throw new ValidationException("brandId", $"Brand '{id}' not found.");
+        if (!brand.IsActive)
+            throw new ValidationException("brandId", $"Brand '{brand.Name}' is deactivated. Activate it first, or choose another.");
+    }
+
     // ---- Products ----
 
     public async Task<ProductDto> CreateProductAsync(CreateProductRequestDto request)
@@ -187,6 +249,9 @@ public class CatalogService
         var barcode = await ValidateProductAsync(request.Name, request.BaseUnitOfMeasureId, request.ReorderLevel, request.Barcode, null);
         var category = await _repository.GetCategoryByIdAsync(request.CategoryId)
             ?? throw new ValidationException("categoryId", $"Category '{request.CategoryId}' not found.");
+        await ValidateProductBrandAsync(request.BrandId);
+        var packs = (request.Packs ?? Enumerable.Empty<NewProductPackDto>()).ToList();
+        await ValidateNewProductPricingAsync(request, packs);
 
         var prefix = $"{category.Code}-{ItemTypeCode(request.ItemType)}";
         var number = await _repository.GetNextSkuNumberAsync(prefix);
@@ -209,11 +274,76 @@ public class CatalogService
             Strength = Clean(request.Strength),
             DosageForm = Clean(request.DosageForm),
             Manufacturer = Clean(request.Manufacturer),
+            BrandId = request.BrandId,
             CreatedBy = _currentUser.UserId
         };
 
+        // Prices and packs ride on the product, so the one save that creates it creates them too.
+        var now = DateTime.UtcNow;
+        void AddPrice(Guid unitId, PriceType type, decimal? price)
+        {
+            if (price is { } p)
+                product.PriceTiers.Add(new ProductPriceTier { UnitOfMeasureId = unitId, PriceType = type, Price = p, EffectiveFrom = now, CreatedBy = _currentUser.UserId });
+        }
+        AddPrice(request.BaseUnitOfMeasureId, PriceType.Retail, request.RetailPrice);
+        AddPrice(request.BaseUnitOfMeasureId, PriceType.Wholesale, request.WholesalePrice);
+        foreach (var pack in packs)
+        {
+            product.UnitConversions.Add(new ProductUnitConversion
+            {
+                PackUnitOfMeasureId = pack.PackUnitOfMeasureId,
+                ConversionFactor = pack.ConversionFactor,
+                CreatedBy = _currentUser.UserId
+            });
+            AddPrice(pack.PackUnitOfMeasureId, PriceType.Retail, pack.RetailPrice);
+            AddPrice(pack.PackUnitOfMeasureId, PriceType.Wholesale, pack.WholesalePrice);
+        }
+
         var created = await _repository.CreateProductAsync(product);
         return ToDto((await _repository.GetProductByIdAsync(created.ProductId))!);
+    }
+
+    /// <summary>
+    /// The prices and packs a new product is created with: the same rules as adding them afterwards, and the same permissions, so creating
+    /// a product is no way round Products.ManagePricing or Products.ManageUnitConversions. Checked before anything is saved.
+    /// </summary>
+    private async Task ValidateNewProductPricingAsync(CreateProductRequestDto request, List<NewProductPackDto> packs)
+    {
+        var hasPrices = request.RetailPrice is not null || request.WholesalePrice is not null
+                        || packs.Any(p => p.RetailPrice is not null || p.WholesalePrice is not null);
+        if (hasPrices && !_currentUser.HasPermission("Products.ManagePricing"))
+            throw new ForbiddenException("Setting prices needs the Products.ManagePricing permission. Create the product without prices, or ask a manager.");
+        if (packs.Count > 0 && !_currentUser.HasPermission("Products.ManageUnitConversions"))
+            throw new ForbiddenException("Adding packs needs the Products.ManageUnitConversions permission. Create the product without packs, or ask a manager.");
+
+        var errors = new Dictionary<string, string[]>();
+        void CheckPrice(string key, decimal? price)
+        {
+            if (price is <= 0)
+                errors[key] = new[] { "Price must be greater than zero." };
+        }
+        CheckPrice("retailPrice", request.RetailPrice);
+        CheckPrice("wholesalePrice", request.WholesalePrice);
+
+        var seen = new HashSet<Guid>();
+        for (var i = 0; i < packs.Count; i++)
+        {
+            var pack = packs[i];
+            var key = $"packs[{i}]";
+            if (pack.ConversionFactor <= 0)
+                errors[$"{key}.conversionFactor"] = new[] { "How many base units the pack holds must be greater than zero." };
+            if (pack.PackUnitOfMeasureId == request.BaseUnitOfMeasureId)
+                errors[$"{key}.packUnitOfMeasureId"] = new[] { "The base unit is not a pack: its price is retailPrice / wholesalePrice." };
+            else if (!seen.Add(pack.PackUnitOfMeasureId))
+                errors[$"{key}.packUnitOfMeasureId"] = new[] { "This pack unit is listed twice." };
+            else if (!await _repository.UnitOfMeasureExistsAsync(pack.PackUnitOfMeasureId))
+                errors[$"{key}.packUnitOfMeasureId"] = new[] { "Unit of measure not found." };
+            CheckPrice($"{key}.retailPrice", pack.RetailPrice);
+            CheckPrice($"{key}.wholesalePrice", pack.WholesalePrice);
+        }
+
+        if (errors.Count > 0)
+            throw new ValidationException(errors);
     }
 
     /// <summary>Checks shared by create and update. Returns the cleaned barcode (null when none).</summary>
@@ -295,6 +425,9 @@ public class CatalogService
         var barcode = await ValidateProductAsync(request.Name, request.BaseUnitOfMeasureId, request.ReorderLevel, request.Barcode, productId);
         if (await _repository.GetCategoryByIdAsync(request.CategoryId) is null)
             throw new ValidationException("categoryId", $"Category '{request.CategoryId}' not found.");
+        if (request.RemoveBrand && request.BrandId.HasValue)
+            throw new ValidationException("brandId", "Send either a brandId or removeBrand, not both.");
+        await ValidateProductBrandAsync(request.BrandId, existing.BrandId);
 
         // Batch tracking can only change on an empty shelf: stock already held is either in batches or not, and switching
         // mid-stream would leave the batch totals and the product total disagreeing.
@@ -362,6 +495,9 @@ public class CatalogService
 
         var categoryCodes = await _repository.GetCategoryCodeMapAsync();
         var unitSymbols = await _repository.GetUnitSymbolMapAsync();
+        var brands = await _repository.GetBrandNameMapAsync();
+        // A brand named in the file that does not exist yet is created with the products, once however many rows name it.
+        var newBrands = new Dictionary<string, Brand>(StringComparer.OrdinalIgnoreCase);
         var existingPairs = (await _repository.GetProductNameCategoryPairsAsync())
             .Select(p => (Name: p.Name.Trim().ToUpperInvariant(), p.CategoryId))
             .ToHashSet();
@@ -369,9 +505,9 @@ public class CatalogService
         var batchPairs = new HashSet<(string Name, Guid CategoryId)>();
         var results = new Dictionary<int, ProductImportRowResult>();
         var validRows = new List<(int RowNumber, string Name, Guid CategoryId, string CategoryCode, ItemType ItemType,
-            TaxClassification TaxClassification, Guid UnitId, decimal ReorderLevel, decimal? WholesalePrice, decimal? RetailPrice, string? Description)>();
+            TaxClassification TaxClassification, Guid UnitId, decimal ReorderLevel, decimal? WholesalePrice, decimal? RetailPrice, string? Description, string? BrandName)>();
 
-        foreach (var (rowNumber, rawName, categoryCode, itemTypeRaw, taxRaw, unitSymbol, reorderLevel, wholesalePrice, retailPrice, description) in rows)
+        foreach (var (rowNumber, rawName, categoryCode, itemTypeRaw, taxRaw, unitSymbol, reorderLevel, wholesalePrice, retailPrice, description, brandRaw) in rows)
         {
             var name = rawName ?? string.Empty;
             string? error = null;
@@ -380,6 +516,8 @@ public class CatalogService
             var itemTypeParsed = Enum.TryParse<ItemType>(itemTypeRaw, ignoreCase: true, out var itemType);
             var taxParsed = Enum.TryParse<TaxClassification>(taxRaw, ignoreCase: true, out var taxClassification);
             var nameKey = name.Trim().ToUpperInvariant();
+            var brandName = Clean(brandRaw);
+            var existingBrand = brandName is null ? null : brands.GetValueOrDefault(brandName);
 
             if (string.IsNullOrWhiteSpace(name))
                 error = "Name is required.";
@@ -395,6 +533,10 @@ public class CatalogService
                 error = "Reorder level is required and must be zero or greater.";
             else if (existingPairs.Contains((nameKey, categoryId)) || batchPairs.Contains((nameKey, categoryId)))
                 error = $"Product '{name}' already exists in this category.";
+            else if (brandName is { Length: > 100 })
+                error = "A brand name is at most 100 characters.";
+            else if (existingBrand is { IsActive: false })
+                error = $"Brand '{existingBrand.Name}' is deactivated. Activate it first, or leave the brand empty.";
 
             var isValid = error is null;
             results[rowNumber] = new ProductImportRowResult(rowNumber, name, isValid, error, null);
@@ -402,7 +544,7 @@ public class CatalogService
             if (isValid)
             {
                 batchPairs.Add((nameKey, categoryId));
-                validRows.Add((rowNumber, name, categoryId, categoryCode!, itemType, taxClassification, unitId, reorderLevel!.Value, wholesalePrice, retailPrice, description));
+                validRows.Add((rowNumber, name, categoryId, categoryCode!, itemType, taxClassification, unitId, reorderLevel!.Value, wholesalePrice, retailPrice, description, brandName));
             }
         }
 
@@ -420,6 +562,18 @@ public class CatalogService
                 var number = await _repository.GetNextSkuNumberAsync(prefix);
                 var sku = $"{prefix}-{number:D6}";
                 var productId = Guid.NewGuid();
+                Guid? brandId = null;
+                if (r.BrandName is { } brandName)
+                {
+                    if (brands.TryGetValue(brandName, out var known))
+                        brandId = known.BrandId;
+                    else
+                    {
+                        if (!newBrands.TryGetValue(brandName, out var added))
+                            newBrands[brandName] = added = new Brand { BrandId = Guid.NewGuid(), Name = brandName, CreatedBy = _currentUser.UserId };
+                        brandId = added.BrandId;
+                    }
+                }
 
                 products.Add(new Product
                 {
@@ -432,6 +586,7 @@ public class CatalogService
                     TaxClassification = r.TaxClassification,
                     BaseUnitOfMeasureId = r.UnitId,
                     ReorderLevel = r.ReorderLevel,
+                    BrandId = brandId,
                     CreatedBy = _currentUser.UserId
                 });
 
@@ -443,7 +598,7 @@ public class CatalogService
                 results[r.RowNumber] = results[r.RowNumber] with { Sku = sku };
             }
 
-            await _repository.CreateProductsAsync(products, priceTiers);
+            await _repository.CreateProductsAsync(products, priceTiers, newBrands.Values);
             committed = true;
         }
 
@@ -525,10 +680,12 @@ public class CatalogService
 
     private static UnitOfMeasureDto ToDto(UnitOfMeasure u) => new(u.UnitOfMeasureId, u.Name, u.Symbol, u.IsActive);
 
+    private static BrandDto ToDto(Brand b, int productCount) => new(b.BrandId, b.Name, b.IsActive, productCount);
+
     private static ProductDto ToDto(Product p) =>
         new(p.ProductId, p.Sku, p.Name, p.Description, p.CategoryId, p.ItemType, p.TaxClassification, p.BaseUnitOfMeasureId, p.ReorderLevel, p.IsActive,
             p.Barcode, p.IsBatchTracked, p.RequiresPrescription, p.GenericName, p.Strength, p.DosageForm, p.Manufacturer,
-            p.Category?.Name, p.BaseUnitOfMeasure?.Symbol);
+            p.Category?.Name, p.BaseUnitOfMeasure?.Symbol, p.BrandId, p.Brand?.Name);
 
     private static ProductPriceTierDto ToDto(ProductPriceTier t) =>
         new(t.ProductPriceTierId, t.UnitOfMeasureId, t.PriceType, t.Price, t.EffectiveFrom);
@@ -542,5 +699,5 @@ public class CatalogService
         new(p.ProductId, p.Sku, p.Name, p.Description, p.CategoryId, p.ItemType, p.TaxClassification, p.BaseUnitOfMeasureId, p.ReorderLevel, p.IsActive,
             p.UnitConversions.Select(ToDto), p.PriceTiers.Select(ToDto),
             p.Barcode, p.IsBatchTracked, p.RequiresPrescription, p.GenericName, p.Strength, p.DosageForm, p.Manufacturer,
-            p.Category?.Name, p.BaseUnitOfMeasure?.Symbol);
+            p.Category?.Name, p.BaseUnitOfMeasure?.Symbol, p.BrandId, p.Brand?.Name);
 }
