@@ -12,6 +12,19 @@ services:
   db:
     image: postgres:16
     restart: unless-stopped
+    # Sized for a 4 GB server shared with the API and the frontend. On 8 GB, double shared_buffers and effective_cache_size.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1536MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+    shm_size: 256mb
+    mem_limit: 1536m
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
@@ -49,6 +62,8 @@ services:
     environment:
       # Caddy is the only way in, so trust its X-Forwarded-For / X-Forwarded-Proto.
       ReverseProxy__Enabled: "true"
+    # .NET sizes its heap from this limit; it keeps the database's memory safe from the API.
+    mem_limit: 1g
     depends_on:
       db:
         condition: service_healthy
@@ -65,11 +80,13 @@ services:
         NEXT_PUBLIC_DEFAULT_UTC_OFFSET_MINUTES: "180"
         NEXT_PUBLIC_SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
         NEXT_PUBLIC_SUPPORT_PHONE: ${SUPPORT_PHONE:-}
+    mem_limit: 512m
     restart: unless-stopped
 
   caddy:
     image: caddy:2
     restart: unless-stopped
+    mem_limit: 256m
     ports:
       # Change only to test on a machine where 80/443 are taken (the certificate needs 80 and 443).
       - "${CADDY_HTTP_PORT:-80}:80"

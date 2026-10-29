@@ -36,6 +36,8 @@ Server layout:
 ## 1. Before you start
 
 - A server: Ubuntu 24.04, 4 vCPU / 8 GB RAM / 80 GB disk (e.g. Hetzner CPX31), with backups turned on in the provider's panel.
+  2 vCPU / 4 GB works for the first few businesses: `docker-compose.prod.yml` is sized for it, and the 4 GB swap file in step 2 is
+  then required (building the images on the server needs more memory than the running stack).
 - A domain whose DNS you control. Create an `A` record, e.g. `pos` -> the server's IP. With Cloudflare, leave it **DNS only**
   (grey cloud) so Caddy can get the certificate.
 - Read access to both GitHub repositories from the server (a deploy key per repository, or a fine-grained token).
@@ -61,6 +63,15 @@ ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw --force enable
 
 curl -fsSL https://get.docker.com | sh
 usermod -aG docker deploy
+
+# Swap: required on a 4 GB server (the .NET and Next.js builds), harmless on a bigger one.
+fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+echo 'vm.swappiness=10' > /etc/sysctl.d/99-swap.conf && sysctl --system
+
+# Keep Docker's logs from filling the disk.
+echo '{ "log-driver": "local", "log-opts": { "max-size": "20m", "max-file": "5" } }' > /etc/docker/daemon.json
+systemctl restart docker
 ```
 
 Log out, and from now on connect as `ssh deploy@SERVER_IP`.
@@ -85,7 +96,7 @@ Copy the finished `.env` into your password manager.
 
 ```bash
 cd /opt/ultimatepos/backend/deploy
-./pos.sh build                 # about 5 minutes the first time
+./pos.sh build api && ./pos.sh build web   # one at a time (memory); about 5-10 minutes the first time
 ./pos.sh up -d db              # the database first
 ./pos.sh run --rm migrate      # creates every table and the permission list
 ./pos.sh up -d                 # api, web, caddy

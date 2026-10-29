@@ -16,7 +16,9 @@ git -C "$root/backend" pull --ff-only
 git -C "${FRONTEND_DIR:-$root/frontend}" pull --ff-only
 
 echo "== 3/5 Building the images"
-"$here/pos.sh" build
+# One at a time: building both at once can run a 4 GB server out of memory.
+"$here/pos.sh" build api
+"$here/pos.sh" build web
 
 echo "== 4/5 Updating the database"
 "$here/pos.sh" run --rm migrate

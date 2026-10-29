@@ -8,3 +8,8 @@ obj/
 api-dev.log
 api-dev.err.log
 api-dev.log.err
+# Local data and keys: never commit
+*.dump
+*.xlsx
+*.stackdump
+CMAKEY.txt
