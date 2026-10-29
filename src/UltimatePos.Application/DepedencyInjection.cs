@@ -60,6 +60,11 @@ namespace UltimatePos.Application
             services.AddScoped<AlertSweepService>();
             services.AddScoped<NotificationService>();
 
+            // KRA eTIMS: device setup and review, and the sweep/send loop the background worker drives.
+            services.AddScoped<Etims.EtimsSyncService>();
+            services.AddScoped<Etims.EtimsService>();
+            services.AddScoped<Etims.PlatformEtimsService>();
+
             // Super users: onboarding, licences, suspension, performance, support.
             services.AddScoped<Platform.PlatformService>();
 

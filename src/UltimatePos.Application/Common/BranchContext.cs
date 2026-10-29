@@ -20,8 +20,10 @@ namespace UltimatePos.Application.Common
         public Guid RequireActiveBranchId() =>
             ActiveBranchId ?? throw new ForbiddenException("No branch is selected. Sign in to a branch, or switch to one, first.");
 
-        // System code (no signed-in user: webhooks, workers) acts for the whole business, like a branch-wide manager.
-        public bool Unrestricted => _narrowed.Count == 0 && (_currentUser.UserId is null || _currentUser.HasPermission(AccessAllPermission));
+        // System code (no signed-in user: webhooks, workers) acts for the whole business, like a branch-wide manager. So does a super
+        // user (signed in without a business), who reaches a business's data only through platform code that puts it in scope.
+        public bool Unrestricted => _narrowed.Count == 0
+            && (_currentUser.UserId is null || _currentUser.BusinessId is null || _currentUser.HasPermission(AccessAllPermission));
 
         public IReadOnlyList<Guid> VisibleBranchIds => _narrowed.Count > 0 ? new[] { _narrowed.Peek() } : _currentUser.BranchIds;
 

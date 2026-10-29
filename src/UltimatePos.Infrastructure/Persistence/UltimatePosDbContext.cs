@@ -102,6 +102,13 @@ namespace UltimatePos.Infrastructure.Persistence
         public DbSet<AlertState> AlertStates => Set<AlertState>();
         public DbSet<BusinessLicense> BusinessLicenses => Set<BusinessLicense>();
 
+        public DbSet<EtimsDevice> EtimsDevices => Set<EtimsDevice>();
+        public DbSet<EtimsSubmission> EtimsSubmissions => Set<EtimsSubmission>();
+        public DbSet<EtimsProductProfile> EtimsProductProfiles => Set<EtimsProductProfile>();
+        public DbSet<EtimsCategoryProfile> EtimsCategoryProfiles => Set<EtimsCategoryProfile>();
+        public DbSet<EtimsReferenceData> EtimsReferenceData => Set<EtimsReferenceData>();
+        public DbSet<EtimsStockBalance> EtimsStockBalances => Set<EtimsStockBalance>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<UserRole>().HasKey(ur => new { ur.UserId, ur.RoleId });
@@ -569,6 +576,68 @@ namespace UltimatePos.Infrastructure.Persistence
                 .HasOne<BusinessProfile>().WithMany()
                 .HasForeignKey(l => l.BusinessId).OnDelete(DeleteBehavior.Restrict);
 
+            // ---- KRA eTIMS ----
+            modelBuilder.Entity<EtimsDevice>().HasKey(d => d.EtimsDeviceId);
+            modelBuilder.Entity<EtimsDevice>().HasIndex(d => d.BranchId).IsUnique(); // one device per branch
+            modelBuilder.Entity<EtimsDevice>().Property(d => d.Tin).HasMaxLength(11);
+            modelBuilder.Entity<EtimsDevice>().Property(d => d.BhfId).HasMaxLength(2);
+            modelBuilder.Entity<EtimsDevice>().Property(d => d.DeviceSerialNumber).HasMaxLength(100);
+            modelBuilder.Entity<EtimsDevice>().Property(d => d.InitializationResponse).HasColumnType("jsonb");
+            modelBuilder.Entity<EtimsDevice>().Property(d => d.Version).IsRowVersion();
+            modelBuilder.Entity<EtimsDevice>().HasOne(d => d.Branch).WithMany().HasForeignKey(d => d.BranchId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<EtimsSubmission>().HasKey(s => s.EtimsSubmissionId);
+            modelBuilder.Entity<EtimsSubmission>().Property(s => s.DocumentType).HasConversion<string>().HasMaxLength(20);
+            modelBuilder.Entity<EtimsSubmission>().Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
+            modelBuilder.Entity<EtimsSubmission>().Property(s => s.SourceType).HasMaxLength(40);
+            modelBuilder.Entity<EtimsSubmission>().Property(s => s.SourceKey).HasMaxLength(120);
+            modelBuilder.Entity<EtimsSubmission>().Property(s => s.Endpoint).HasMaxLength(60);
+            modelBuilder.Entity<EtimsSubmission>().Property(s => s.RequestJson).HasColumnType("jsonb");
+            modelBuilder.Entity<EtimsSubmission>().Property(s => s.ResultCode).HasMaxLength(10);
+            modelBuilder.Entity<EtimsSubmission>().HasIndex(s => new { s.EtimsDeviceId, s.SourceKey }).IsUnique();
+            modelBuilder.Entity<EtimsSubmission>().HasIndex(s => new { s.EtimsDeviceId, s.NextAttemptAt })
+                .HasFilter("\"Status\" IN ('Pending', 'Failed')").HasDatabaseName("IX_EtimsSubmissions_Due");
+            modelBuilder.Entity<EtimsSubmission>().HasIndex(s => new { s.SourceId, s.DocumentType });
+            modelBuilder.Entity<EtimsSubmission>().HasIndex(s => new { s.BusinessId, s.CreatedAt });
+            modelBuilder.Entity<EtimsSubmission>().HasOne<EtimsDevice>().WithMany()
+                .HasForeignKey(s => s.EtimsDeviceId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<EtimsProductProfile>().HasKey(p => p.ProductId);
+            modelBuilder.Entity<EtimsProductProfile>().HasIndex(p => new { p.BusinessId, p.ItemCode }).IsUnique().HasFilter("\"ItemCode\" IS NOT NULL");
+            modelBuilder.Entity<EtimsProductProfile>().Property(p => p.ItemCode).HasMaxLength(30);
+            modelBuilder.Entity<EtimsProductProfile>().Property(p => p.ItemClassCode).HasMaxLength(20);
+            modelBuilder.Entity<EtimsProductProfile>().Property(p => p.PackagingUnitCode).HasMaxLength(5);
+            modelBuilder.Entity<EtimsProductProfile>().Property(p => p.QuantityUnitCode).HasMaxLength(5);
+            modelBuilder.Entity<EtimsProductProfile>().Property(p => p.OriginCountryCode).HasMaxLength(2);
+            modelBuilder.Entity<EtimsProductProfile>().HasOne(p => p.Product).WithOne()
+                .HasForeignKey<EtimsProductProfile>(p => p.ProductId).OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<EtimsCategoryProfile>().HasKey(c => c.CategoryId);
+            modelBuilder.Entity<EtimsCategoryProfile>().Property(c => c.ItemClassCode).HasMaxLength(20);
+            modelBuilder.Entity<EtimsCategoryProfile>().HasOne<Category>().WithOne()
+                .HasForeignKey<EtimsCategoryProfile>(c => c.CategoryId).OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<EtimsStockBalance>().HasKey(b => new { b.EtimsDeviceId, b.ProductId });
+            modelBuilder.Entity<EtimsStockBalance>().HasOne<EtimsDevice>().WithMany()
+                .HasForeignKey(b => b.EtimsDeviceId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<EtimsStockBalance>().HasOne<Product>().WithMany()
+                .HasForeignKey(b => b.ProductId).OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<EtimsReferenceData>().HasKey(r => r.EtimsReferenceDataId);
+            modelBuilder.Entity<EtimsReferenceData>().Property(r => r.Kind).HasMaxLength(20);
+            modelBuilder.Entity<EtimsReferenceData>().Property(r => r.Payload).HasColumnType("jsonb");
+            modelBuilder.Entity<EtimsReferenceData>().HasIndex(r => new { r.EtimsDeviceId, r.Kind }).IsUnique();
+            modelBuilder.Entity<EtimsReferenceData>().HasOne<EtimsDevice>().WithMany()
+                .HasForeignKey(r => r.EtimsDeviceId).OnDelete(DeleteBehavior.Cascade);
+
+            foreach (var entityType in new[] { typeof(EtimsDevice), typeof(EtimsSubmission), typeof(EtimsProductProfile),
+                         typeof(EtimsCategoryProfile), typeof(EtimsReferenceData), typeof(EtimsStockBalance) })
+            {
+                modelBuilder.Entity(entityType)
+                    .HasOne(typeof(BusinessProfile)).WithMany()
+                    .HasForeignKey(nameof(ITenantEntity.BusinessId)).OnDelete(DeleteBehavior.Restrict);
+            }
+
             ConfigureTenantFilters(modelBuilder);
 
             base.OnModelCreating(modelBuilder);
@@ -609,6 +678,12 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<StockTransferLineBatch>().HasQueryFilter(e => e.Line.StockTransfer.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<AlertState>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             modelBuilder.Entity<BusinessLicense>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<EtimsDevice>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
+            modelBuilder.Entity<EtimsSubmission>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId && (BranchUnrestricted || VisibleBranchIds.Contains(e.BranchId)));
+            modelBuilder.Entity<EtimsProductProfile>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<EtimsCategoryProfile>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<EtimsReferenceData>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
+            modelBuilder.Entity<EtimsStockBalance>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);
             // Events and deliveries: the business's own, or platform-level ones when no business is in scope. The dispatcher reads
             // across businesses with IgnoreQueryFilters.
             modelBuilder.Entity<SystemEvent>().HasQueryFilter(e => e.BusinessId == CurrentBusinessId);

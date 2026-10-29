@@ -14,6 +14,7 @@ namespace UltimatePos.Application.Business.Dtos
     /// <param name="MpesaShortCode">Older clients only: ignored when MpesaTillNumber or MpesaPaybillNumber is given, else stored as the till.</param>
     /// <param name="MpesaTillNumber">Buy Goods till, 5-7 digits. The short code that routes payments is the till, else the paybill.</param>
     /// <param name="MpesaPaybillNumber">Paybill, 5-7 digits.</param>
+    /// <param name="EtimsEnabled">Reports to KRA eTIMS. Off for a business that does not need it: it then sees nothing of eTIMS.</param>
     public record RegisterBusinessRequestDto(
     string BusinessName,
     string? TradingName,
@@ -34,7 +35,8 @@ namespace UltimatePos.Application.Business.Dtos
     bool? AllowNegativeStock = null,
     BusinessSector? Sector = null,
     string? MpesaTillNumber = null,
-    string? MpesaPaybillNumber = null);
+    string? MpesaPaybillNumber = null,
+    bool EtimsEnabled = false);
 
     /// <summary>Full replace of the editable profile. Kind cannot change: it decides what the business may purchase.</summary>
     /// <param name="AllowNegativeStock">Null keeps the current setting (older clients do not send it).</param>
@@ -68,7 +70,8 @@ namespace UltimatePos.Application.Business.Dtos
         IReadOnlyList<string>? Modules = null, // the app areas it uses (BusinessModules), from its sector and kind
         string? MpesaTillNumber = null, string? MpesaPaybillNumber = null, // where customers pay, for the POS payment screen
         decimal? MonthlyDiscountThreshold = null, decimal? MonthlyDiscountPercent = null, // the monthly-spend reward; null = off
-        MonthlyDiscountScope MonthlyDiscountScope = MonthlyDiscountScope.RestOfMonth);
+        MonthlyDiscountScope MonthlyDiscountScope = MonthlyDiscountScope.RestOfMonth,
+        bool EtimsEnabled = false); // reports to KRA eTIMS; when false the "etims" module is absent and nothing of eTIMS is shown
 
     /// <summary>
     /// The monthly-spend reward. Both Threshold and Percent set = on: once a registered customer has spent Threshold in a calendar month,

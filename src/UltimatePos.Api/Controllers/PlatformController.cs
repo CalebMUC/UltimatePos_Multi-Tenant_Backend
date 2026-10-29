@@ -68,6 +68,12 @@ namespace UltimatePos.Api.Controllers
         public async Task<IActionResult> ChangeSector(Guid id, ChangeSectorRequestDto request) =>
             Ok(ApiResponse<BusinessSummaryDto>.Ok(await _platform.ChangeSectorAsync(id, request)));
 
+        /// <summary>Switches KRA eTIMS reporting on or off for a business (it is chosen at registration).</summary>
+        [Authorize(Policy = "PERMISSION:Businesses.Register")]
+        [HttpPut("businesses/{id:guid}/etims")]
+        public async Task<IActionResult> ChangeEtims(Guid id, ChangeEtimsRequestDto request) =>
+            Ok(ApiResponse<BusinessSummaryDto>.Ok(await _platform.ChangeEtimsAsync(id, request)));
+
         /// <summary>Closes a business that has left the platform. Reversible with reopen; data is kept.</summary>
         [Authorize(Policy = "PERMISSION:Businesses.Deactivate")]
         [HttpPost("businesses/{id:guid}/close")]

@@ -34,6 +34,10 @@ if (builder.Configuration.GetValue("Notifications:WorkersEnabled", true))
     builder.Services.AddHostedService<UltimatePos.Api.Background.AlertSweepWorker>();
 }
 
+// Reports each branch with an eTIMS device to KRA: queues new sales, returns, purchases and stock movements, then sends them.
+if (builder.Configuration.GetValue("Etims:WorkersEnabled", true))
+    builder.Services.AddHostedService<UltimatePos.Api.Background.EtimsWorker>();
+
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

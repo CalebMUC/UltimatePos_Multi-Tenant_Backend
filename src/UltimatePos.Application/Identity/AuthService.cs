@@ -660,7 +660,7 @@ namespace UltimatePos.Application.Identity
 
         private static BusinessMembershipDto ToMembershipDto(UserBusiness m) =>
             new(m.BusinessId, m.Business.BusinessName, m.Business.TradingName, m.Business.Kind, m.Business.BusinessType, m.IsDefault,
-                Sector: m.Business.Sector, Modules: BusinessModules.For(m.Business.Sector, m.Business.Kind));
+                Sector: m.Business.Sector, Modules: BusinessModules.For(m.Business.Sector, m.Business.Kind, m.Business.EtimsEnabled));
 
         private static UserDto ToUserDto(User user, bool membershipActive) =>
             new(user.UserId, user.Email, user.Username,user.PhoneNumber, user.IsActive && membershipActive, user.IsLocked,

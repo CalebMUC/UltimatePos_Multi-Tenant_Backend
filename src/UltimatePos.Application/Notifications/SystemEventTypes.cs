@@ -29,6 +29,7 @@ namespace UltimatePos.Application.Notifications
         public const string BusinessClosed = "Business.Closed";
         public const string BusinessReopened = "Business.Reopened";
         public const string BusinessSectorChanged = "Business.SectorChanged";
+        public const string BusinessEtimsChanged = "Business.EtimsChanged";
         public const string BusinessOwnerAdded = "Business.OwnerAdded";
 
         // Licensing and the platform (super users)
@@ -41,6 +42,9 @@ namespace UltimatePos.Application.Notifications
         public const string SuperUserDeactivated = "Platform.SuperUserDeactivated";
         public const string SupportPasswordReset = "Platform.SupportPasswordReset";
         public const string SupportUserUnlocked = "Platform.SupportUserUnlocked";
+        public const string SupportEtimsDeviceRegistered = "Platform.SupportEtimsDeviceRegistered";
+        public const string SupportEtimsDeviceUpdated = "Platform.SupportEtimsDeviceUpdated";
+        public const string SupportEtimsSubmissionRetried = "Platform.SupportEtimsSubmissionRetried";
 
         // Branches and transfers
         public const string BranchCreated = "Branch.Created";

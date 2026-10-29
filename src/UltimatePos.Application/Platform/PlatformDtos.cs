@@ -31,6 +31,9 @@ namespace UltimatePos.Application.Platform
     /// <summary>Reclassifies a business. Only the classification changes: units, expense categories and settings it started with stay.</summary>
     public record ChangeSectorRequestDto(BusinessSector Sector);
 
+    /// <summary>Switches KRA eTIMS reporting on or off for a business.</summary>
+    public record ChangeEtimsRequestDto(bool Enabled);
+
     public record BusinessAccessDto(string Status, bool Allowed, string? Code, string? Message, DateOnly? LicenseEndsOn, int? DaysRemaining);
 
     public record BusinessSummaryDto(BusinessDto Business, BusinessAccessDto Access, int ActiveUsers, DateTime CreatedAt, int ActiveBranches = 0);

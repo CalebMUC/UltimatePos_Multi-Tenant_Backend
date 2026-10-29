@@ -4,7 +4,7 @@ namespace UltimatePos.Application.Business
 {
     /// <summary>
     /// Which areas of the app a business uses, worked out from its sector and kind — so every client shows the same menus without
-    /// keeping its own copy of the rules. Computed, not stored: nothing to switch per business (yet). This only decides what is SHOWN:
+    /// keeping its own copy of the rules. Computed, not stored: only eTIMS is switched per business (BusinessProfile.EtimsEnabled). This only decides what is SHOWN:
     /// the API still enforces permissions on every endpoint, and a hidden module is not refused by the backend.
     /// Keys are stable strings; add a key here before a client depends on it.
     /// </summary>
@@ -38,6 +38,8 @@ namespace UltimatePos.Application.Business
         public const string Containers = "containers";
         /// <summary>Bundles: several products sold at one price ("20L bottle + water", packs of 12), set up once and rung up as one item.</summary>
         public const string Bundles = "bundles";
+        /// <summary>KRA eTIMS: devices, submissions, product classifications, the KRA block on receipts. Only where the business has it on.</summary>
+        public const string Etims = "etims";
 
         public static readonly IReadOnlyList<string> Core =
             new[] { Dashboard, Sales, Customers, Catalog, Stock, Purchasing, Expenses, Reports, Mpesa, Branches, Settings, CashUp };
@@ -54,14 +56,16 @@ namespace UltimatePos.Application.Business
             [BusinessSector.Hardware] = Array.Empty<string>(),
         };
 
-        /// <summary>The modules of a business of this sector and kind: core first, then the rest in catalogue order.</summary>
-        public static IReadOnlyList<string> For(BusinessSector sector, BusinessKind kind)
+        /// <summary>The modules of a business of this sector and kind: core first, then the rest in catalogue order, eTIMS last.</summary>
+        public static IReadOnlyList<string> For(BusinessSector sector, BusinessKind kind, bool etimsEnabled = false)
         {
             var extra = BySector.TryGetValue(sector, out var modules) ? modules : BySector[BusinessSector.General];
             var result = Core.ToList();
             if (kind == BusinessKind.Manufacturer)
                 result.Add(Production);
             result.AddRange(extra);
+            if (etimsEnabled)
+                result.Add(Etims);
             return result;
         }
     }

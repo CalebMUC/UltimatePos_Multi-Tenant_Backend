@@ -13,6 +13,7 @@ using UltimatePos.Application.Business;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common.Interfaces;
 using UltimatePos.Application.Deliveries;
+using UltimatePos.Application.Etims;
 using UltimatePos.Application.Costing;
 using UltimatePos.Application.Expenses;
 using UltimatePos.Application.Identity;
@@ -24,6 +25,7 @@ using UltimatePos.Application.Reports;
 using UltimatePos.Application.Sales;
 using UltimatePos.Infrastructure.Auth;
 using UltimatePos.Infrastructure.Configuration;
+using UltimatePos.Infrastructure.Etims;
 using UltimatePos.Infrastructure.Import;
 using UltimatePos.Infrastructure.Payments;
 using UltimatePos.Infrastructure.Persistence;
@@ -75,6 +77,17 @@ namespace UltimatePos.Infrastructure
                 client.BaseAddress = new Uri(options.BaseUrl);
             });
             services.AddScoped<IMpesaRepository, MpesaRepository>();
+
+            // KRA eTIMS (OSCU): one Apigee app for the platform; each branch device adds its own PIN, branch id and cmcKey.
+            services.Configure<EtimsOptions>(configuration.GetSection("Etims"));
+            services.AddSingleton(configuration.GetSection("Etims").Get<EtimsSettings>() ?? new EtimsSettings());
+            services.AddHttpClient<IEtimsClient, KraEtimsClient>((sp, client) =>
+            {
+                var options = sp.GetRequiredService<IOptions<EtimsOptions>>().Value;
+                client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
+                client.Timeout = TimeSpan.FromSeconds(Math.Max(5, options.TimeoutSeconds));
+            });
+            services.AddScoped<IEtimsRepository, EtimsRepository>();
             services.AddScoped<ISalesRepository, SalesRepository>();
 
             services.AddScoped<CustomerLedger>();

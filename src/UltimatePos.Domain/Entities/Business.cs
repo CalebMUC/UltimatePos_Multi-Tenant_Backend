@@ -60,6 +60,14 @@ namespace UltimatePos.Domain.Entities
         public string? BackgroundImageUrl { get; set; }
         /// <summary>VAT-registered businesses show VAT on every sale line; others charge none.</summary>
         public bool IsVatRegistered { get; set; }
+        /// <summary>
+        /// Reports to KRA eTIMS: its branches can have eTIMS devices, and their trading is reported from EtimsEnabledAt on. Off for a
+        /// business that does not need eTIMS: it then sees nothing of it. Switched by super users (at registration, then on the platform).
+        /// </summary>
+        public bool EtimsEnabled { get; set; }
+        /// <summary>When eTIMS was last switched on. Nothing from before it is reported, so a business switched off and on again is not
+        /// asked to report the time in between.</summary>
+        public DateTime? EtimsEnabledAt { get; set; }
         /// <summary>The till or paybill that routes incoming payments (C2B, STK) to this business: always MpesaTillNumber ?? MpesaPaybillNumber.</summary>
         public string? MpesaShortCode { get; set; }
         /// <summary>Buy Goods till number customers pay to. Shown on the POS payment screen.</summary>

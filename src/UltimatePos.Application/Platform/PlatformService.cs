@@ -99,6 +99,8 @@ namespace UltimatePos.Application.Platform
                 MpesaPaybillNumber = mpesa.Paybill,
                 MaxDiscountPercent = request.MaxDiscountPercent,
                 AllowNegativeStock = request.AllowNegativeStock ?? profile.AllowNegativeStock,
+                EtimsEnabled = request.EtimsEnabled,
+                EtimsEnabledAt = request.EtimsEnabled ? DateTime.UtcNow : null,
                 CreatedBy = _currentUser.UserId
             };
 
@@ -310,6 +312,27 @@ namespace UltimatePos.Application.Platform
             }, b => new SystemEventDraft(SystemEventTypes.BusinessSectorChanged,
                 $"{b.BusinessName} was moved from the {from} sector to {request.Sector}.",
                 EntityType: "Business", EntityId: b.BusinessId, Data: new { from, to = request.Sector }));
+        }
+
+        /// <summary>
+        /// Switches KRA eTIMS on or off for a business. Off: its devices stop reporting and it sees nothing of eTIMS (devices and what was
+        /// sent are kept). On again: reporting resumes from now; what happened while it was off is not reported.
+        /// </summary>
+        public Task<BusinessSummaryDto> ChangeEtimsAsync(Guid businessId, ChangeEtimsRequestDto request)
+        {
+            if (request is null)
+                throw new ValidationException("enabled", "Say whether eTIMS is on or off.");
+            var now = DateTime.UtcNow;
+            return ChangeStatusAsync(businessId, b =>
+            {
+                if (b.EtimsEnabled == request.Enabled)
+                    throw new InvalidAssignmentException($"eTIMS is already {(request.Enabled ? "on" : "off")} for {b.BusinessName}.");
+                b.EtimsEnabled = request.Enabled;
+                if (request.Enabled)
+                    b.EtimsEnabledAt = now; // the change runs twice (validate, then save): the same moment both times
+            }, b => new SystemEventDraft(SystemEventTypes.BusinessEtimsChanged,
+                $"KRA eTIMS was switched {(request.Enabled ? "on" : "off")} for {b.BusinessName}.",
+                EntityType: "Business", EntityId: b.BusinessId, Data: new { enabled = request.Enabled }));
         }
 
         private async Task<BusinessSummaryDto> ChangeStatusAsync(Guid businessId, Action<BusinessProfile> change, Func<BusinessProfile, SystemEventDraft> describe)
@@ -590,8 +613,8 @@ namespace UltimatePos.Application.Platform
             new(b.BusinessId, b.BusinessName, b.TradingName, b.BusinessType, b.Kind, b.RegistrationNumber, b.KraPin,
                 b.PhysicalAddress, b.County, b.PhoneNumber, b.Email, b.LogoUrl, b.BackgroundImageUrl, b.IsActive,
                 b.IsVatRegistered, b.MpesaShortCode, b.MaxDiscountPercent, b.IsSuspended, b.SuspensionReason, b.LicenseEndsOn, b.LicenseMaxUsers,
-                b.LicenseMaxBranches, b.AllowNegativeStock, b.Sector, BusinessModules.For(b.Sector, b.Kind), b.MpesaTillNumber, b.MpesaPaybillNumber,
-                b.MonthlyDiscountThreshold, b.MonthlyDiscountPercent, b.MonthlyDiscountScope);
+                b.LicenseMaxBranches, b.AllowNegativeStock, b.Sector, BusinessModules.For(b.Sector, b.Kind, b.EtimsEnabled), b.MpesaTillNumber,
+                b.MpesaPaybillNumber, b.MonthlyDiscountThreshold, b.MonthlyDiscountPercent, b.MonthlyDiscountScope, b.EtimsEnabled);
 
         internal static BusinessLicenseDto ToDto(BusinessLicense l) =>
             new(l.BusinessLicenseId, l.BusinessId, l.LicenseNumber, l.Kind, l.PlanName, l.MaxUsers, l.StartsOn, l.EndsOn, l.Amount, l.Currency,

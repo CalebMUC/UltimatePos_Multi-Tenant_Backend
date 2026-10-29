@@ -23,6 +23,8 @@
             ("Platform.Dashboard.View", "Platform"),   // performance across businesses
             ("Platform.Support", "Platform"),          // a business's users and audit log; reset passwords, unlock, add admins
             ("Platform.Users.Manage", "Platform"),     // create and deactivate other super users
+            ("Platform.Etims.View", "Platform"),       // every business's eTIMS devices and what KRA refused
+            ("Platform.Etims.Manage", "Platform"),     // register and look after a business's eTIMS devices, retry what KRA refused
         };
 
         public static readonly IReadOnlyList<(string Name, string Module)> Business = new[]
@@ -73,6 +75,8 @@
             ("DeliveryOrders.Return", "DeliveryOrders"),         // record an order the rider brought back undelivered
             ("DeliveryOrders.AcceptCredit", "DeliveryOrders"),   // complete a delivery on a promise to pay later (managers)
             ("Mpesa.Configure", "Mpesa"), ("Mpesa.View", "Mpesa"),
+            ("Etims.View", "Etims"),       // devices, what was sent to KRA and why it was refused, a sale's KRA signature
+            ("Etims.Manage", "Etims"),     // register branch devices with KRA, sync KRA's lists, describe products, retry submissions
             ("CashSessions.View", "CashSessions"),
             ("CashSessions.Open", "CashSessions"),               // allocate the day's float (managers)
             ("CashSessions.RecordMovement", "CashSessions"),     // cash paid into or out of the drawer: banking, a rider's change
