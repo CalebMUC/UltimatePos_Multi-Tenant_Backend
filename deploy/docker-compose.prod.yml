@@ -1,6 +1,6 @@
-# The production stack: PostgreSQL, the API, the Next.js frontend and Caddy (HTTPS) on one server.
+# The production stack: PostgreSQL, the API, the Next.js frontend, the public website and Caddy (HTTPS) on one server.
 # Run it through ./pos.sh, which passes the .env file (by default /opt/ultimatepos/.env, two folders up from here):
-#   ./pos.sh build                 build the api and web images
+#   ./pos.sh build api             build one image at a time: api, web, site
 #   ./pos.sh run --rm migrate      update the database (every release, before `up`)
 #   ./pos.sh up -d                 start or restart everything that changed
 #   ./pos.sh logs -f api           follow the API's log
@@ -83,6 +83,25 @@ services:
     mem_limit: 512m
     restart: unless-stopped
 
+  # The public website. It has its own env file: it must never get the POS .env, which holds the database and JWT secrets.
+  site:
+    image: ultimatepos-site:latest
+    build:
+      context: ${WEBSITE_DIR:-../../website}
+      args:
+        # Fixed into the website when it is built: change them, then rebuild (`./pos.sh build site`).
+        NEXT_PUBLIC_SITE_ENV: production
+        NEXT_PUBLIC_GA_ID: ${NEXT_PUBLIC_GA_ID:-}
+        NEXT_PUBLIC_META_PIXEL_ID: ${NEXT_PUBLIC_META_PIXEL_ID:-}
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
+        GOOGLE_SITE_VERIFICATION: ${GOOGLE_SITE_VERIFICATION:-}
+        BING_SITE_VERIFICATION: ${BING_SITE_VERIFICATION:-}
+        META_DOMAIN_VERIFICATION: ${META_DOMAIN_VERIFICATION:-}
+        FACEBOOK_APP_ID: ${FACEBOOK_APP_ID:-}
+    env_file: ${WEBSITE_ENV_FILE:-../../website.env}
+    mem_limit: 384m
+    restart: unless-stopped
+
   caddy:
     image: caddy:2
     restart: unless-stopped
@@ -93,6 +112,7 @@ services:
       - "${CADDY_HTTPS_PORT:-443}:443"
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env, e.g. pos.yourcompany.co.ke}
+      WEBSITE_ADDRESS: ${WEBSITE_ADDRESS:?set WEBSITE_ADDRESS in .env, e.g. yourcompany.co.ke}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data        # HTTPS certificates: keep this volume
@@ -100,6 +120,7 @@ services:
     depends_on:
       - api
       - web
+      - site
 
 volumes:
   pgdata:

@@ -1,7 +1,7 @@
 # Running Ultimate POS in production
 
-How to put the API, the frontend and the database on one Linux server, release updates, and back up. Everything here was tested
-end to end with Docker (see "Tested" at the bottom).
+How to put the API, the frontend, the database and the public website on one Linux server, release updates, and back up. Everything
+here was tested end to end with Docker (see "Tested" at the bottom).
 
 ## What runs where
 
@@ -10,11 +10,13 @@ browser ── https://pos.yourcompany.co.ke ──> Caddy (ports 80, 443; gets 
                                               ├─ /api/v1/*        -> api  (.NET 8, port 8080, ONE copy)
                                               └─ everything else  -> web  (Next.js, port 3000)
                                              api -> db (PostgreSQL 16, no public port)
+browser ── https://yourcompany.co.ke ───────> Caddy -> site (the public website, Next.js, port 3000)
+        ── https://www.yourcompany.co.ke ───> Caddy redirects to https://yourcompany.co.ke
 ```
 
 | File | Purpose |
 |---|---|
-| `docker-compose.prod.yml` | The five services: `db`, `api`, `web`, `caddy`, and `migrate` (runs on demand). |
+| `docker-compose.prod.yml` | The six services: `db`, `api`, `web`, `site`, `caddy`, and `migrate` (runs on demand). |
 | `Caddyfile` | HTTPS and routing. |
 | `.env.example` | Every setting, explained. The real `.env` lives only on the server. |
 | `pos.sh` | `docker compose` with the right files: `./pos.sh up -d`, `./pos.sh logs -f api`, … |
@@ -22,14 +24,17 @@ browser ── https://pos.yourcompany.co.ke ──> Caddy (ports 80, 443; gets 
 | `backup.sh` | Database dump, off-server copy, old copies removed. |
 | `../src/UltimatePos.Api/Dockerfile` | The API image. `--migrate` makes it update the database and exit. |
 | frontend repo `Dockerfile` | The web image. |
+| website repo `Dockerfile` | The site image. |
 
 Server layout:
 
 ```
 /opt/ultimatepos/
 ├── .env          the settings (chmod 600)
+├── website.env   the website's runtime settings (chmod 600). Kept apart so the site never gets the POS secrets in .env
 ├── backend/      this repository
 ├── frontend/     the frontend repository
+├── website/      the website repository (public: CalebMUC/Ultimate-pos-website)
 └── backups/      local database dumps
 ```
 
@@ -83,11 +88,16 @@ sudo mkdir -p /opt/ultimatepos && sudo chown deploy:deploy /opt/ultimatepos
 cd /opt/ultimatepos
 git clone git@github.com:CalebMUC/UltimatePos_Multi-Tenant_Backend.git backend
 git clone git@github.com:CalebMUC/Ultimate_Pos_Multi_Tenant_Frontend.git frontend
+git clone https://github.com/CalebMUC/Ultimate-pos-website.git website
 chmod +x backend/deploy/*.sh
 
 cp backend/deploy/.env.example .env
 chmod 600 .env
 nano .env        # fill in every <...>; generate secrets with the commands shown next to them
+
+cp website/.env.example website.env
+chmod 600 website.env
+nano website.env # NEXT_PUBLIC_SITE_ENV=production, then RESEND_API_KEY and the other runtime keys
 ```
 
 Copy the finished `.env` into your password manager.
@@ -96,11 +106,11 @@ Copy the finished `.env` into your password manager.
 
 ```bash
 cd /opt/ultimatepos/backend/deploy
-./pos.sh build api && ./pos.sh build web   # one at a time (memory); about 5-10 minutes the first time
+./pos.sh build api && ./pos.sh build web && ./pos.sh build site   # one at a time (memory); about 5-10 minutes the first time
 ./pos.sh up -d db              # the database first
 ./pos.sh run --rm migrate      # creates every table and the permission list
-./pos.sh up -d                 # api, web, caddy
-./pos.sh ps                    # all four "Up"
+./pos.sh up -d                 # api, web, site, caddy
+./pos.sh ps                    # all five "Up"
 ./pos.sh logs api | tail -20   # "Created super user ...", "Now listening on: http://[::]:8080"
 curl https://pos.yourcompany.co.ke/api/v1/health   # {"status":"ok"}
 ```
@@ -139,14 +149,23 @@ way, `pg_restore` into it, then `./pos.sh up -d`.
 
 ## 6. Releasing an update
 
-Merge to `main` in both repositories, then on the server, outside shop hours:
+Merge to `main` in the repositories, then on the server, outside shop hours:
 
 ```bash
 /opt/ultimatepos/backend/deploy/deploy.sh
 ```
 
-It backs up, pulls both repositories, builds, runs the new migrations, restarts (a few seconds of downtime) and checks
+It backs up, pulls all three repositories, builds, runs the new migrations, restarts (a few seconds of downtime) and checks
 `/api/v1/health`. If the check fails it says so: read `./pos.sh logs --tail 200 api`.
+
+To release only the website, without touching the POS:
+
+```bash
+cd /opt/ultimatepos/backend/deploy
+git -C ../../website pull --ff-only
+./pos.sh build site                # alone, outside shop hours
+./pos.sh up -d --no-deps site
+```
 
 Rolling back code: `git -C /opt/ultimatepos/backend checkout <previous commit>` (and the frontend), `./pos.sh build && ./pos.sh up -d`.
 A release whose migration changed data needs the pre-release backup restored as well. `deploy.sh` makes that backup first.
@@ -160,6 +179,10 @@ A release whose migration changed data needs the pre-release backup restored as 
 | Restart the API | `./pos.sh restart api` |
 | After editing `.env` | `./pos.sh up -d` (recreates what changed) |
 | After changing `SUPPORT_EMAIL` / `SUPPORT_PHONE` | `./pos.sh build web && ./pos.sh up -d` (they are built into the frontend) |
+| Website log | `./pos.sh logs -f site` |
+| After editing `website.env` | `./pos.sh up -d --no-deps site` |
+| After changing a `NEXT_PUBLIC_*` value or verification code in `.env` | `./pos.sh build site && ./pos.sh up -d --no-deps site` |
+| After changing the `Caddyfile` | `./pos.sh up -d --no-deps --force-recreate caddy` (`git pull` replaces the file, and a plain restart can keep the old one) |
 | Database shell | `./pos.sh exec db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'` |
 | Disk space | `df -h /` and `docker system df` |
 
@@ -179,7 +202,8 @@ Monitoring: point UptimeRobot (free) at `https://pos.yourcompany.co.ke/api/v1/he
 ## 9. Rules
 
 - **One API container.** Its notification workers would send everything twice if two ran.
-- Never publish the database port, and never put the real `.env` in git.
+- Never publish the database port, and never put the real `.env` or `website.env` in git.
+- Never give the `site` service the POS `.env`. It reads only `website.env`.
 - Keep `caddy_data` (certificates) and `pgdata` (the database): `./pos.sh down` is safe, `./pos.sh down -v` **deletes the database**.
 
 ## Tested
