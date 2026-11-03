@@ -61,6 +61,18 @@ namespace UltimatePos.Application.Dashboard
         public Task<DashboardProfitDto> GetProfitAsync(DateOnly? from, DateOnly? to, int utcOffsetMinutes) =>
             LoadProfitAsync(ResolvePeriod(from, to, utcOffsetMinutes));
 
+        /// <summary>Who bought on credit in the period: the customers behind the sales section's CreditSalesAmount.</summary>
+        /// <param name="includeBalance">True only when the caller may see what customers owe; otherwise balances are not even queried.</param>
+        /// <param name="includePhone">True only when the caller may see customer details.</param>
+        public async Task<DashboardCreditCustomersDto> GetCreditCustomersAsync(DateOnly? from, DateOnly? to, int utcOffsetMinutes,
+            bool includeBalance, bool includePhone)
+        {
+            var period = ResolvePeriod(from, to, utcOffsetMinutes);
+            var sales = await _repository.GetSalesAsync(period.FromUtc, period.ToUtcExclusive);
+            var balances = includeBalance ? await _repository.GetCustomerBalancesAsync() : null;
+            return BuildCreditCustomers(period, sales, balances, includePhone);
+        }
+
         public Task<DashboardReceivablesDto> GetReceivablesAsync() => LoadReceivablesAsync();
 
         /// <param name="includeValue">True only when the caller may see costs; otherwise the value fields come back null.</param>
@@ -115,8 +127,28 @@ namespace UltimatePos.Application.Dashboard
             var revenue = completed.Sum(s => s.TotalAmount);
 
             return new DashboardSalesDto(period.From, period.To, completed.Count, revenue, Average(revenue, completed.Count),
-                completed.Where(s => s.PaymentMethod == PaymentMethod.Credit).Sum(s => s.TotalAmount),
+                sales.Where(IsCreditSale).Sum(s => s.TotalAmount),
                 sales.Count(s => s.Status == SaleStatus.Voided), sales.Count(s => s.Status == SaleStatus.Pending));
+        }
+
+        // One test for the card and the list behind it, so the two can never disagree.
+        private static bool IsCreditSale(SaleReportRow sale) => sale.Status == SaleStatus.Completed && sale.PaymentMethod == PaymentMethod.Credit;
+
+        /// <param name="balances">Null when the caller may not see balances: OutstandingBalance is then null, not zero.</param>
+        public static DashboardCreditCustomersDto BuildCreditCustomers(ReportPeriod period, IReadOnlyList<SaleReportRow> sales,
+            IReadOnlyList<CustomerBalanceRow>? balances, bool includePhone)
+        {
+            // Only balances that are not zero are loaded, so a customer who is missing owes nothing.
+            var owing = balances?.ToDictionary(b => b.CustomerId, b => b.OutstandingBalance);
+
+            var customers = sales.Where(IsCreditSale)
+                .GroupBy(s => s.CustomerId!.Value) // the sale is refused without a customer
+                .Select(g => new DashboardCreditCustomerDto(g.Key, g.First().CustomerName!, includePhone ? g.First().CustomerPhone : null,
+                    g.Count(), g.Sum(s => s.TotalAmount), g.Max(s => s.CreatedAt), owing?.GetValueOrDefault(g.Key)))
+                .OrderByDescending(c => c.CreditSalesAmount).ThenBy(c => c.CustomerName)
+                .ToList();
+
+            return new DashboardCreditCustomersDto(period.From, period.To, customers.Count, customers.Sum(c => c.CreditSalesAmount), customers);
         }
 
         public static DashboardProfitDto BuildProfit(ReportPeriod period, ProfitAndLossDto pnl) =>

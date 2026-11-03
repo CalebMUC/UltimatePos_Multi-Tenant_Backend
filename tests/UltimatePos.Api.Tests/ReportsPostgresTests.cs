@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 using UltimatePos.Application;
 using UltimatePos.Application.Common.Interfaces;
+using UltimatePos.Application.Costing;
 using UltimatePos.Application.Dashboard;
 using UltimatePos.Application.Reports;
 using UltimatePos.Domain.Entities;
@@ -525,6 +526,33 @@ public class ReportsPostgresTests : IClassFixture<ReportsDatabase>
         Assert.Equal((2, 8600m), (summary.Production!.RunCount, summary.Production.TotalCost));
         Assert.Equal(October31, summary.Customers!.To); // the customer panel covers the 90 days to the end date
         Assert.Empty(summary.HiddenSections);
+    }
+
+    [PostgresFact]
+    public async Task Dashboard_credit_customers_add_up_to_the_on_credit_card()
+    {
+        var (summary, _) = await RunAsync(sp => sp.GetRequiredService<DashboardService>().GetSummaryAsync(October1, October31, Nairobi, DashboardSections.Sales));
+        var (credit, _) = await RunAsync(sp => sp.GetRequiredService<DashboardService>().GetCreditCustomersAsync(October1, October31, Nairobi, includeBalance: true, includePhone: true));
+
+        Assert.Equal(summary.Sales!.CreditSalesAmount, credit.TotalCreditSales);
+        var wanjiku = Assert.Single(credit.Customers); // her July credit sale is outside the period, but is in what she owes now
+        Assert.Equal(("Wanjiku", "0712000001", 1, 2000m, 2700m),
+            (wanjiku.CustomerName, wanjiku.PhoneNumber, wanjiku.SaleCount, wanjiku.CreditSalesAmount, wanjiku.OutstandingBalance));
+
+        var (hidden, sql) = await RunAsync(sp => sp.GetRequiredService<DashboardService>().GetCreditCustomersAsync(October1, October31, Nairobi, includeBalance: false, includePhone: false));
+        Assert.Null(Assert.Single(hidden.Customers).OutstandingBalance);
+        Assert.DoesNotContain(sql, c => c.Contains("\"CustomerBalances\""));
+    }
+
+    [PostgresFact]
+    public async Task Profit_by_product_adds_up_to_the_cost_of_goods_card_and_gives_each_product_its_unit()
+    {
+        var (summary, _) = await RunAsync(sp => sp.GetRequiredService<DashboardService>().GetSummaryAsync(October1, October31, Nairobi, DashboardSections.Profit));
+        var from = new DateTimeOffset(October1.ToDateTime(TimeOnly.MinValue), TimeSpan.FromMinutes(Nairobi));
+        var (profit, _) = await RunAsync(sp => sp.GetRequiredService<CostingService>().GetProfitAsync(from, from.AddMonths(1), null));
+
+        Assert.Equal(summary.Profit!.CostOfGoodsSold, profit.Items.Sum(i => i.Cost));
+        Assert.All(profit.Items, i => Assert.False(string.IsNullOrEmpty(i.BaseUnitSymbol)));
     }
 
     [PostgresFact]

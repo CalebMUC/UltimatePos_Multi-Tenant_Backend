@@ -24,7 +24,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 .OrderBy(s => s.CreatedAt)
                 .Select(s => new SaleReportRow(s.SaleId, s.SaleNumber, s.CreatedAt, s.Status, s.PaymentMethod, s.CustomerId,
                     s.Customer != null ? s.Customer.CustomerName : null, s.TotalAmount, s.CreatedBy,
-                    _context.Users.Where(u => u.UserId == s.CreatedBy).Select(u => u.Username).FirstOrDefault()))
+                    _context.Users.Where(u => u.UserId == s.CreatedBy).Select(u => u.Username).FirstOrDefault(),
+                    s.Customer != null ? s.Customer.PhoneNumber : null))
                 .ToListAsync();
 
         // ---------------------------------------------------------------- Customers
