@@ -1,5 +1,6 @@
 bin/
 obj/
+__pycache__/
 .vs/
 *.user
 *.suo
@@ -11,5 +12,7 @@ api-dev.log.err
 # Local data and keys: never commit
 *.dump
 *.xlsx
+# ...except the generated demo catalogues: no client data (docs/demo-data/build_demo_catalogues.py)
+!docs/demo-data/*.xlsx
 *.stackdump
 CMAKEY.txt
