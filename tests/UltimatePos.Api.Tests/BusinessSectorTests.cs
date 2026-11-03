@@ -66,6 +66,38 @@ public class BusinessSectorDefaultsTests
     }
 
     [Fact]
+    public void A_hardware_delivers_to_site_and_sells_sets_but_has_no_containers_or_batches()
+    {
+        var hardware = BusinessModules.For(BusinessSector.Hardware, BusinessKind.Trader);
+        Assert.Contains(BusinessModules.Deliveries, hardware);
+        Assert.Contains(BusinessModules.Bundles, hardware);
+        Assert.DoesNotContain(BusinessModules.Containers, hardware);
+        Assert.DoesNotContain(BusinessModules.Batches, hardware);
+        Assert.DoesNotContain(BusinessModules.Prescriptions, hardware);
+
+        // Timber is sold by the foot and sand and ballast by the tonne.
+        var symbols = BusinessDefaults.UnitsFor(BusinessSector.Hardware).Select(u => u.Symbol).ToList();
+        Assert.Contains("ft", symbols);
+        Assert.Contains("t", symbols);
+    }
+
+    [Fact]
+    public void An_electrical_shop_is_a_trader_selling_cable_by_the_metre_and_roll_with_deliveries_and_bundles()
+    {
+        var electrical = BusinessModules.For(BusinessSector.Electrical, BusinessKind.Trader);
+        Assert.Contains(BusinessModules.Deliveries, electrical);
+        Assert.Contains(BusinessModules.Bundles, electrical);
+        Assert.DoesNotContain(BusinessModules.Containers, electrical);
+        Assert.DoesNotContain(BusinessModules.Batches, electrical);
+
+        Assert.Equal(BusinessKind.Trader, BusinessDefaults.For(BusinessSector.Electrical).Kind);
+        var symbols = BusinessDefaults.UnitsFor(BusinessSector.Electrical).Select(u => u.Symbol).ToList();
+        Assert.Contains("m", symbols);
+        Assert.Contains("roll", symbols);
+        Assert.DoesNotContain("ft", symbols);   // hardware units stay with hardware
+    }
+
+    [Fact]
     public void Every_business_gets_the_core_modules_and_an_unclassified_one_keeps_every_menu()
     {
         foreach (var sector in Enum.GetValues<BusinessSector>())

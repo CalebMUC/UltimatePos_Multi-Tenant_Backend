@@ -19,7 +19,7 @@ A business has three independent settings:
 
 | Setting | Answers | Values (enums are sent as **numbers**) |
 |---|---|---|
-| `sector` | What business is it? | `0` General, `1` Pharmacy, `2` Agrovet, `3` WaterRefill, `4` Minimart, `5` Supermarket, `6` Hardware |
+| `sector` | What business is it? | `0` General, `1` Pharmacy, `2` Agrovet, `3` WaterRefill, `4` Minimart, `5` Supermarket, `6` Hardware, `7` Electrical |
 | `kind` | How does it get stock? | `0` Manufacturer, `1` Trader |
 | `businessType` | Who does it sell to? | `0` Wholesaler, `1` Retailer |
 

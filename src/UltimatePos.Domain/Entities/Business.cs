@@ -39,7 +39,9 @@ namespace UltimatePos.Domain.Entities
         WaterRefill,
         Minimart,
         Supermarket,
-        Hardware
+        Hardware,
+        /// <summary>Electrical goods, wiring accessories, lighting and solar.</summary>
+        Electrical
     }
 
     public class BusinessProfile

@@ -53,7 +53,10 @@ namespace UltimatePos.Application.Business
             [BusinessSector.WaterRefill] = new[] { Deliveries, Containers, Bundles },
             [BusinessSector.Minimart] = new[] { Batches, Bundles },
             [BusinessSector.Supermarket] = new[] { Batches, Bundles },
-            [BusinessSector.Hardware] = Array.Empty<string>(),
+            // Cement, steel and sheets go to site by pickup or lorry; sets (a toilet with its fittings) are sold as one item.
+            [BusinessSector.Hardware] = new[] { Deliveries, Bundles },
+            // Contractors' orders go to site; solar systems and wiring kits are sold as one item.
+            [BusinessSector.Electrical] = new[] { Deliveries, Bundles },
         };
 
         /// <summary>The modules of a business of this sector and kind: core first, then the rest in catalogue order, eTIMS last.</summary>
