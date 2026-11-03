@@ -22,7 +22,7 @@ namespace UltimatePos.Application.Costing.Dtos
     // Revenue is every line sold. GrossProfit and MarginPercent are measured ONLY over lines whose cost was known
     // (UncostedRevenue is reported separately), so sales from before costing never inflate the margin.
     public record ProfitRowDto(Guid ProductId, string ProductName, string Sku, decimal QuantitySoldInBaseUnits,
-        decimal Revenue, decimal Cost, decimal GrossProfit, decimal? MarginPercent, decimal UncostedRevenue);
+        decimal Revenue, decimal Cost, decimal GrossProfit, decimal? MarginPercent, decimal UncostedRevenue, string? BaseUnitSymbol = null);
     public record ProfitReportDto(DateTimeOffset From, DateTimeOffset To, IEnumerable<ProfitRowDto> Items,
         decimal TotalRevenue, decimal TotalCost, decimal GrossProfit, decimal? MarginPercent, decimal UncostedRevenue);
 

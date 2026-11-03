@@ -19,6 +19,9 @@ namespace UltimatePos.Api.Controllers
     [Route("api/v1/dashboard")]
     public class DashboardController : ControllerBase
     {
+        // A customer's phone number is not on the sale, so Sales.View alone does not show it.
+        private const string CustomerDetailsPermission = "Customers.View";
+
         private readonly DashboardService _dashboardService;
         private readonly IAuthorizationService _authorization;
 
@@ -48,6 +51,19 @@ namespace UltimatePos.Api.Controllers
         {
             var result = await _dashboardService.GetSalesAsync(from, to, utcOffsetMinutes);
             return Ok(ApiResponse<DashboardSalesDto>.Ok(result));
+        }
+
+        // The customers behind the sales section's on-credit figure, biggest first; their amounts add up to it. What each one owes now
+        // needs Customers.ViewLedger and their phone number needs Customers.View: both come back null without it.
+        [Authorize(Policy = "PERMISSION:Sales.View")]
+        [HttpGet("credit-customers")]
+        public async Task<IActionResult> GetCreditCustomers([FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+            [FromQuery] int utcOffsetMinutes = ReportPeriod.DefaultUtcOffsetMinutes)
+        {
+            var includeBalance = await _authorization.HasPermissionAsync(User, DashboardPermissions.PermissionFor(DashboardSections.Receivables));
+            var includePhone = await _authorization.HasPermissionAsync(User, CustomerDetailsPermission);
+            var result = await _dashboardService.GetCreditCustomersAsync(from, to, utcOffsetMinutes, includeBalance, includePhone);
+            return Ok(ApiResponse<DashboardCreditCustomersDto>.Ok(result));
         }
 
         [Authorize(Policy = "PERMISSION:Costing.View")]

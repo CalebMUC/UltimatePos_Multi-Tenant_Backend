@@ -27,7 +27,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             // Revenue is what the business keeps: the charged amount less the VAT in it (owed to KRA).
             var sold = await query
                 .Select(l => new SaleCostRow(l.ProductId, l.Product.Name, l.Product.Sku, l.QuantityInBaseUnits, l.LineTotal - l.TaxAmount, l.UnitCost,
-                    l.UnitOfMeasureId, l.UnitOfMeasure.Symbol, l.Quantity))
+                    l.UnitOfMeasureId, l.UnitOfMeasure.Symbol, l.Quantity, l.Product.BaseUnitOfMeasure.Symbol))
                 .ToListAsync();
 
             // Returns fall in the period they were made, as negative rows. Goods put back on the shelf also take their cost back out
@@ -39,7 +39,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
             var returned = await returnsQuery
                 .Select(l => new SaleCostRow(l.ProductId, l.Product.Name, l.Product.Sku, l.Restock ? -l.QuantityInBaseUnits : 0m,
-                    -(l.Amount - l.TaxAmount), l.UnitCost, l.SaleLine.UnitOfMeasureId, l.SaleLine.UnitOfMeasure.Symbol, -l.Quantity))
+                    -(l.Amount - l.TaxAmount), l.UnitCost, l.SaleLine.UnitOfMeasureId, l.SaleLine.UnitOfMeasure.Symbol, -l.Quantity,
+                    l.Product.BaseUnitOfMeasure.Symbol))
                 .ToListAsync();
 
             return sold.Concat(returned).ToList();

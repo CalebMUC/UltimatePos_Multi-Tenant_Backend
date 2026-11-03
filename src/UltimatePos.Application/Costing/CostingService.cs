@@ -132,7 +132,7 @@ namespace UltimatePos.Application.Costing
                     var costedRevenue = costed.Sum(l => l.LineTotal);
                     var profit = costedRevenue - cost;
                     return new ProfitRowDto(g.Key.ProductId, g.Key.ProductName, g.Key.Sku, g.Sum(l => l.QuantityInBaseUnits),
-                        revenue, cost, profit, Percent(profit, costedRevenue), uncostedRevenue);
+                        revenue, cost, profit, Percent(profit, costedRevenue), uncostedRevenue, g.First().BaseUnitSymbol);
                 })
                 .OrderByDescending(r => r.GrossProfit).ThenBy(r => r.ProductName)
                 .ToList();

@@ -92,6 +92,55 @@ public class DashboardBuilderTests
         Assert.Equal(0m, dto.AverageSaleValue);
     }
 
+    private static readonly Guid Wanjiku = Guid.NewGuid(), Otieno = Guid.NewGuid();
+
+    private static SaleReportRow CreditSale(Guid customer, string name, decimal total, int hour = 9, SaleStatus status = SaleStatus.Completed) =>
+        new(Guid.NewGuid(), "S", new DateTime(2026, 10, 1, hour, 0, 0, DateTimeKind.Utc), status, PaymentMethod.Credit, customer, name, total,
+            CustomerPhone: "0712000001");
+
+    [Fact]
+    public void Credit_customers_add_up_to_the_on_credit_figure_biggest_first()
+    {
+        var sales = new[]
+        {
+            CreditSale(Otieno, "Otieno", 500m),
+            CreditSale(Wanjiku, "Wanjiku", 2000m, hour: 8),
+            CreditSale(Wanjiku, "Wanjiku", 1000m, hour: 11),
+            CreditSale(Otieno, "Otieno", 9999m, status: SaleStatus.Voided),
+            Sale(SaleStatus.Completed, PaymentMethod.Cash, 700m),
+        };
+
+        var dto = DashboardService.BuildCreditCustomers(Period, sales, null, includePhone: false);
+
+        Assert.Equal(DashboardService.BuildSales(Period, sales).CreditSalesAmount, dto.TotalCreditSales);
+        Assert.Equal(2, dto.CustomerCount);
+        Assert.Equal(new[] { ("Wanjiku", 2, 3000m), ("Otieno", 1, 500m) }, dto.Customers.Select(c => (c.CustomerName, c.SaleCount, c.CreditSalesAmount)));
+        Assert.Equal(new DateTime(2026, 10, 1, 11, 0, 0, DateTimeKind.Utc), dto.Customers.First().LastSaleAt);
+    }
+
+    [Fact]
+    public void Credit_customers_show_what_they_owe_now_and_zero_once_they_have_paid()
+    {
+        var sales = new[] { CreditSale(Wanjiku, "Wanjiku", 2000m), CreditSale(Otieno, "Otieno", 500m) };
+        var balances = new CustomerBalanceRow[] { new(Wanjiku, "Wanjiku", 2700m) }; // Otieno has paid, so has no balance row
+
+        var dto = DashboardService.BuildCreditCustomers(Period, sales, balances, includePhone: true);
+
+        Assert.Equal(2700m, dto.Customers.Single(c => c.CustomerId == Wanjiku).OutstandingBalance);
+        Assert.Equal(0m, dto.Customers.Single(c => c.CustomerId == Otieno).OutstandingBalance);
+        Assert.Equal("0712000001", dto.Customers.First().PhoneNumber);
+    }
+
+    [Fact]
+    public void Credit_customers_hide_balance_and_phone_from_a_caller_who_may_not_see_them()
+    {
+        var customer = DashboardService.BuildCreditCustomers(Period, new[] { CreditSale(Wanjiku, "Wanjiku", 2000m) }, null, includePhone: false)
+            .Customers.Single();
+
+        Assert.Null(customer.OutstandingBalance); // null, not zero: "owes nothing" would be a false statement
+        Assert.Null(customer.PhoneNumber);
+    }
+
     [Fact]
     public void Receivables_separate_what_customers_owe_from_what_they_are_owed()
     {
