@@ -78,7 +78,11 @@ namespace UltimatePos.Application.Business
                 new[] { ("Dozen", "doz"), ("Crate", "crate"), ("Carton", "ctn") },
                 new[] { ("PKG", "Packaging & Carrier Bags", "Carrier bags, wrapping and packing materials used at the tills") }),
             [BusinessSector.Hardware] = new(BusinessKind.Trader, true,
-                new[] { ("Metre", "m"), ("Bag", "bag"), ("Sheet", "sheet"), ("Roll", "roll") },
+                new[] { ("Metre", "m"), ("Bag", "bag"), ("Sheet", "sheet"), ("Roll", "roll"), ("Foot", "ft"), ("Tonne", "t") },
+                NoCategories),
+            // Cable is cut by the metre from a roll or coil; fittings and kits go by the piece or the set.
+            [BusinessSector.Electrical] = new(BusinessKind.Trader, true,
+                new[] { ("Metre", "m"), ("Roll", "roll"), ("Coil", "coil"), ("Set", "set") },
                 NoCategories),
         };
 
