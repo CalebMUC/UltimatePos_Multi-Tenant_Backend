@@ -76,6 +76,22 @@ namespace UltimatePos.Domain.Entities
         public string? MpesaTillNumber { get; set; }
         /// <summary>Paybill number customers pay to. Shown on the POS payment screen.</summary>
         public string? MpesaPaybillNumber { get; set; }
+        /// <summary>
+        /// How customers pay an invoice, printed under "Send payment to": a bank (its name, branch and paybill, the business's account
+        /// name and number there), a Buy Goods till and a phone number to send M-Pesa to. Printed only: nothing routes by them, unlike the
+        /// till and paybill above.
+        /// </summary>
+        public string? InvoiceBankName { get; set; }
+        public string? InvoiceBankBranch { get; set; }
+        public string? InvoiceBankPaybill { get; set; }
+        public string? InvoiceBankAccountName { get; set; }
+        public string? InvoiceBankAccountNumber { get; set; }
+        public string? InvoiceTillNumber { get; set; }
+        public string? InvoiceSendMoneyPhone { get; set; }
+        /// <summary>Days an invoice gives the customer to pay. Null = no due date, unless the customer promised one.</summary>
+        public int? InvoiceDueDays { get; set; }
+        /// <summary>Printed at the foot of every invoice (terms, thanks).</summary>
+        public string? InvoiceNote { get; set; }
         /// <summary>Largest discount a cashier may give on one sale, as a percentage of its subtotal. Null = no cap.</summary>
         public decimal? MaxDiscountPercent { get; set; }
         /// <summary>

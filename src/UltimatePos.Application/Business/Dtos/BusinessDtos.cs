@@ -15,6 +15,7 @@ namespace UltimatePos.Application.Business.Dtos
     /// <param name="MpesaTillNumber">Buy Goods till, 5-7 digits. The short code that routes payments is the till, else the paybill.</param>
     /// <param name="MpesaPaybillNumber">Paybill, 5-7 digits.</param>
     /// <param name="EtimsEnabled">Reports to KRA eTIMS. Off for a business that does not need it: it then sees nothing of eTIMS.</param>
+    /// <param name="Invoice">How customers pay its invoices (bank, branch, account, till). Null = none yet; the owner can add them later.</param>
     public record RegisterBusinessRequestDto(
     string BusinessName,
     string? TradingName,
@@ -36,7 +37,8 @@ namespace UltimatePos.Application.Business.Dtos
     BusinessSector? Sector = null,
     string? MpesaTillNumber = null,
     string? MpesaPaybillNumber = null,
-    bool EtimsEnabled = false);
+    bool EtimsEnabled = false,
+    InvoiceSettingsDto? Invoice = null);
 
     /// <summary>Full replace of the editable profile. Kind cannot change: it decides what the business may purchase.</summary>
     /// <param name="AllowNegativeStock">Null keeps the current setting (older clients do not send it).</param>
@@ -71,7 +73,42 @@ namespace UltimatePos.Application.Business.Dtos
         string? MpesaTillNumber = null, string? MpesaPaybillNumber = null, // where customers pay, for the POS payment screen
         decimal? MonthlyDiscountThreshold = null, decimal? MonthlyDiscountPercent = null, // the monthly-spend reward; null = off
         MonthlyDiscountScope MonthlyDiscountScope = MonthlyDiscountScope.RestOfMonth,
-        bool EtimsEnabled = false); // reports to KRA eTIMS; when false the "etims" module is absent and nothing of eTIMS is shown
+        bool EtimsEnabled = false, // reports to KRA eTIMS; when false the "etims" module is absent and nothing of eTIMS is shown
+        InvoiceSettingsDto? Invoice = null); // how customers pay an invoice, and its terms
+
+    /// <summary>
+    /// What an invoice prints under "Send payment to", and its terms. Every field is optional: a blank one is left off the invoice.
+    /// Also the body of PUT /businesses/current/invoice-settings, a full replace.
+    /// </summary>
+    /// <param name="BankName">The bank customers pay into, e.g. Family Bank.</param>
+    /// <param name="BankBranch">The branch of that bank holding the account, e.g. Kasarani.</param>
+    /// <param name="BankPaybillNumber">The bank's M-Pesa paybill, 5-10 digits.</param>
+    /// <param name="BankAccountName">The name the account is held in, so a customer depositing at the bank can check it.</param>
+    /// <param name="BankAccountNumber">The business's account at that bank: the paybill's account number.</param>
+    /// <param name="TillNumber">A Buy Goods till customers may pay an invoice to, 5-7 digits.</param>
+    /// <param name="SendMoneyPhoneNumber">A mobile number customers may send M-Pesa to directly. Stored as 2547XXXXXXXX.</param>
+    /// <param name="DueDays">Days to pay, 0-365. Null = no due date, unless the customer promised one.</param>
+    /// <param name="Note">Printed at the foot of every invoice. At most 500 characters.</param>
+    public record InvoiceSettingsDto(string? BankName, string? BankBranch, string? BankPaybillNumber, string? BankAccountName,
+        string? BankAccountNumber, string? TillNumber, string? SendMoneyPhoneNumber, int? DueDays, string? Note)
+    {
+        public static InvoiceSettingsDto From(BusinessProfile b) => new(b.InvoiceBankName, b.InvoiceBankBranch, b.InvoiceBankPaybill,
+            b.InvoiceBankAccountName, b.InvoiceBankAccountNumber, b.InvoiceTillNumber, b.InvoiceSendMoneyPhone, b.InvoiceDueDays, b.InvoiceNote);
+
+        /// <summary>Copies these settings, already checked and tidied, onto the business.</summary>
+        public void ApplyTo(BusinessProfile b)
+        {
+            b.InvoiceBankName = BankName;
+            b.InvoiceBankBranch = BankBranch;
+            b.InvoiceBankPaybill = BankPaybillNumber;
+            b.InvoiceBankAccountName = BankAccountName;
+            b.InvoiceBankAccountNumber = BankAccountNumber;
+            b.InvoiceTillNumber = TillNumber;
+            b.InvoiceSendMoneyPhone = SendMoneyPhoneNumber;
+            b.InvoiceDueDays = DueDays;
+            b.InvoiceNote = Note;
+        }
+    }
 
     /// <summary>
     /// The monthly-spend reward. Both Threshold and Percent set = on: once a registered customer has spent Threshold in a calendar month,

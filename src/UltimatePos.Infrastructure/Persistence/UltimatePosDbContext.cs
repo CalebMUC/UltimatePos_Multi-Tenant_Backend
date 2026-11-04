@@ -140,6 +140,14 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.KraPin).IsUnique();
             modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.MpesaShortCode).IsUnique().HasFilter("\"MpesaShortCode\" IS NOT NULL");
             modelBuilder.Entity<BusinessProfile>().Property(b => b.MpesaTillNumber).HasMaxLength(10);
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.InvoiceBankName).HasMaxLength(100);
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.InvoiceBankBranch).HasMaxLength(100);
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.InvoiceBankPaybill).HasMaxLength(10);
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.InvoiceBankAccountName).HasMaxLength(100);
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.InvoiceBankAccountNumber).HasMaxLength(50);
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.InvoiceTillNumber).HasMaxLength(10);
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.InvoiceSendMoneyPhone).HasMaxLength(15);
+            modelBuilder.Entity<BusinessProfile>().Property(b => b.InvoiceNote).HasMaxLength(500);
             modelBuilder.Entity<BusinessProfile>().Property(b => b.MpesaPaybillNumber).HasMaxLength(10);
             modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.MpesaTillNumber).IsUnique().HasFilter("\"MpesaTillNumber\" IS NOT NULL");
             modelBuilder.Entity<BusinessProfile>().HasIndex(b => b.MpesaPaybillNumber).IsUnique().HasFilter("\"MpesaPaybillNumber\" IS NOT NULL");

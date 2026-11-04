@@ -62,6 +62,18 @@ public class BusinessController : ControllerBase
         return Ok(ApiResponse<BusinessDto>.Ok(result));
     }
 
+    /// <summary>
+    /// What invoices of the business signed in to print under "Send payment to" (bank, its paybill, account number, a phone to send
+    /// M-Pesa to) and their terms (days to pay, a footer note). A full replace: blank fields are cleared.
+    /// </summary>
+    [Authorize(Policy = "PERMISSION:Businesses.Update")]
+    [HttpPut("current/invoice-settings")]
+    public async Task<IActionResult> UpdateInvoiceSettings(InvoiceSettingsDto request)
+    {
+        var result = await _businessService.UpdateInvoiceSettingsAsync(request);
+        return Ok(ApiResponse<BusinessDto>.Ok(result));
+    }
+
     /// <summary>The signed-in business's licence: where it stands, and its history.</summary>
     [Authorize(Policy = "PERMISSION:Businesses.View")]
     [HttpGet("current/license")]
