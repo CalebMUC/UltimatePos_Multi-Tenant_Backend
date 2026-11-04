@@ -71,6 +71,7 @@ namespace UltimatePos.Application.Platform
 
             BusinessService.ValidateProfile(request.BusinessName, request.KraPin, request.MaxDiscountPercent);
             var mpesa = BusinessService.ResolveMpesaNumbers(request.MpesaTillNumber, request.MpesaPaybillNumber, request.MpesaShortCode);
+            var invoice = request.Invoice is null ? null : BusinessService.CheckInvoiceSettings(request.Invoice);
             if (await _businesses.KraPinExistsAsync(request.KraPin.Trim()))
                 throw new DuplicateBusinessException($"A business with KRA PIN '{request.KraPin}' is already registered.");
             await BusinessService.EnsureMpesaNumbersFreeAsync(_businesses, mpesa, null);
@@ -103,6 +104,7 @@ namespace UltimatePos.Application.Platform
                 EtimsEnabledAt = request.EtimsEnabled ? DateTime.UtcNow : null,
                 CreatedBy = _currentUser.UserId
             };
+            invoice?.ApplyTo(business);
 
             BusinessLicense? trial = _licensing.TrialDays <= 0 ? null : new BusinessLicense
             {
@@ -614,7 +616,8 @@ namespace UltimatePos.Application.Platform
                 b.PhysicalAddress, b.County, b.PhoneNumber, b.Email, b.LogoUrl, b.BackgroundImageUrl, b.IsActive,
                 b.IsVatRegistered, b.MpesaShortCode, b.MaxDiscountPercent, b.IsSuspended, b.SuspensionReason, b.LicenseEndsOn, b.LicenseMaxUsers,
                 b.LicenseMaxBranches, b.AllowNegativeStock, b.Sector, BusinessModules.For(b.Sector, b.Kind, b.EtimsEnabled), b.MpesaTillNumber,
-                b.MpesaPaybillNumber, b.MonthlyDiscountThreshold, b.MonthlyDiscountPercent, b.MonthlyDiscountScope, b.EtimsEnabled);
+                b.MpesaPaybillNumber, b.MonthlyDiscountThreshold, b.MonthlyDiscountPercent, b.MonthlyDiscountScope, b.EtimsEnabled,
+                InvoiceSettingsDto.From(b));
 
         internal static BusinessLicenseDto ToDto(BusinessLicense l) =>
             new(l.BusinessLicenseId, l.BusinessId, l.LicenseNumber, l.Kind, l.PlanName, l.MaxUsers, l.StartsOn, l.EndsOn, l.Amount, l.Currency,

@@ -277,6 +277,41 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<DateTime?>("EtimsEnabledAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("InvoiceBankAccountName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("InvoiceBankAccountNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("InvoiceBankBranch")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("InvoiceBankName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("InvoiceBankPaybill")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int?>("InvoiceDueDays")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("InvoiceNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("InvoiceSendMoneyPhone")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)");
+
+                    b.Property<string>("InvoiceTillNumber")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 

@@ -119,6 +119,53 @@ namespace UltimatePos.Application.Business
                 request.Scope, _currentUser.UserId));
         }
 
+        /// <summary>
+        /// Replaces what invoices print under "Send payment to" and their terms. Blank fields are cleared. Printed only: unlike the M-Pesa
+        /// till and paybill, nothing routes by them, so they need not be unique.
+        /// </summary>
+        public async Task<BusinessDto> UpdateInvoiceSettingsAsync(InvoiceSettingsDto request)
+        {
+            var businessId = _tenant.RequireBusinessId();
+            var settings = CheckInvoiceSettings(request);
+            _events.Record(new SystemEventDraft(SystemEventTypes.BusinessProfileUpdated, "The invoice payment details were updated.",
+                EntityType: "Business", EntityId: businessId, Data: settings));
+            return ToDto(await _repository.UpdateInvoiceSettingsAsync(businessId, settings, _currentUser.UserId));
+        }
+
+        /// <summary>The settings trimmed (blank = null) and checked; the phone stored as 2547XXXXXXXX.</summary>
+        internal static InvoiceSettingsDto CheckInvoiceSettings(InvoiceSettingsDto request)
+        {
+            var errors = new Dictionary<string, string[]>();
+            static string? Tidy(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            string? Text(string? value, string field, int max, string label)
+            {
+                var tidy = Tidy(value);
+                if (tidy?.Length > max)
+                    errors[field] = new[] { $"{label} is at most {max} characters." };
+                return tidy;
+            }
+
+            var bankName = Text(request.BankName, "bankName", 100, "The bank name");
+            var branch = Text(request.BankBranch, "bankBranch", 100, "The bank branch");
+            var paybill = Tidy(request.BankPaybillNumber);
+            if (paybill is not null && (!paybill.All(char.IsAsciiDigit) || paybill.Length is < 5 or > 10))
+                errors["bankPaybillNumber"] = new[] { "A paybill number is 5–10 digits." };
+            var accountName = Text(request.BankAccountName, "bankAccountName", 100, "The account name");
+            var account = Text(request.BankAccountNumber, "bankAccountNumber", 50, "The account number");
+            var till = Tidy(request.TillNumber);
+            if (till is not null && (!till.All(char.IsAsciiDigit) || till.Length is < 5 or > 7))
+                errors["tillNumber"] = new[] { "A till number is 5–7 digits." };
+            var phone = Tidy(request.SendMoneyPhoneNumber) is { } raw ? PhoneNumberHelper.NormalizePhoneNumber(raw) : null;
+            if (phone is not null && (phone.Length != 12 || !(phone.StartsWith("2547") || phone.StartsWith("2541"))))
+                errors["sendMoneyPhoneNumber"] = new[] { "Give a Kenyan mobile number, e.g. 0712 345 678." };
+            if (request.DueDays is < 0 or > 365)
+                errors["dueDays"] = new[] { "Days to pay is between 0 and 365." };
+            var note = Text(request.Note, "note", 500, "The note");
+            if (errors.Count > 0)
+                throw new ValidationException(errors);
+            return new InvoiceSettingsDto(bankName, branch, paybill, accountName, account, till, phone, request.DueDays, note);
+        }
+
         /// <summary>The signed-in business's licence position and history, for its own Settings → Licence page.</summary>
         public async Task<BusinessLicenseStatusDto> GetCurrentLicenseAsync()
         {
