@@ -42,7 +42,7 @@ They combine freely. An agrovet can make its own feeds (Manufacturer) or only re
 | `prescriptions` | Prescription-only setup on products, the prescription register | General, Pharmacy |
 | `deliveries` | Delivery orders: new order, delivery board, record delivery, rider summary | General, WaterRefill, Minimart, Hardware, Electrical, Liquor |
 | `containers` | Containers sold with a pack: the "customer has own container?" toggle, the container link on unit conversions, refill quick-sale buttons. In a liquor store, the crate of empties sold with a crate of beer | General, WaterRefill, Liquor |
-| `ageRestricted` | Alcohol and tobacco: the *Age-restricted (18+)* toggle on products, the age check at the till and on delivery, *Settings → Age-restricted sales* (minimum age, selling hours), the *Age-check register*. See [Frontend-Liquor-Age-Check-Prompt.md](Frontend-Liquor-Age-Check-Prompt.md) | General, Minimart, Supermarket, Liquor |
+| `ageRestricted` | Alcohol and tobacco: the *Age-restricted (18+)* toggle on products, the age check at the till and on delivery, *Settings → Age-restricted sales* (minimum age, selling hours), the *Age-check register*. Liquor businesses can switch it off (`ageRestrictedSales.enabled`). See [Frontend-Liquor-Age-Check-Prompt.md](Frontend-Liquor-Age-Check-Prompt.md) | Liquor (unless switched off) |
 
 So, for example:
 - a refill station (WaterRefill, Trader) gets core + `deliveries` + `containers`: **no production**
@@ -75,7 +75,7 @@ const hasModule = (key: string) => activeBusiness?.modules?.includes(key) ?? tru
    - A product with `isBatchTracked = true` still needs **batch number and expiry** when receiving a purchase order, adjusting or transferring stock, even if `batches` is hidden. Show those fields whenever the product is batch-tracked.
    - A product with `requiresPrescription = true` still needs the **prescription capture** at checkout, even if `prescriptions` is hidden.
    - A pack whose unit conversion has a `containerProductId` still offers the container line at checkout, even if `containers` is hidden.
-   - A sale with a product whose `isAgeRestricted = true` still needs the **age check** at checkout, even if `ageRestricted` is hidden.
+   - Age-restricted products are the exception: outside a Liquor business, or with age-restricted sales switched off, the API does not ask for the age check, so follow the preview's `requiresAgeCheck`.
    - An existing delivery order or production run can always be opened from a link: a sale's "from delivery DEL-…" link, the audit log, a notification. Show it read-only, without the module's menu.
 
 ## Where each module appears

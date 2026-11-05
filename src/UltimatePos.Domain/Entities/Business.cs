@@ -118,6 +118,11 @@ namespace UltimatePos.Domain.Entities
         /// </summary>
         public int MinimumPurchaseAge { get; set; } = 18;
         /// <summary>
+        /// The business uses age-restricted sales (Liquor businesses only): the age check, the selling hours and the age-check register.
+        /// Off = none of them apply, and products marked age-restricted sell like any other; the marks are kept for when it is back on.
+        /// </summary>
+        public bool AgeRestrictedSalesEnabled { get; set; } = true;
+        /// <summary>
         /// When age-restricted products may be sold, as the liquor licence says, in East Africa Time. Null From/To = any time. A window
         /// whose end is before its start runs past midnight (17:00-02:00). The weekend window applies on Saturday and Sunday; null = the
         /// weekday one. Public holidays are not known to the system: on a holiday the weekday hours apply.

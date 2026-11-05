@@ -97,7 +97,7 @@ namespace UltimatePos.Application.Sales
         internal static void EnsureWithinSellingHours(AgeRestrictedSalesSettingsDto rules, IEnumerable<string> ageRestrictedProducts)
         {
             var names = ageRestrictedProducts.Distinct().ToList();
-            if (names.Count == 0 || SellingHours.IsOpen(rules, LocalNow))
+            if (!rules.Enabled || names.Count == 0 || SellingHours.IsOpen(rules, LocalNow))
                 return;
             throw new OutsideSellingHoursException(
                 $"{string.Join(", ", names.Select(n => $"'{n}'"))} may be sold only {SellingHours.Describe(rules)}, as the liquor licence " +
@@ -794,6 +794,8 @@ namespace UltimatePos.Application.Sales
                 throw new ValidationException("discountAmount", "The discount cannot be more than the sale total.");
             var allocations = AllocateDiscount(priced.Select(p => p.Gross - p.LineDiscount - p.StandingDiscount).ToList(), RoundMoney(saleDiscount));
 
+            // Age-restricted only where the business uses age-restricted sales: elsewhere a marked product sells like any other.
+            var ageRules = AgeRestrictedSalesSettingsDto.From(business);
             var planLines = new List<SaleLinePlan>();
             var drawn = new Dictionary<Guid, decimal>(); // a product on two lines draws on one pool of stock
             for (var i = 0; i < priced.Count; i++)
@@ -810,12 +812,12 @@ namespace UltimatePos.Application.Sales
 
                 planLines.Add(new SaleLinePlan(product.ProductId, product.Name, product.Sku, unitOfMeasureId,
                     quantity, price, gross, discount, lineTotal, taxRate, taxAmount, requiredBase, available - alreadyDrawn,
-                    product.IsBatchTracked, product.RequiresPrescription, bundleId, bundleName, bundleQuantity, product.IsAgeRestricted));
+                    product.IsBatchTracked, product.RequiresPrescription, bundleId, bundleName, bundleQuantity, product.IsAgeRestricted && ageRules.Enabled));
             }
 
             var standingTotal = priced.Sum(p => p.StandingDiscount);
             var plan = new SalePlan(priceType, planLines, customerBalance, creditLimit, business.AllowNegativeStock,
-                AgeRestrictedSalesSettingsDto.From(business), standingTotal > 0 ? customerPercent : null, standingTotal, standingTotal > 0 ? source : null, customerMonth);
+                ageRules, standingTotal > 0 ? customerPercent : null, standingTotal, standingTotal > 0 ? source : null, customerMonth);
 
             // The cap limits what a cashier gives; the customer's automatic discount was set by the owner and is not counted against it.
             if (business.MaxDiscountPercent is { } cap && plan.Subtotal > 0

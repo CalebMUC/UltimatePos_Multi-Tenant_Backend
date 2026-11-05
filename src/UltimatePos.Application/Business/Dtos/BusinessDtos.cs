@@ -85,11 +85,14 @@ namespace UltimatePos.Application.Business.Dtos
     /// <param name="WeekdayFrom">Start of the selling hours. With WeekdayTo; both null = any time.</param>
     /// <param name="WeekdayTo">End of the selling hours. Before WeekdayFrom = past midnight (17:00-02:00).</param>
     /// <param name="WeekendFrom">Saturday and Sunday, when they differ. With WeekendTo; both null = the weekday hours.</param>
+    /// <param name="Enabled">The business uses age-restricted sales. Only a Liquor business can have it on (the default there); off = no
+    /// age check, no selling hours and no register, whatever products are marked. Left out of a PUT = on.</param>
     public record AgeRestrictedSalesSettingsDto(int MinimumAge = 18, TimeOnly? WeekdayFrom = null, TimeOnly? WeekdayTo = null,
-        TimeOnly? WeekendFrom = null, TimeOnly? WeekendTo = null)
+        TimeOnly? WeekendFrom = null, TimeOnly? WeekendTo = null, bool Enabled = true)
     {
+        /// <summary>The business's settings; Enabled is whether they apply (a Liquor business with the switch on).</summary>
         public static AgeRestrictedSalesSettingsDto From(BusinessProfile b) => new(b.MinimumPurchaseAge, b.RestrictedSalesFrom,
-            b.RestrictedSalesTo, b.RestrictedSalesWeekendFrom, b.RestrictedSalesWeekendTo);
+            b.RestrictedSalesTo, b.RestrictedSalesWeekendFrom, b.RestrictedSalesWeekendTo, BusinessModules.AgeRestrictedSalesOn(b));
 
         /// <summary>Copies these settings, already checked, onto the business.</summary>
         public void ApplyTo(BusinessProfile b)
@@ -99,6 +102,7 @@ namespace UltimatePos.Application.Business.Dtos
             b.RestrictedSalesTo = WeekdayTo;
             b.RestrictedSalesWeekendFrom = WeekendFrom;
             b.RestrictedSalesWeekendTo = WeekendTo;
+            b.AgeRestrictedSalesEnabled = Enabled;
         }
     }
 

@@ -615,7 +615,7 @@ namespace UltimatePos.Application.Platform
             new(b.BusinessId, b.BusinessName, b.TradingName, b.BusinessType, b.Kind, b.RegistrationNumber, b.KraPin,
                 b.PhysicalAddress, b.County, b.PhoneNumber, b.Email, b.LogoUrl, b.BackgroundImageUrl, b.IsActive,
                 b.IsVatRegistered, b.MpesaShortCode, b.MaxDiscountPercent, b.IsSuspended, b.SuspensionReason, b.LicenseEndsOn, b.LicenseMaxUsers,
-                b.LicenseMaxBranches, b.AllowNegativeStock, b.Sector, BusinessModules.For(b.Sector, b.Kind, b.EtimsEnabled), b.MpesaTillNumber,
+                b.LicenseMaxBranches, b.AllowNegativeStock, b.Sector, BusinessModules.For(b), b.MpesaTillNumber,
                 b.MpesaPaybillNumber, b.MonthlyDiscountThreshold, b.MonthlyDiscountPercent, b.MonthlyDiscountScope, b.EtimsEnabled,
                 InvoiceSettingsDto.From(b), AgeRestrictedSalesSettingsDto.From(b));
 

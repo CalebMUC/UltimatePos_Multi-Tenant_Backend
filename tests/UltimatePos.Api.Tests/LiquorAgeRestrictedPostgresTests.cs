@@ -230,6 +230,30 @@ public class LiquorAgeRestrictedPostgresTests : IClassFixture<MultiBusinessDatab
         await HoursAsync(AnyTime);
     }
 
+    [PostgresFact]
+    public async Task Switched_off_beer_sells_like_soda_and_switched_back_on_the_check_returns()
+    {
+        await SignInToShopAsync();
+        var shelf = await ShelfAsync();
+
+        var off = await HoursAsync(ClosedNow with { Enabled = false });
+        Assert.False(off.AgeRestrictedSales!.Enabled);
+        Assert.DoesNotContain(BusinessModules.AgeRestricted, off.Modules!);
+        var preview = await PreviewAsync(Sale(shelf, 1, 0, null));
+        Assert.Equal((false, true), (preview.RequiresAgeCheck, preview.WithinSellingHours));
+        Assert.False(preview.Lines.Single().IsAgeRestricted);
+        // Outside the hours that were set, and with no age check: off means off.
+        var sale = await SellAsync(Sale(shelf, 1, 0, null));
+        Assert.Equal((SaleStatus.Completed, (AgeCheckMethod?)null), (sale.Status, sale.AgeCheck));
+
+        // The product keeps its mark, so switching back on brings the checks back.
+        var on = await HoursAsync(AnyTime);
+        Assert.True(on.AgeRestrictedSales!.Enabled);
+        Assert.Contains(BusinessModules.AgeRestricted, on.Modules!);
+        Assert.True((await PreviewAsync(Sale(shelf, 1, 0, null))).RequiresAgeCheck);
+        await Assert.ThrowsAsync<AgeCheckRequiredException>(() => SellAsync(Sale(shelf, 1, 0, null)));
+    }
+
     // ---------------------------------------------------------------- The product flag
 
     [PostgresFact]

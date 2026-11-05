@@ -44,13 +44,21 @@ There is also a new sector, **Liquor** (`8`), and a module key `ageRestricted` (
   "weekdayFrom": "10:00",    // "HH:mm", East Africa Time; null with weekdayTo = any time
   "weekdayTo": "23:00",      // before weekdayFrom = runs past midnight ("17:00" → "02:00")
   "weekendFrom": null,       // Saturday and Sunday when different; null = the weekday hours
-  "weekendTo": null
+  "weekendTo": null,
+  "enabled": true            // the business uses age-restricted sales: Liquor only, on by default (migration AgeRestrictedSalesSwitch)
 }
 ```
 
+**On/off (2026-11-05).** Age-restricted sales are for **Liquor** businesses only, and a Liquor business can switch them off. `enabled`
+is whether they apply: always `false` outside Liquor, and `false` once switched off. Off means off: `ageRestricted` leaves `modules`,
+the preview reports no `requiresAgeCheck` and no 18+ lines, `withinSellingHours` is `true`, sales and dispatches are never refused for
+the age check or the hours, and the 18+ marks on products are kept for when it is switched back on. `enabled: true` outside Liquor is a
+400 keyed `enabled`. Left out of the PUT, `enabled` is `true`. Show the switch (*Use age-restricted sales*) on the settings screen
+whenever the business is Liquor, also while it is off (the module is then absent, so do not hide the screen behind it).
+
 `PUT /api/v1/businesses/current/age-restricted-sales` with the same object, a **full replace**, returns the `BusinessDto`. Times are
 "HH:mm" (an `<input type="time">` value works as is); seconds are dropped. A 400 has `details` keyed by `minimumAge`, `weekdayFrom`,
-`weekdayTo`, `weekendFrom`, `weekendTo`. Show each under its field.
+`weekdayTo`, `weekendFrom`, `weekendTo`, `enabled`. Show each under its field.
 
 Screen:
 - **Minimum age** (number, 18–25).
