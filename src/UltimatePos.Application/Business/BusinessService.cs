@@ -139,7 +139,10 @@ namespace UltimatePos.Application.Business
         public async Task<BusinessDto> UpdateAgeRestrictedSalesAsync(AgeRestrictedSalesSettingsDto request)
         {
             var businessId = _tenant.RequireBusinessId();
+            var business = await _repository.GetBusinessByIdAsync(businessId) ?? throw new NotFoundException("Business not found.");
             var errors = new Dictionary<string, string[]>();
+            if (request.Enabled && business.Sector != BusinessSector.Liquor)
+                errors["enabled"] = new[] { "Age-restricted sales are for wines & spirits (liquor) businesses only." };
             if (request.MinimumAge is < 18 or > 25)
                 errors["minimumAge"] = new[] { "The minimum age is between 18 and 25." };
             void Window(TimeOnly? from, TimeOnly? to, string fromField, string toField, string label)
@@ -159,9 +162,11 @@ namespace UltimatePos.Application.Business
             // Seconds are not on a licence; dropping them keeps "17:00" and "17:00:30" the same window.
             static TimeOnly? Minute(TimeOnly? t) => t is { } v ? new TimeOnly(v.Hour, v.Minute) : null;
             var settings = new AgeRestrictedSalesSettingsDto(request.MinimumAge, Minute(request.WeekdayFrom), Minute(request.WeekdayTo),
-                Minute(request.WeekendFrom), Minute(request.WeekendTo));
+                Minute(request.WeekendFrom), Minute(request.WeekendTo), request.Enabled);
             _events.Record(new SystemEventDraft(SystemEventTypes.BusinessProfileUpdated,
-                $"Age-restricted sales: customers {settings.MinimumAge} or over, sold {SellingHours.Describe(settings)}.",
+                settings.Enabled
+                    ? $"Age-restricted sales: customers {settings.MinimumAge} or over, sold {SellingHours.Describe(settings)}."
+                    : "Age-restricted sales switched off: no age check or selling hours.",
                 EntityType: "Business", EntityId: businessId, Data: settings));
             return ToDto(await _repository.UpdateAgeRestrictedSalesAsync(businessId, settings, _currentUser.UserId));
         }

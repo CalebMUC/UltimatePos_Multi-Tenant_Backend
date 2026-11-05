@@ -245,6 +245,9 @@ namespace UltimatePos.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AgeRestrictedSalesEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("AllowNegativeStock")
                         .HasColumnType("boolean");
 

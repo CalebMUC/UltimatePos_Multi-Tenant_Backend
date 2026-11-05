@@ -52,14 +52,13 @@ namespace UltimatePos.Application.Business
         /// <summary>Sector-dependent modules. General — unclassified, including every business registered before sectors — gets them all.</summary>
         private static readonly IReadOnlyDictionary<BusinessSector, string[]> BySector = new Dictionary<BusinessSector, string[]>
         {
-            [BusinessSector.General] = new[] { Batches, Prescriptions, Deliveries, Containers, Bundles, AgeRestricted },
+            [BusinessSector.General] = new[] { Batches, Prescriptions, Deliveries, Containers, Bundles },
             [BusinessSector.Pharmacy] = new[] { Batches, Prescriptions },
             [BusinessSector.Agrovet] = new[] { Batches },
             [BusinessSector.WaterRefill] = new[] { Deliveries, Containers, Bundles },
             // Estate customers order by phone or WhatsApp and a boda rider takes it to the door.
-            // Cigarettes, and beer where the shop holds a liquor licence, are for adults only.
-            [BusinessSector.Minimart] = new[] { Batches, Deliveries, Bundles, AgeRestricted },
-            [BusinessSector.Supermarket] = new[] { Batches, Bundles, AgeRestricted },
+            [BusinessSector.Minimart] = new[] { Batches, Deliveries, Bundles },
+            [BusinessSector.Supermarket] = new[] { Batches, Bundles },
             // Cement, steel and sheets go to site by pickup or lorry; sets (a toilet with its fittings) are sold as one item.
             [BusinessSector.Hardware] = new[] { Deliveries, Bundles },
             // Contractors' orders go to site; solar systems and wiring kits are sold as one item.
@@ -69,14 +68,24 @@ namespace UltimatePos.Application.Business
             [BusinessSector.Liquor] = new[] { Batches, Deliveries, Containers, Bundles, AgeRestricted },
         };
 
+        /// <summary>The modules of this business: from its sector and kind, eTIMS when the platform turned it on, and its own switches.</summary>
+        public static IReadOnlyList<string> For(BusinessProfile b) => For(b.Sector, b.Kind, b.EtimsEnabled, b.AgeRestrictedSalesEnabled);
+
+        /// <summary>
+        /// Whether the age check and the selling hours apply: a Liquor business that has not switched them off. Elsewhere products marked
+        /// age-restricted sell like any other.
+        /// </summary>
+        public static bool AgeRestrictedSalesOn(BusinessProfile b) => b.Sector == BusinessSector.Liquor && b.AgeRestrictedSalesEnabled;
+
         /// <summary>The modules of a business of this sector and kind: core first, then the rest in catalogue order, eTIMS last.</summary>
-        public static IReadOnlyList<string> For(BusinessSector sector, BusinessKind kind, bool etimsEnabled = false)
+        /// <param name="ageRestrictedSalesEnabled">The business's own switch for age-restricted sales (Liquor only): off drops the module.</param>
+        public static IReadOnlyList<string> For(BusinessSector sector, BusinessKind kind, bool etimsEnabled = false, bool ageRestrictedSalesEnabled = true)
         {
             var extra = BySector.TryGetValue(sector, out var modules) ? modules : BySector[BusinessSector.General];
             var result = Core.ToList();
             if (kind == BusinessKind.Manufacturer)
                 result.Add(Production);
-            result.AddRange(extra);
+            result.AddRange(extra.Where(m => m != AgeRestricted || ageRestrictedSalesEnabled));
             if (etimsEnabled)
                 result.Add(Etims);
             return result;

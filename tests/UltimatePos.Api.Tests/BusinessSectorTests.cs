@@ -141,8 +141,7 @@ public class BusinessSectorDefaultsTests
             }
 
         var general = BusinessModules.For(BusinessSector.General, BusinessKind.Trader);
-        foreach (var module in new[] { BusinessModules.Batches, BusinessModules.Prescriptions, BusinessModules.Deliveries, BusinessModules.Containers,
-                     BusinessModules.AgeRestricted })
+        foreach (var module in new[] { BusinessModules.Batches, BusinessModules.Prescriptions, BusinessModules.Deliveries, BusinessModules.Containers })
             Assert.Contains(module, general);
     }
 
@@ -162,9 +161,31 @@ public class BusinessSectorDefaultsTests
         Assert.Contains("case", symbols);
         Assert.Contains("btl", symbols);
 
-        // Cigarettes at the minimart and the supermarket need the age check too; a pharmacy sells neither.
-        Assert.Contains(BusinessModules.AgeRestricted, BusinessModules.For(BusinessSector.Minimart, BusinessKind.Trader));
-        Assert.DoesNotContain(BusinessModules.AgeRestricted, BusinessModules.For(BusinessSector.Pharmacy, BusinessKind.Trader));
+        // Age-restricted sales are a liquor store's only.
+        foreach (var sector in Enum.GetValues<BusinessSector>().Where(s => s != BusinessSector.Liquor))
+            Assert.DoesNotContain(BusinessModules.AgeRestricted, BusinessModules.For(sector, BusinessKind.Trader));
+    }
+
+    [Fact]
+    public void A_liquor_store_that_switches_age_restricted_sales_off_loses_the_module_and_the_checks()
+    {
+        Assert.DoesNotContain(BusinessModules.AgeRestricted,
+            BusinessModules.For(BusinessSector.Liquor, BusinessKind.Trader, ageRestrictedSalesEnabled: false));
+
+        var liquor = new BusinessProfile { Sector = BusinessSector.Liquor, Kind = BusinessKind.Trader };
+        Assert.True(BusinessModules.AgeRestrictedSalesOn(liquor));
+        Assert.Contains(BusinessModules.AgeRestricted, BusinessModules.For(liquor));
+        Assert.True(AgeRestrictedSalesSettingsDto.From(liquor).Enabled);
+
+        liquor.AgeRestrictedSalesEnabled = false;
+        Assert.False(BusinessModules.AgeRestrictedSalesOn(liquor));
+        Assert.DoesNotContain(BusinessModules.AgeRestricted, BusinessModules.For(liquor));
+        Assert.False(AgeRestrictedSalesSettingsDto.From(liquor).Enabled);
+
+        // The switch is on by default, but only a liquor store has the feature.
+        var minimart = new BusinessProfile { Sector = BusinessSector.Minimart, Kind = BusinessKind.Trader };
+        Assert.False(BusinessModules.AgeRestrictedSalesOn(minimart));
+        Assert.False(AgeRestrictedSalesSettingsDto.From(minimart).Enabled);
     }
 }
 
