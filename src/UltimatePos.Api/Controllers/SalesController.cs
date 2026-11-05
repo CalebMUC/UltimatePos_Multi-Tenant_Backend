@@ -109,6 +109,21 @@ namespace UltimatePos.Api.Controllers
             return Ok(ApiResponse<IEnumerable<SaleReturnDto>>.Ok(paged.Items, meta));
         }
 
+        // ---- Age-check register ----
+
+        /// <summary>
+        /// Every sale of alcohol or tobacco in the period, newest first: how the customer's age was checked (ID or known customer), who
+        /// checked it, and the age-restricted items.
+        /// </summary>
+        [Authorize(Policy = "PERMISSION:SalesReports.View")]
+        [HttpGet("age-checks")]
+        public async Task<IActionResult> GetAgeCheckRegister([FromQuery] DateOnly from, [FromQuery] DateOnly to,
+            [FromQuery] int utcOffsetMinutes = 180)
+        {
+            var result = await _salesService.GetAgeCheckRegisterAsync(from, to, utcOffsetMinutes);
+            return Ok(ApiResponse<IEnumerable<AgeCheckRegisterEntryDto>>.Ok(result));
+        }
+
         // ---- Prescription register ----
 
         /// <summary>The prescription book: every sale dispensed against a prescription in the period, newest first.</summary>

@@ -270,6 +270,7 @@ public class CatalogService
             Barcode = barcode,
             IsBatchTracked = request.IsBatchTracked,
             RequiresPrescription = request.RequiresPrescription,
+            IsAgeRestricted = request.IsAgeRestricted,
             GenericName = Clean(request.GenericName),
             Strength = Clean(request.Strength),
             DosageForm = Clean(request.DosageForm),
@@ -685,7 +686,7 @@ public class CatalogService
     private static ProductDto ToDto(Product p) =>
         new(p.ProductId, p.Sku, p.Name, p.Description, p.CategoryId, p.ItemType, p.TaxClassification, p.BaseUnitOfMeasureId, p.ReorderLevel, p.IsActive,
             p.Barcode, p.IsBatchTracked, p.RequiresPrescription, p.GenericName, p.Strength, p.DosageForm, p.Manufacturer,
-            p.Category?.Name, p.BaseUnitOfMeasure?.Symbol, p.BrandId, p.Brand?.Name);
+            p.Category?.Name, p.BaseUnitOfMeasure?.Symbol, p.BrandId, p.Brand?.Name, p.IsAgeRestricted);
 
     private static ProductPriceTierDto ToDto(ProductPriceTier t) =>
         new(t.ProductPriceTierId, t.UnitOfMeasureId, t.PriceType, t.Price, t.EffectiveFrom);
@@ -699,5 +700,5 @@ public class CatalogService
         new(p.ProductId, p.Sku, p.Name, p.Description, p.CategoryId, p.ItemType, p.TaxClassification, p.BaseUnitOfMeasureId, p.ReorderLevel, p.IsActive,
             p.UnitConversions.Select(ToDto), p.PriceTiers.Select(ToDto),
             p.Barcode, p.IsBatchTracked, p.RequiresPrescription, p.GenericName, p.Strength, p.DosageForm, p.Manufacturer,
-            p.Category?.Name, p.BaseUnitOfMeasure?.Symbol, p.BrandId, p.Brand?.Name);
+            p.Category?.Name, p.BaseUnitOfMeasure?.Symbol, p.BrandId, p.Brand?.Name, p.IsAgeRestricted);
 }

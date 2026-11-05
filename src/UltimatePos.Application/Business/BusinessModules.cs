@@ -38,6 +38,11 @@ namespace UltimatePos.Application.Business
         public const string Containers = "containers";
         /// <summary>Bundles: several products sold at one price ("20L bottle + water", packs of 12), set up once and rung up as one item.</summary>
         public const string Bundles = "bundles";
+        /// <summary>
+        /// Age-restricted products (alcohol, tobacco): the toggle on products, the age check at the till and on delivery, the selling-hours
+        /// setting and the age-check register. The API enforces a product's flag wherever the module is shown or not.
+        /// </summary>
+        public const string AgeRestricted = "ageRestricted";
         /// <summary>KRA eTIMS: devices, submissions, product classifications, the KRA block on receipts. Only where the business has it on.</summary>
         public const string Etims = "etims";
 
@@ -47,16 +52,21 @@ namespace UltimatePos.Application.Business
         /// <summary>Sector-dependent modules. General — unclassified, including every business registered before sectors — gets them all.</summary>
         private static readonly IReadOnlyDictionary<BusinessSector, string[]> BySector = new Dictionary<BusinessSector, string[]>
         {
-            [BusinessSector.General] = new[] { Batches, Prescriptions, Deliveries, Containers, Bundles },
+            [BusinessSector.General] = new[] { Batches, Prescriptions, Deliveries, Containers, Bundles, AgeRestricted },
             [BusinessSector.Pharmacy] = new[] { Batches, Prescriptions },
             [BusinessSector.Agrovet] = new[] { Batches },
             [BusinessSector.WaterRefill] = new[] { Deliveries, Containers, Bundles },
-            [BusinessSector.Minimart] = new[] { Batches, Bundles },
-            [BusinessSector.Supermarket] = new[] { Batches, Bundles },
+            // Estate customers order by phone or WhatsApp and a boda rider takes it to the door.
+            // Cigarettes, and beer where the shop holds a liquor licence, are for adults only.
+            [BusinessSector.Minimart] = new[] { Batches, Deliveries, Bundles, AgeRestricted },
+            [BusinessSector.Supermarket] = new[] { Batches, Bundles, AgeRestricted },
             // Cement, steel and sheets go to site by pickup or lorry; sets (a toilet with its fittings) are sold as one item.
             [BusinessSector.Hardware] = new[] { Deliveries, Bundles },
             // Contractors' orders go to site; solar systems and wiring kits are sold as one item.
             [BusinessSector.Electrical] = new[] { Deliveries, Bundles },
+            // A wines and spirits shop: every bottle needs an adult buyer; crates and bottles go back for their deposit (containers);
+            // orders go out by boda at night; party packs are bundles; beer, cider and ready-to-drink cans carry a best-before date.
+            [BusinessSector.Liquor] = new[] { Batches, Deliveries, Containers, Bundles, AgeRestricted },
         };
 
         /// <summary>The modules of a business of this sector and kind: core first, then the rest in catalogue order, eTIMS last.</summary>

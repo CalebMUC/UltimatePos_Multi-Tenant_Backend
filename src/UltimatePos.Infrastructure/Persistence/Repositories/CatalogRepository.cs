@@ -183,6 +183,8 @@ public class CatalogRepository : ICatalogRepository
             query = query.Where(p => p.IsBatchTracked == filter.IsBatchTracked.Value);
         if (filter.RequiresPrescription.HasValue)
             query = query.Where(p => p.RequiresPrescription == filter.RequiresPrescription.Value);
+        if (filter.IsAgeRestricted.HasValue)
+            query = query.Where(p => p.IsAgeRestricted == filter.IsAgeRestricted.Value);
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
             var pattern = $"%{filter.Search.Trim()}%";
@@ -268,6 +270,8 @@ public class CatalogRepository : ICatalogRepository
         product.Barcode = request.Barcode;
         product.IsBatchTracked = request.IsBatchTracked;
         product.RequiresPrescription = request.RequiresPrescription;
+        if (request.IsAgeRestricted is { } ageRestricted)
+            product.IsAgeRestricted = ageRestricted;
         product.GenericName = request.GenericName;
         product.Strength = request.Strength;
         product.DosageForm = request.DosageForm;

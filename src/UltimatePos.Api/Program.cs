@@ -66,6 +66,8 @@ builder.Services.AddAuthorization(options =>
 });
 // Add services to the container.
 builder.Services.AddControllers()
+    // Selling hours are typed as a clock shows them ("17:00").
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new UltimatePos.Api.Json.ClockTimeJsonConverter()))
     .ConfigureApiBehaviorOptions(options =>
     {
         // Model-binding failures (missing body, malformed GUID, wrong enum) use the same envelope as every other error, with the

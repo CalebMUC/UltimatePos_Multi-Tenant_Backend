@@ -44,6 +44,8 @@ public class ExceptionHandlingMiddleware
                 DuplicateReferenceException => (HttpStatusCode.Conflict, "DUPLICATE_REFERENCE", ex.Message),
                 PurchaseNotAllowedException => (HttpStatusCode.UnprocessableEntity, "PURCHASE_NOT_ALLOWED", ex.Message),
                 PrescriptionRequiredException => (HttpStatusCode.UnprocessableEntity, "PRESCRIPTION_REQUIRED", ex.Message),
+                AgeCheckRequiredException => (HttpStatusCode.UnprocessableEntity, "AGE_CHECK_REQUIRED", ex.Message),
+                OutsideSellingHoursException => (HttpStatusCode.UnprocessableEntity, "OUTSIDE_SELLING_HOURS", ex.Message),
                 // A unique index caught a duplicate that a check above it missed (usually two requests racing).
                 DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } } =>
                     (HttpStatusCode.Conflict, "DUPLICATE", "That record already exists — it may have just been created by someone else."),

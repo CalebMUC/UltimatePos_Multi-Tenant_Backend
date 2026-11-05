@@ -127,7 +127,7 @@ while nothing is in the system, is what makes the owner's reports useful later.
 
 | Setting | Value | Notes |
 |---|---|---|
-| **Sector** | **`Minimart` (4)** | Modules: core + `batches` + `bundles`, plus `cashUp`. No production, containers or prescriptions. Adds `doz` and `crate` units to the defaults |
+| **Sector** | **`Minimart` (4)** | Modules: core + `batches` + `deliveries` + `bundles`, plus `cashUp`. No production, containers or prescriptions. Adds `doz`, `crate`, `ctn`, `tray` and `bale` units and the `PKG` and `REF` expense categories to the defaults |
 | Business type | `Retailer` (1) | Use wholesale price tiers for bulk buyers rather than changing the type |
 | Kind | `Trader` (1) | Suggested by the sector |
 | **Allow negative stock** | **`true` (sector default) for the first month** | See below |
@@ -149,16 +149,16 @@ POST /businesses
   "owner": { "fullName": "<owner>", "email": "<email>", "phoneNumber": "<phone>" } }
 ```
 
-Add the expense categories a minimart uses that the defaults lack:
+A minimart registered from 3 November 2026 starts with the **Packaging & Carrier Bags** (`PKG`) and **Refrigeration** (`REF`)
+expense categories and the **Tray** (`tray`, eggs ×30), **Carton** (`ctn`) and **Bale** (`bale`, e.g. 12 × 2 kg flour) units. A
+minimart registered before that date needs them added by hand (`POST /expense-categories`, `POST /units-of-measure/create-unit`).
+Add, if the accountant wants it:
 
 ```http
-POST /expense-categories { "code": "PKG", "name": "Packaging & Carrier Bags", "description": "Carrier bags and wrapping used at the till" }
 POST /expense-categories { "code": "SHR", "name": "Stock Write-offs", "description": "Only if the accountant wants write-offs as an expense; otherwise adjustments carry them" }  -- confirm with accountant
-POST /expense-categories { "code": "REF", "name": "Refrigeration", "description": "Fridge and freezer servicing and gas" }  -- optional, else REP
 ```
 
-Add units the shop sells in: `POST /units-of-measure/create-unit` for **Tray** (`tray`, eggs ×30), **Carton** (`ctn`), **Bale**
-(`bale`, e.g. 12 × 2 kg flour), **Outer** (`outer`), **Bunch** (`bunch`).
+and the units the shop also sells in, such as **Outer** (`outer`) and **Bunch** (`bunch`).
 
 ---
 

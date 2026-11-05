@@ -38,23 +38,29 @@ namespace UltimatePos.Application.Sales.Dtos
         SalePrescriptionRequestDto? Prescription = null,
         DateOnly? PaymentDueDate = null, // Credit only — the day the customer promised to pay by
         IEnumerable<CreateSaleBundleRequestDto>? Bundles = null, // a sale needs at least one line or one bundle
-        string? MpesaReference = null); // MpesaReference only — the code from the customer's SMS, e.g. SJK4H7LM2P
+        string? MpesaReference = null, // MpesaReference only — the code from the customer's SMS, e.g. SJK4H7LM2P
+        AgeCheckMethod? AgeCheck = null); // required when a line is age-restricted (alcohol, tobacco): how the customer's age was checked
 
     public record SalePreviewLineDto(Guid ProductId, string ProductName, string Sku, Guid UnitOfMeasureId,
         decimal Quantity, decimal UnitPrice, decimal LineTotal, decimal AvailableInBaseUnits, decimal RequiredInBaseUnits, bool StockSufficient,
         decimal DiscountAmount = 0, decimal TaxRate = 0, decimal TaxAmount = 0, bool RequiresPrescription = false, bool IsBatchTracked = false,
-        Guid? ProductBundleId = null, string? BundleName = null, decimal? BundleQuantity = null);
+        Guid? ProductBundleId = null, string? BundleName = null, decimal? BundleQuantity = null, bool IsAgeRestricted = false);
 
     /// <summary>A bundle on a sale, as the receipt shows it: its lines (one per part) share ProductBundleId, and Total is their sum.</summary>
     public record SaleBundleDto(Guid ProductBundleId, string Name, decimal Quantity, decimal Total, decimal DiscountAmount);
 
     /// <param name="TotalAmount">What the customer pays, VAT included. Subtotal - DiscountTotal.</param>
     /// <param name="CreditLimitExceeded">For credit sales: the sale would take the customer past their limit.</param>
+    /// <param name="RequiresAgeCheck">A line is age-restricted (alcohol, tobacco): ask how the customer's age was checked (AgeCheck).</param>
+    /// <param name="MinimumAge">The age to check for, when RequiresAgeCheck.</param>
+    /// <param name="WithinSellingHours">False when the age-restricted lines cannot be sold now: the sale would be refused.</param>
+    /// <param name="SellingHours">The business's hours for age-restricted products, as a till shows them ("17:00-23:00 every day").</param>
     public record SalePreviewDto(Guid? CustomerId, PriceType PriceType, decimal TotalAmount, bool AllStockSufficient, IEnumerable<SalePreviewLineDto> Lines,
         decimal Subtotal = 0, decimal DiscountTotal = 0, decimal TaxTotal = 0, bool RequiresPrescription = false,
         decimal? CustomerBalance = null, decimal? CreditLimit = null, bool CreditLimitExceeded = false,
         IEnumerable<SaleBundleDto>? Bundles = null, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountTotal = 0,
-        CustomerDiscountSource? CustomerDiscountSource = null, CustomerMonthlySpendDto? CustomerMonth = null);
+        CustomerDiscountSource? CustomerDiscountSource = null, CustomerMonthlySpendDto? CustomerMonth = null,
+        bool RequiresAgeCheck = false, int? MinimumAge = null, bool WithinSellingHours = true, string? SellingHours = null);
 
     /// <summary>
     /// A registered customer's month so far against the monthly-spend reward (null when the business has none). Spent is completed purchases
@@ -79,7 +85,8 @@ namespace UltimatePos.Application.Sales.Dtos
         SalePrescriptionDto? Prescription = null, Guid BranchId = default, string? KraBranchId = null, string? BranchName = null,
         DateOnly? PaymentDueDate = null, IEnumerable<SaleBundleDto>? Bundles = null, string? MpesaReference = null,
         DeliveryMode DeliveryMode = DeliveryMode.Counter, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountAmount = 0,
-        CustomerDiscountSource? CustomerDiscountSource = null);
+        CustomerDiscountSource? CustomerDiscountSource = null,
+        AgeCheckMethod? AgeCheck = null); // how the customer's age was checked, when the sale has alcohol or tobacco; the receipt prints it
 
     /// <summary>Filters for the sales list. from/to are local calendar days (inclusive), resolved with utcOffsetMinutes.
     /// Search matches the sale number, the customer's name or a typed M-Pesa code.</summary>
@@ -99,6 +106,13 @@ namespace UltimatePos.Application.Sales.Dtos
         decimal Amount, decimal TaxAmount, bool Restock);
     public record SaleReturnDto(Guid SaleReturnId, string ReturnNumber, Guid SaleId, string SaleNumber, string Reason, RefundMethod RefundMethod,
         string? RefundReference, decimal TotalAmount, decimal TaxAmount, DateTime CreatedAt, Guid? CreatedBy, IEnumerable<SaleReturnLineDto> Lines);
+
+    // ---- Age-check register ----
+
+    public record AgeCheckRegisterLineDto(Guid ProductId, string ProductName, decimal Quantity, string? UnitSymbol, decimal LineTotal);
+    /// <param name="CheckedByName">Who recorded the sale, and so checked the age (for a delivery, who recorded it when the rider was back).</param>
+    public record AgeCheckRegisterEntryDto(Guid SaleId, string SaleNumber, DateTime SoldAt, SaleStatus SaleStatus, AgeCheckMethod AgeCheck,
+        string? CheckedByName, DeliveryMode DeliveryMode, string? CustomerName, IEnumerable<AgeCheckRegisterLineDto> Lines);
 
     // ---- Prescription register ----
 

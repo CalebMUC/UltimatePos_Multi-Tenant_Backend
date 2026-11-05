@@ -617,7 +617,7 @@ namespace UltimatePos.Application.Platform
                 b.IsVatRegistered, b.MpesaShortCode, b.MaxDiscountPercent, b.IsSuspended, b.SuspensionReason, b.LicenseEndsOn, b.LicenseMaxUsers,
                 b.LicenseMaxBranches, b.AllowNegativeStock, b.Sector, BusinessModules.For(b.Sector, b.Kind, b.EtimsEnabled), b.MpesaTillNumber,
                 b.MpesaPaybillNumber, b.MonthlyDiscountThreshold, b.MonthlyDiscountPercent, b.MonthlyDiscountScope, b.EtimsEnabled,
-                InvoiceSettingsDto.From(b));
+                InvoiceSettingsDto.From(b), AgeRestrictedSalesSettingsDto.From(b));
 
         internal static BusinessLicenseDto ToDto(BusinessLicense l) =>
             new(l.BusinessLicenseId, l.BusinessId, l.LicenseNumber, l.Kind, l.PlanName, l.MaxUsers, l.StartsOn, l.EndsOn, l.Amount, l.Currency,

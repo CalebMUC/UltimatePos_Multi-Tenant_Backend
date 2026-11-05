@@ -74,7 +74,33 @@ namespace UltimatePos.Application.Business.Dtos
         decimal? MonthlyDiscountThreshold = null, decimal? MonthlyDiscountPercent = null, // the monthly-spend reward; null = off
         MonthlyDiscountScope MonthlyDiscountScope = MonthlyDiscountScope.RestOfMonth,
         bool EtimsEnabled = false, // reports to KRA eTIMS; when false the "etims" module is absent and nothing of eTIMS is shown
-        InvoiceSettingsDto? Invoice = null); // how customers pay an invoice, and its terms
+        InvoiceSettingsDto? Invoice = null, // how customers pay an invoice, and its terms
+        AgeRestrictedSalesSettingsDto? AgeRestrictedSales = null); // the minimum age and the selling hours for alcohol and tobacco
+
+    /// <summary>
+    /// Who may buy age-restricted products (alcohol, tobacco) and when they may be sold, as the business's liquor licence and county law
+    /// say. Also the body of PUT /businesses/current/age-restricted-sales, a full replace. Times are East Africa Time ("17:00").
+    /// </summary>
+    /// <param name="MinimumAge">The age the till asks the cashier to check for: 18 by law today, 18-25.</param>
+    /// <param name="WeekdayFrom">Start of the selling hours. With WeekdayTo; both null = any time.</param>
+    /// <param name="WeekdayTo">End of the selling hours. Before WeekdayFrom = past midnight (17:00-02:00).</param>
+    /// <param name="WeekendFrom">Saturday and Sunday, when they differ. With WeekendTo; both null = the weekday hours.</param>
+    public record AgeRestrictedSalesSettingsDto(int MinimumAge = 18, TimeOnly? WeekdayFrom = null, TimeOnly? WeekdayTo = null,
+        TimeOnly? WeekendFrom = null, TimeOnly? WeekendTo = null)
+    {
+        public static AgeRestrictedSalesSettingsDto From(BusinessProfile b) => new(b.MinimumPurchaseAge, b.RestrictedSalesFrom,
+            b.RestrictedSalesTo, b.RestrictedSalesWeekendFrom, b.RestrictedSalesWeekendTo);
+
+        /// <summary>Copies these settings, already checked, onto the business.</summary>
+        public void ApplyTo(BusinessProfile b)
+        {
+            b.MinimumPurchaseAge = MinimumAge;
+            b.RestrictedSalesFrom = WeekdayFrom;
+            b.RestrictedSalesTo = WeekdayTo;
+            b.RestrictedSalesWeekendFrom = WeekendFrom;
+            b.RestrictedSalesWeekendTo = WeekendTo;
+        }
+    }
 
     /// <summary>
     /// What an invoice prints under "Send payment to", and its terms. Every field is optional: a blank one is left off the invoice.

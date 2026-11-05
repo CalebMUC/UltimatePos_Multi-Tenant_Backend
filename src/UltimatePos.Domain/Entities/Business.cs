@@ -41,7 +41,9 @@ namespace UltimatePos.Domain.Entities
         Supermarket,
         Hardware,
         /// <summary>Electrical goods, wiring accessories, lighting and solar.</summary>
-        Electrical
+        Electrical,
+        /// <summary>A wines and spirits shop (off-licence): beer, spirits and wine to take away, with mixers and snacks.</summary>
+        Liquor
     }
 
     public class BusinessProfile
@@ -110,6 +112,20 @@ namespace UltimatePos.Domain.Entities
         /// has paid, the confirmation always completes.
         /// </summary>
         public bool AllowNegativeStock { get; set; } = true;
+        /// <summary>
+        /// The age a customer must have reached to buy an age-restricted product (alcohol, tobacco): 18 under the Alcoholic Drinks Control
+        /// Act; a setting because the 2025 national policy proposes 21. The till asks for the customer's ID against it.
+        /// </summary>
+        public int MinimumPurchaseAge { get; set; } = 18;
+        /// <summary>
+        /// When age-restricted products may be sold, as the liquor licence says, in East Africa Time. Null From/To = any time. A window
+        /// whose end is before its start runs past midnight (17:00-02:00). The weekend window applies on Saturday and Sunday; null = the
+        /// weekday one. Public holidays are not known to the system: on a holiday the weekday hours apply.
+        /// </summary>
+        public TimeOnly? RestrictedSalesFrom { get; set; }
+        public TimeOnly? RestrictedSalesTo { get; set; }
+        public TimeOnly? RestrictedSalesWeekendFrom { get; set; }
+        public TimeOnly? RestrictedSalesWeekendTo { get; set; }
         /// <summary>False = closed by a super user: nobody can sign in to it. Data is kept.</summary>
         public bool IsActive { get; set; } = true;
         /// <summary>Locked by a super user (typically for an unpaid licence). Reversible; users are refused until it is lifted.</summary>

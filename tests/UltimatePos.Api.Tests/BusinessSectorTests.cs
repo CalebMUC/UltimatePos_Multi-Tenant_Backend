@@ -35,10 +35,11 @@ public class BusinessSectorDefaultsTests
     }
 
     [Fact]
-    public void Only_a_water_refill_station_starts_with_overselling_off_and_an_agrovet_must_choose_its_kind()
+    public void Only_a_water_refill_station_and_a_liquor_store_start_with_overselling_off_and_an_agrovet_must_choose_its_kind()
     {
         Assert.False(BusinessDefaults.For(BusinessSector.WaterRefill).AllowNegativeStock);
-        Assert.All(Enum.GetValues<BusinessSector>().Where(s => s != BusinessSector.WaterRefill),
+        Assert.False(BusinessDefaults.For(BusinessSector.Liquor).AllowNegativeStock);
+        Assert.All(Enum.GetValues<BusinessSector>().Where(s => s is not (BusinessSector.WaterRefill or BusinessSector.Liquor)),
             s => Assert.True(BusinessDefaults.For(s).AllowNegativeStock));
         Assert.Null(BusinessDefaults.For(BusinessSector.Agrovet).Kind);   // makes its own feeds, or only resells
         Assert.Null(BusinessDefaults.For(BusinessSector.General).Kind);
@@ -98,6 +99,37 @@ public class BusinessSectorDefaultsTests
     }
 
     [Fact]
+    public void A_minimart_delivers_to_the_estate_and_sells_by_the_tray_bale_and_carton()
+    {
+        var minimart = BusinessModules.For(BusinessSector.Minimart, BusinessKind.Trader);
+        Assert.Contains(BusinessModules.Deliveries, minimart);
+        Assert.Contains(BusinessModules.Batches, minimart);
+        Assert.Contains(BusinessModules.Bundles, minimart);
+        Assert.DoesNotContain(BusinessModules.Prescriptions, minimart);
+        Assert.DoesNotContain(BusinessModules.Containers, minimart);
+
+        var symbols = BusinessDefaults.UnitsFor(BusinessSector.Minimart).Select(u => u.Symbol).ToList();
+        Assert.Contains("tray", symbols);
+        Assert.Contains("bale", symbols);
+        Assert.Contains("ctn", symbols);
+        Assert.Contains("PKG", BusinessDefaults.ExpenseCategoriesFor(BusinessSector.Minimart).Select(c => c.Code));
+    }
+
+    [Fact]
+    public void A_pharmacy_sells_by_the_tablet_strip_and_sachet_without_deliveries()
+    {
+        var pharmacy = BusinessModules.For(BusinessSector.Pharmacy, BusinessKind.Trader);
+        Assert.Contains(BusinessModules.Batches, pharmacy);
+        Assert.Contains(BusinessModules.Prescriptions, pharmacy);
+        Assert.DoesNotContain(BusinessModules.Deliveries, pharmacy);
+
+        var symbols = BusinessDefaults.UnitsFor(BusinessSector.Pharmacy).Select(u => u.Symbol).ToList();
+        Assert.Contains("tab", symbols);
+        Assert.Contains("strip", symbols);
+        Assert.Contains("sachet", symbols);
+    }
+
+    [Fact]
     public void Every_business_gets_the_core_modules_and_an_unclassified_one_keeps_every_menu()
     {
         foreach (var sector in Enum.GetValues<BusinessSector>())
@@ -109,8 +141,82 @@ public class BusinessSectorDefaultsTests
             }
 
         var general = BusinessModules.For(BusinessSector.General, BusinessKind.Trader);
-        foreach (var module in new[] { BusinessModules.Batches, BusinessModules.Prescriptions, BusinessModules.Deliveries, BusinessModules.Containers })
+        foreach (var module in new[] { BusinessModules.Batches, BusinessModules.Prescriptions, BusinessModules.Deliveries, BusinessModules.Containers,
+                     BusinessModules.AgeRestricted })
             Assert.Contains(module, general);
+    }
+
+    [Fact]
+    public void A_liquor_store_counts_every_bottle_takes_crates_back_and_checks_the_buyers_age()
+    {
+        var liquor = BusinessModules.For(BusinessSector.Liquor, BusinessKind.Trader);
+        foreach (var module in new[] { BusinessModules.AgeRestricted, BusinessModules.Containers, BusinessModules.Deliveries, BusinessModules.Bundles,
+                     BusinessModules.Batches })
+            Assert.Contains(module, liquor);
+        Assert.DoesNotContain(BusinessModules.Prescriptions, liquor);
+
+        var profile = BusinessDefaults.For(BusinessSector.Liquor);
+        Assert.Equal((BusinessKind.Trader, false), (profile.Kind, profile.AllowNegativeStock));
+        var symbols = BusinessDefaults.UnitsFor(BusinessSector.Liquor).Select(u => u.Symbol).ToList();
+        Assert.Contains("crate", symbols);
+        Assert.Contains("case", symbols);
+        Assert.Contains("btl", symbols);
+
+        // Cigarettes at the minimart and the supermarket need the age check too; a pharmacy sells neither.
+        Assert.Contains(BusinessModules.AgeRestricted, BusinessModules.For(BusinessSector.Minimart, BusinessKind.Trader));
+        Assert.DoesNotContain(BusinessModules.AgeRestricted, BusinessModules.For(BusinessSector.Pharmacy, BusinessKind.Trader));
+    }
+}
+
+/// <summary>When a business may sell alcohol and tobacco, from the hours of its liquor licence: pure, no database.</summary>
+public class SellingHoursTests
+{
+    private static readonly DateTime Friday = new(2026, 11, 6);   // a Friday
+    private static DateTime At(DateTime day, int hour, int minute = 0) => day.AddHours(hour).AddMinutes(minute);
+    private static TimeOnly T(int hour, int minute = 0) => new(hour, minute);
+
+    [Fact]
+    public void No_hours_means_any_time()
+    {
+        var any = new AgeRestrictedSalesSettingsDto();
+        Assert.True(SellingHours.IsOpen(any, At(Friday, 3)));
+        Assert.Equal("at any time", SellingHours.Describe(any));
+    }
+
+    [Fact]
+    public void A_daytime_window_opens_at_its_start_and_closes_at_its_end()
+    {
+        var hours = new AgeRestrictedSalesSettingsDto(18, T(17), T(23));
+        Assert.False(SellingHours.IsOpen(hours, At(Friday, 16, 59)));
+        Assert.True(SellingHours.IsOpen(hours, At(Friday, 17)));
+        Assert.True(SellingHours.IsOpen(hours, At(Friday, 22, 59)));
+        Assert.False(SellingHours.IsOpen(hours, At(Friday, 23)));
+        Assert.Equal("17:00-23:00 every day", SellingHours.Describe(hours));
+    }
+
+    [Fact]
+    public void A_window_past_midnight_covers_the_small_hours_of_the_next_day()
+    {
+        var hours = new AgeRestrictedSalesSettingsDto(18, T(17), T(2));
+        Assert.True(SellingHours.IsOpen(hours, At(Friday, 23, 30)));
+        Assert.True(SellingHours.IsOpen(hours, At(Friday.AddDays(1), 1, 30)));   // Saturday 01:30, still Friday night
+        Assert.False(SellingHours.IsOpen(hours, At(Friday.AddDays(1), 2)));
+        Assert.False(SellingHours.IsOpen(hours, At(Friday, 12)));
+    }
+
+    [Fact]
+    public void Weekends_have_their_own_hours_and_friday_night_runs_on_friday_hours()
+    {
+        var hours = new AgeRestrictedSalesSettingsDto(18, T(17), T(23), T(14), T(1));
+        var saturday = Friday.AddDays(1);
+        Assert.False(SellingHours.IsOpen(hours, At(Friday, 14, 30)));
+        Assert.True(SellingHours.IsOpen(hours, At(saturday, 14, 30)));
+        Assert.False(SellingHours.IsOpen(hours, At(saturday, 0, 30)));          // Friday's hours ended at 23:00
+        Assert.True(SellingHours.IsOpen(hours, At(saturday.AddDays(1), 0, 30))); // Sunday 00:30: Saturday's window runs to 01:00
+        Assert.True(SellingHours.IsOpen(hours, At(saturday.AddDays(2), 0, 30)));  // Monday 00:30: still Sunday night
+        Assert.False(SellingHours.IsOpen(hours, At(saturday.AddDays(2), 1, 30)));
+        Assert.False(SellingHours.IsOpen(hours, At(saturday.AddDays(2), 14, 30))); // Monday afternoon: weekday hours
+        Assert.Equal("17:00-23:00 on weekdays, 14:00-01:00 at weekends", SellingHours.Describe(hours));
     }
 }
 

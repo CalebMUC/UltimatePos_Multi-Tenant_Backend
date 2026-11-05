@@ -23,6 +23,8 @@ namespace UltimatePos.Application.Business
         Task<BusinessProfile> UpdateMonthlyDiscountAsync(Guid businessId, decimal? threshold, decimal? percent, MonthlyDiscountScope scope, Guid? updatedBy);
         /// <summary>Replaces the invoice payment details and terms, already checked and tidied.</summary>
         Task<BusinessProfile> UpdateInvoiceSettingsAsync(Guid businessId, InvoiceSettingsDto settings, Guid? updatedBy);
+        /// <summary>Replaces the minimum age and the selling hours for age-restricted products, already checked.</summary>
+        Task<BusinessProfile> UpdateAgeRestrictedSalesAsync(Guid businessId, AgeRestrictedSalesSettingsDto settings, Guid? updatedBy);
         /// <summary>Licences of the business in scope, newest first.</summary>
         Task<IReadOnlyList<BusinessLicense>> GetLicensesAsync();
 
