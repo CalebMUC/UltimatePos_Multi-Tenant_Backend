@@ -58,5 +58,7 @@ namespace UltimatePos.Application.Sales
         Task<(IEnumerable<SaleReturn> Items, int TotalCount)> GetReturnsAsync(int page, int pageSize, DateTime? fromUtc, DateTime? toUtcExclusive);
 
         Task<IEnumerable<Sale>> GetPrescriptionSalesAsync(DateTime fromUtc, DateTime toUtcExclusive, string? search);
+        /// <summary>Sales with an age check (alcohol, tobacco) in the period, newest first, with their lines, products, units and customer.</summary>
+        Task<IEnumerable<Sale>> GetAgeCheckedSalesAsync(DateTime fromUtc, DateTime toUtcExclusive);
     }
 }

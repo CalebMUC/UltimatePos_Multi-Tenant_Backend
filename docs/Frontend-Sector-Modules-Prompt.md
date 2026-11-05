@@ -19,7 +19,7 @@ A business has three independent settings:
 
 | Setting | Answers | Values (enums are sent as **numbers**) |
 |---|---|---|
-| `sector` | What business is it? | `0` General, `1` Pharmacy, `2` Agrovet, `3` WaterRefill, `4` Minimart, `5` Supermarket, `6` Hardware, `7` Electrical |
+| `sector` | What business is it? | `0` General, `1` Pharmacy, `2` Agrovet, `3` WaterRefill, `4` Minimart, `5` Supermarket, `6` Hardware, `7` Electrical, `8` Liquor |
 | `kind` | How does it get stock? | `0` Manufacturer, `1` Trader |
 | `businessType` | Who does it sell to? | `0` Wholesaler, `1` Retailer |
 
@@ -38,10 +38,11 @@ They combine freely. An agrovet can make its own feeds (Manufacturer) or only re
 | Key | What it covers | Present for |
 |---|---|---|
 | `production` | Formulas, production runs, production cost report | Any business whose **kind is Manufacturer**, whatever its sector |
-| `batches` | Batch and expiry setup, the expiry report, the near-expiry dashboard card | General, Pharmacy, Agrovet, Minimart, Supermarket |
+| `batches` | Batch and expiry setup, the expiry report, the near-expiry dashboard card | General, Pharmacy, Agrovet, Minimart, Supermarket, Liquor |
 | `prescriptions` | Prescription-only setup on products, the prescription register | General, Pharmacy |
-| `deliveries` | Delivery orders: new order, delivery board, record delivery, rider summary | General, WaterRefill |
-| `containers` | Containers sold with a pack: the "customer has own container?" toggle, the container link on unit conversions, refill quick-sale buttons | General, WaterRefill |
+| `deliveries` | Delivery orders: new order, delivery board, record delivery, rider summary | General, WaterRefill, Minimart, Hardware, Electrical, Liquor |
+| `containers` | Containers sold with a pack: the "customer has own container?" toggle, the container link on unit conversions, refill quick-sale buttons. In a liquor store, the crate of empties sold with a crate of beer | General, WaterRefill, Liquor |
+| `ageRestricted` | Alcohol and tobacco: the *Age-restricted (18+)* toggle on products, the age check at the till and on delivery, *Settings → Age-restricted sales* (minimum age, selling hours), the *Age-check register*. See [Frontend-Liquor-Age-Check-Prompt.md](Frontend-Liquor-Age-Check-Prompt.md) | General, Minimart, Supermarket, Liquor |
 
 So, for example:
 - a refill station (WaterRefill, Trader) gets core + `deliveries` + `containers`: **no production**
@@ -74,6 +75,7 @@ const hasModule = (key: string) => activeBusiness?.modules?.includes(key) ?? tru
    - A product with `isBatchTracked = true` still needs **batch number and expiry** when receiving a purchase order, adjusting or transferring stock, even if `batches` is hidden. Show those fields whenever the product is batch-tracked.
    - A product with `requiresPrescription = true` still needs the **prescription capture** at checkout, even if `prescriptions` is hidden.
    - A pack whose unit conversion has a `containerProductId` still offers the container line at checkout, even if `containers` is hidden.
+   - A sale with a product whose `isAgeRestricted = true` still needs the **age check** at checkout, even if `ageRestricted` is hidden.
    - An existing delivery order or production run can always be opened from a link: a sale's "from delivery DEL-…" link, the audit log, a notification. Show it read-only, without the module's menu.
 
 ## Where each module appears
@@ -85,6 +87,7 @@ const hasModule = (key: string) => activeBusiness?.modules?.includes(key) ?? tru
 | `prescriptions` | On the product form, the *Prescription only*, generic name, strength and dosage form fields (read-only if already set). *Prescription register* menu. Keep prescription capture for prescription-only products (rule 3). |
 | `deliveries` | Delivery menu: board, new order, rider summary. *Deliver this order* button. The delivery-related stock column ("on delivery orders", `reservedQuantity`), shown only when it isn't 0. |
 | `containers` | The till's *Customer has own container?* toggle and the container line it adds. The *Container sold with this pack* picker on unit conversions (`containerProductId`). Refill quick-sale buttons (1L / 10L / 20L). |
+| `ageRestricted` | On the product form, the *Age-restricted (18+)* toggle (read-only if already on). *Settings → Age-restricted sales*. *Age-check register* menu. Keep the age check at checkout and on *Deliver this order* for age-restricted products (rule 3). |
 
 Core modules are always present. Keep gating them by permission only, as today.
 
@@ -96,14 +99,14 @@ Wrap each module's routes in a guard: `requireModule('production')`, and so on. 
 
 1. **Register business** (`POST /businesses`):
    - Add a **Sector** picker (required in the UI, default General).
-   - When the chosen sector suggests a kind, pre-fill **Kind** and let the user change it. Read the profile in `BusinessDefaults.Sectors`: Pharmacy, WaterRefill, Minimart, Supermarket and Hardware suggest Trader. **Agrovet and General must choose**; the API returns `400` on `kind` otherwise.
-   - **Allow negative stock** may be left unset. The API uses the sector default: `false` for WaterRefill, `true` otherwise. Show that default in the switch, editable.
+   - When the chosen sector suggests a kind, pre-fill **Kind** and let the user change it. Read the profile in `BusinessDefaults.Sectors`: Pharmacy, WaterRefill, Minimart, Supermarket, Hardware, Electrical and Liquor suggest Trader. **Agrovet and General must choose**; the API returns `400` on `kind` otherwise.
+   - **Allow negative stock** may be left unset. The API uses the sector default: `false` for WaterRefill and Liquor, `true` otherwise. Show that default in the switch, editable.
    - After registering, show what the business starts with. A short note is enough, e.g. *"Starts with 10L and 20L refill units and Filter, Sanitation and Water Testing expense categories."*
 2. **Businesses list** (`GET /platform/businesses?sector=`): add a sector filter and a Sector column.
 3. **Business detail:** show sector, and add **Change sector** (`PUT /platform/businesses/{id}/sector` `{ sector }`, permission `Businesses.Register`). Explain in the dialog: *"Only the classification and its menus change. Units, expense categories and settings it already has stay as they are."* `400` means the sector is the same as now or unknown; show the message.
 4. **Platform dashboard** (`GET /platform/dashboard`): a **By sector** table from `bySector[]` (`sector, businessCount, saleCount, revenue`), and a Sector column on the per-business rows (`businesses[].sector`).
 
-Labels: `General` → "General / unclassified", `WaterRefill` → "Water refill station". For any other sector number, show "Other".
+Labels: `General` → "General / unclassified", `WaterRefill` → "Water refill station", `Liquor` → "Wines & spirits / liquor store". For any other sector number, show "Other".
 
 ## Acceptance checks
 

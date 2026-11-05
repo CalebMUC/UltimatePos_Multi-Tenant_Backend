@@ -44,6 +44,10 @@ namespace UltimatePos.Domain.Enums
         // the money (or the M-Pesa code).
         public enum DeliveryMode { Counter, Rider }
 
+        // How a customer buying alcohol or tobacco showed they are old enough. KnownCustomer: a regular whose ID the shop has already seen;
+        // the age-check register shows how often each cashier relies on it.
+        public enum AgeCheckMethod { NationalId, Passport, DrivingLicence, OtherId, KnownCustomer }
+
         // A till's day: Open from the float being counted in until the cash is counted out.
         public enum CashSessionStatus { Open, Closed }
         // Cash put into (float top-up, rider handing back change) or taken out of (banking, change given to a rider) the drawer during the day.

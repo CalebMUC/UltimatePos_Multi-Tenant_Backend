@@ -1,4 +1,5 @@
 using UltimatePos.Application.Business;
+using UltimatePos.Application.Business.Dtos;
 using UltimatePos.Application.Common.Dtos;
 using UltimatePos.Application.Common.Helpers;
 using UltimatePos.Application.Common.Interfaces;
@@ -39,9 +40,10 @@ namespace UltimatePos.Application.Deliveries
     /// <param name="Lines">What was actually handed over, when it differs from the order (say the customer had a container after all).
     /// Left out, with Bundles, = exactly as ordered. The sale is priced from these.</param>
     /// <param name="Bundles">The bundles actually handed over. Give Lines and/or Bundles to change the order; leave both out to keep it.</param>
+    /// <param name="AgeCheck">Alcohol or tobacco on the order: how the rider checked the customer's age at the door. Required for them.</param>
     public record DeliverDeliveryOrderRequestDto(PaymentMethod PaymentMethod, decimal? AmountTendered = null, Guid? MpesaTransactionId = null,
         DateOnly? PaymentDueDate = null, bool OverrideCreditLimit = false, IEnumerable<DeliveryOrderLineRequestDto>? Lines = null, string? Notes = null,
-        string? MpesaReference = null, IEnumerable<DeliveryOrderBundleRequestDto>? Bundles = null);
+        string? MpesaReference = null, IEnumerable<DeliveryOrderBundleRequestDto>? Bundles = null, AgeCheckMethod? AgeCheck = null);
     public record CancelDeliveryOrderRequestDto(string Reason);
     /// <summary>The rider came back with the goods undelivered (nobody home, refused, wrong address).</summary>
     public record ReturnDeliveryOrderRequestDto(string Reason);
@@ -212,6 +214,10 @@ namespace UltimatePos.Application.Deliveries
                 throw new InvalidAssignmentException("Prescription-only products cannot be ordered for delivery.");
             var business = await _businessRepository.GetBusinessByIdAsync(businessId)
                 ?? throw new NotFoundException("Business not found.");
+            // Out with the rider now: alcohol and tobacco only within the licence's selling hours. A pending order is checked when it goes out.
+            if (dispatch)
+                SalesService.EnsureWithinSellingHours(AgeRestrictedSalesSettingsDto.From(business),
+                    preview.Lines.Where(l => l.IsAgeRestricted).Select(l => l.ProductName));
             var previewLines = preview.Lines.ToList();
             var shortProducts = previewLines.GroupBy(l => l.ProductId)
                 .Where(g => g.Any(l => !l.StockSufficient && (!business.AllowNegativeStock || l.IsBatchTracked)))
@@ -313,6 +319,11 @@ namespace UltimatePos.Application.Deliveries
             if (orders.Any(o => o.BranchId != branchId))
                 throw new ValidationException("deliveryOrderIds", "A trip leaves from one branch: these orders belong to different branches.");
 
+            // Alcohol and tobacco leave the shop only within the licence's selling hours.
+            var business = await _businessRepository.GetBusinessByIdAsync(_tenant.RequireBusinessId())
+                ?? throw new NotFoundException("Business not found.");
+            SalesService.EnsureWithinSellingHours(AgeRestrictedSalesSettingsDto.From(business),
+                orders.SelectMany(o => o.Lines).Where(l => l.Product.IsAgeRestricted).Select(l => l.Product.Name));
             var (trip, newTrip) = await ResolveTripAsync(riderName, deliveryTripId, branchId);
             foreach (var order in orders)
                 _events.Record(new SystemEventDraft(SystemEventTypes.DeliveryOrderDispatched, $"{order.OrderNumber} went out with {trip.RiderName} on {trip.TripNumber}.",
@@ -406,7 +417,7 @@ namespace UltimatePos.Application.Deliveries
                 lines.Select(l => new CreateSaleLineRequestDto(l.ProductId, l.UnitOfMeasureId, l.Quantity)), request.AmountTendered, null,
                 request.MpesaTransactionId, OverrideCreditLimit: request.OverrideCreditLimit, PaymentDueDate: request.PaymentDueDate,
                 Bundles: bundles.Select(b => new CreateSaleBundleRequestDto(b.ProductBundleId, b.Quantity)),
-                MpesaReference: request.MpesaReference), deliveryOrderId);
+                MpesaReference: request.MpesaReference, AgeCheck: request.AgeCheck), deliveryOrderId);
 
             // The sale (and the order's move to Delivered) has already been saved, so this event has no change of its own to ride on.
             await _events.RecordNowAsync(new SystemEventDraft(SystemEventTypes.DeliveryOrderDelivered,

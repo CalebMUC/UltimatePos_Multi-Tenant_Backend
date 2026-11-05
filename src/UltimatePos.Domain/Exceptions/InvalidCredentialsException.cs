@@ -81,6 +81,18 @@ namespace UltimatePos.Domain.Exceptions
         public PrescriptionRequiredException(string message) : base(message) { }
     }
 
+    /// <summary>An age-restricted product (alcohol, tobacco) is being sold without saying how the customer's age was checked (HTTP 422).</summary>
+    public class AgeCheckRequiredException : Exception
+    {
+        public AgeCheckRequiredException(string message) : base(message) { }
+    }
+
+    /// <summary>An age-restricted product is being sold, or sent out for delivery, outside the business's selling hours (HTTP 422).</summary>
+    public class OutsideSellingHoursException : Exception
+    {
+        public OutsideSellingHoursException(string message) : base(message) { }
+    }
+
     /// <summary>A sign-in or refresh token is missing, expired or revoked (HTTP 401).</summary>
     public class InvalidTokenException : Exception
     {

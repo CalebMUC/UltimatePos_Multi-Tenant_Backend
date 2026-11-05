@@ -350,6 +350,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<decimal?>("MaxDiscountPercent")
                         .HasColumnType("numeric");
 
+                    b.Property<int>("MinimumPurchaseAge")
+                        .HasColumnType("integer");
+
                     b.Property<decimal?>("MonthlyDiscountPercent")
                         .HasColumnType("numeric");
 
@@ -379,6 +382,18 @@ namespace UltimatePos.Infrastructure.Migrations
 
                     b.Property<string>("RegistrationNumber")
                         .HasColumnType("text");
+
+                    b.Property<TimeOnly?>("RestrictedSalesFrom")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("RestrictedSalesTo")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("RestrictedSalesWeekendFrom")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("RestrictedSalesWeekendTo")
+                        .HasColumnType("time without time zone");
 
                     b.Property<string>("Sector")
                         .IsRequired()
@@ -1737,6 +1752,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsAgeRestricted")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsBatchTracked")
                         .HasColumnType("boolean");
 
@@ -2296,6 +2314,10 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<Guid>("SaleId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("AgeCheck")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<decimal?>("AmountTendered")
                         .HasColumnType("numeric");

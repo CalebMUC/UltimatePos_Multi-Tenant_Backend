@@ -449,6 +449,7 @@ namespace UltimatePos.Infrastructure.Persistence
             modelBuilder.Entity<Sale>().Property(s => s.Status).HasConversion<string>();
             modelBuilder.Entity<Sale>().Property(s => s.DeliveryMode).HasConversion<string>();
             modelBuilder.Entity<Sale>().Property(s => s.CustomerDiscountSource).HasConversion<string>();
+            modelBuilder.Entity<Sale>().Property(s => s.AgeCheck).HasConversion<string>().HasMaxLength(20);
             modelBuilder.Entity<BusinessProfile>().Property(b => b.MonthlyDiscountScope).HasConversion<string>();
             modelBuilder.Entity<CustomerLedgerEntry>().Property(e => e.EntryType).HasConversion<string>();
             modelBuilder.Entity<CustomerLedgerEntry>().Property(e => e.PaymentMethod).HasConversion<string>();

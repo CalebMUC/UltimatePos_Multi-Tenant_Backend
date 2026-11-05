@@ -74,6 +74,18 @@ public class BusinessController : ControllerBase
         return Ok(ApiResponse<BusinessDto>.Ok(result));
     }
 
+    /// <summary>
+    /// The minimum age for alcohol and tobacco, and the hours they may be sold (as the liquor licence says, East Africa Time). A full
+    /// replace: hours left out = any time. The till refuses age-restricted products outside the hours, and asks how the age was checked.
+    /// </summary>
+    [Authorize(Policy = "PERMISSION:Businesses.Update")]
+    [HttpPut("current/age-restricted-sales")]
+    public async Task<IActionResult> UpdateAgeRestrictedSales(AgeRestrictedSalesSettingsDto request)
+    {
+        var result = await _businessService.UpdateAgeRestrictedSalesAsync(request);
+        return Ok(ApiResponse<BusinessDto>.Ok(result));
+    }
+
     /// <summary>The signed-in business's licence: where it stands, and its history.</summary>
     [Authorize(Policy = "PERMISSION:Businesses.View")]
     [HttpGet("current/license")]

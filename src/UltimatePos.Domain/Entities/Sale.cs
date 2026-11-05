@@ -41,6 +41,9 @@ namespace UltimatePos.Domain.Entities
         /// <summary>Credit sales: the day the customer promised to pay by. An open invoice past it raises an alert. Null = no promise.</summary>
         public DateOnly? PaymentDueDate { get; set; }
         public string? Notes { get; set; }
+        /// <summary>How the customer's age was checked, when the sale has an age-restricted product (alcohol, tobacco); the cashier who
+        /// recorded the sale (CreatedBy) made the check. Null when it has none.</summary>
+        public AgeCheckMethod? AgeCheck { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public Guid? CreatedBy { get; set; }
         public DateTime? LastUpdatedAt { get; set; }

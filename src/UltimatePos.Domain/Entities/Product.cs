@@ -28,6 +28,11 @@ namespace UltimatePos.Domain.Entities
         public bool IsBatchTracked { get; set; }
         /// <summary>May only be sold with prescription details captured on the sale (prescription-only medicine).</summary>
         public bool RequiresPrescription { get; set; }
+        /// <summary>
+        /// Alcohol or tobacco: sold only to a customer whose age was checked (the sale records how), and only within the business's
+        /// selling hours for such products, when it has set them.
+        /// </summary>
+        public bool IsAgeRestricted { get; set; }
         // Descriptive medicine attributes. Stored and shown, never interpreted: the system applies no clinical rules.
         public string? GenericName { get; set; }
         public string? Strength { get; set; }

@@ -55,8 +55,9 @@ namespace UltimatePos.Application.Business
         public static readonly IReadOnlyDictionary<BusinessSector, SectorProfile> Sectors = new Dictionary<BusinessSector, SectorProfile>
         {
             [BusinessSector.General] = new(null, true, NoUnits, NoCategories),
+            // ORS, Eno and Mara Moja are sold by the sachet.
             [BusinessSector.Pharmacy] = new(BusinessKind.Trader, true,
-                new[] { ("Tablet", "tab"), ("Capsule", "cap"), ("Bottle", "btl"), ("Strip", "strip"), ("Tube", "tube") },
+                new[] { ("Tablet", "tab"), ("Capsule", "cap"), ("Bottle", "btl"), ("Strip", "strip"), ("Tube", "tube"), ("Sachet", "sachet") },
                 new[] { ("DSP", "Waste Disposal", "Fees for collecting and disposing of expired or damaged stock") }),
             // Many agrovets also make their own feeds: no Kind is suggested, so the registering super user must choose.
             [BusinessSector.Agrovet] = new(null, true,
@@ -71,9 +72,14 @@ namespace UltimatePos.Application.Business
                     ("SAN", "Cleaning & Sanitation", "Tank cleaning, sanitiser and cleaning supplies"),
                     ("WQT", "Water Testing & Inspection", "Laboratory tests and inspection fees"),
                 }),
+            // Eggs by the tray, flour and sugar by the bale, soda and water by the carton; carrier bags and fridges cost money.
             [BusinessSector.Minimart] = new(BusinessKind.Trader, true,
-                new[] { ("Dozen", "doz"), ("Crate", "crate") },
-                NoCategories),
+                new[] { ("Dozen", "doz"), ("Crate", "crate"), ("Carton", "ctn"), ("Tray", "tray"), ("Bale", "bale") },
+                new[]
+                {
+                    ("PKG", "Packaging & Carrier Bags", "Carrier bags and wrapping used at the till"),
+                    ("REF", "Refrigeration", "Fridge and freezer servicing, repairs and gas"),
+                }),
             [BusinessSector.Supermarket] = new(BusinessKind.Trader, true,
                 new[] { ("Dozen", "doz"), ("Crate", "crate"), ("Carton", "ctn") },
                 new[] { ("PKG", "Packaging & Carrier Bags", "Carrier bags, wrapping and packing materials used at the tills") }),
@@ -84,6 +90,15 @@ namespace UltimatePos.Application.Business
             [BusinessSector.Electrical] = new(BusinessKind.Trader, true,
                 new[] { ("Metre", "m"), ("Roll", "roll"), ("Coil", "coil"), ("Set", "set") },
                 NoCategories),
+            // Beer by the crate of 25 or the carton of 24 cans, spirits and wine by the case of 12. Every bottle is counted: a sale of
+            // stock the shop does not hold means a delivery was not received or a bottle walked, so overselling starts off.
+            [BusinessSector.Liquor] = new(BusinessKind.Trader, false,
+                new[] { ("Bottle", "btl"), ("Crate", "crate"), ("Carton", "ctn"), ("Case", "case") },
+                new[]
+                {
+                    ("PKG", "Packaging & Carrier Bags", "Carrier bags, bottle sleeves and gift bags used at the till"),
+                    ("REF", "Refrigeration", "Fridges and coolers: servicing, repairs and gas"),
+                }),
         };
 
         /// <summary>The sector's profile; an unknown sector gets the General one.</summary>

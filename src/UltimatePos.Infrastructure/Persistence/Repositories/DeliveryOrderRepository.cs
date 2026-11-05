@@ -47,7 +47,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
         public async Task<IReadOnlyList<DeliveryOrder>> GetManyAsync(IEnumerable<Guid> deliveryOrderIds)
         {
             var ids = deliveryOrderIds.Distinct().ToList();
-            return await _context.DeliveryOrders.AsNoTracking().Where(o => ids.Contains(o.DeliveryOrderId)).ToListAsync();
+            return await _context.DeliveryOrders.AsNoTracking().Where(o => ids.Contains(o.DeliveryOrderId))
+                .Include(o => o.Lines).ThenInclude(l => l.Product).AsSplitQuery().ToListAsync();
         }
 
         public async Task<(IReadOnlyList<DeliveryOrder> Items, int TotalCount)> GetOrdersAsync(int page, int pageSize, DeliveryOrderQuery filter,

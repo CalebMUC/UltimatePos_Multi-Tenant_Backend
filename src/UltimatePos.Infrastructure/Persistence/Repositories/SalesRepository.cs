@@ -465,6 +465,16 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
         // ---- Prescription register ----
 
+        public async Task<IEnumerable<Sale>> GetAgeCheckedSalesAsync(DateTime fromUtc, DateTime toUtcExclusive) =>
+            await _context.Sales.AsNoTracking()
+                .Where(s => s.AgeCheck != null && s.Status != SaleStatus.Failed && s.CreatedAt >= fromUtc && s.CreatedAt < toUtcExclusive)
+                .Include(s => s.Customer)
+                .Include(s => s.Lines).ThenInclude(l => l.Product)
+                .Include(s => s.Lines).ThenInclude(l => l.UnitOfMeasure)
+                .OrderByDescending(s => s.CreatedAt)
+                .AsSplitQuery()
+                .ToListAsync();
+
         public async Task<IEnumerable<Sale>> GetPrescriptionSalesAsync(DateTime fromUtc, DateTime toUtcExclusive, string? search)
         {
             var query = _context.Sales.AsNoTracking()

@@ -51,6 +51,17 @@ public class BusinessRepository : IBusinessRepository
         return business;
     }
 
+    public async Task<BusinessProfile> UpdateAgeRestrictedSalesAsync(Guid businessId, AgeRestrictedSalesSettingsDto settings, Guid? updatedBy)
+    {
+        var business = await _context.Businesses.FirstOrDefaultAsync(b => b.BusinessId == businessId)
+            ?? throw new NotFoundException($"Business '{businessId}' not found.");
+        settings.ApplyTo(business);
+        business.LastUpdatedAt = DateTime.UtcNow;
+        business.LastUpdatedBy = updatedBy;
+        await _context.SaveChangesAsync();
+        return business;
+    }
+
     public async Task<BusinessProfile> UpdateInvoiceSettingsAsync(Guid businessId, InvoiceSettingsDto settings, Guid? updatedBy)
     {
         var business = await _context.Businesses.FirstOrDefaultAsync(b => b.BusinessId == businessId)

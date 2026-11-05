@@ -24,10 +24,11 @@ public class ProductsController : ControllerBase
         [FromQuery] string? search = null, [FromQuery] bool? isActive = null,
         [FromQuery] bool? isBatchTracked = null, [FromQuery] bool? requiresPrescription = null,
         [FromQuery] string? sortBy = null, [FromQuery] string? sortDirection = null,
-        [FromQuery] Guid? brandId = null)
+        [FromQuery] Guid? brandId = null, [FromQuery] bool? isAgeRestricted = null)
     {
         var paged = await _catalogService.GetProductsAsync(page, pageSize,
-            new ProductQuery(categoryId, itemType, search, isActive, isBatchTracked, requiresPrescription, sortBy, sortDirection, brandId));
+            new ProductQuery(categoryId, itemType, search, isActive, isBatchTracked, requiresPrescription, sortBy, sortDirection, brandId,
+                isAgeRestricted));
         var meta = new PagingMeta(paged.Page, paged.PageSize, paged.TotalCount, paged.TotalPages);
         return Ok(ApiResponse<IEnumerable<ProductDto>>.Ok(paged.Items, meta));
     }

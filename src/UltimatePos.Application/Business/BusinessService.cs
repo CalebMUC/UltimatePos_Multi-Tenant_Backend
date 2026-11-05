@@ -132,6 +132,40 @@ namespace UltimatePos.Application.Business
             return ToDto(await _repository.UpdateInvoiceSettingsAsync(businessId, settings, _currentUser.UserId));
         }
 
+        /// <summary>
+        /// Replaces the minimum age and the selling hours for age-restricted products (alcohol, tobacco), as the liquor licence gives them.
+        /// The till then refuses such a sale outside the hours, and asks for the customer's ID against the age.
+        /// </summary>
+        public async Task<BusinessDto> UpdateAgeRestrictedSalesAsync(AgeRestrictedSalesSettingsDto request)
+        {
+            var businessId = _tenant.RequireBusinessId();
+            var errors = new Dictionary<string, string[]>();
+            if (request.MinimumAge is < 18 or > 25)
+                errors["minimumAge"] = new[] { "The minimum age is between 18 and 25." };
+            void Window(TimeOnly? from, TimeOnly? to, string fromField, string toField, string label)
+            {
+                if (from.HasValue != to.HasValue)
+                    errors[from.HasValue ? toField : fromField] = new[] { $"Give both the start and the end of the {label} hours, or neither." };
+                else if (from.HasValue && from == to)
+                    errors[toField] = new[] { $"The {label} hours end when they start: leave both out for any time." };
+            }
+            Window(request.WeekdayFrom, request.WeekdayTo, "weekdayFrom", "weekdayTo", "weekday");
+            Window(request.WeekendFrom, request.WeekendTo, "weekendFrom", "weekendTo", "weekend");
+            if (request.WeekendFrom.HasValue && !request.WeekdayFrom.HasValue)
+                errors["weekdayFrom"] = new[] { "Set the weekday hours first: weekend hours only change Saturday and Sunday." };
+            if (errors.Count > 0)
+                throw new ValidationException(errors);
+
+            // Seconds are not on a licence; dropping them keeps "17:00" and "17:00:30" the same window.
+            static TimeOnly? Minute(TimeOnly? t) => t is { } v ? new TimeOnly(v.Hour, v.Minute) : null;
+            var settings = new AgeRestrictedSalesSettingsDto(request.MinimumAge, Minute(request.WeekdayFrom), Minute(request.WeekdayTo),
+                Minute(request.WeekendFrom), Minute(request.WeekendTo));
+            _events.Record(new SystemEventDraft(SystemEventTypes.BusinessProfileUpdated,
+                $"Age-restricted sales: customers {settings.MinimumAge} or over, sold {SellingHours.Describe(settings)}.",
+                EntityType: "Business", EntityId: businessId, Data: settings));
+            return ToDto(await _repository.UpdateAgeRestrictedSalesAsync(businessId, settings, _currentUser.UserId));
+        }
+
         /// <summary>The settings trimmed (blank = null) and checked; the phone stored as 2547XXXXXXXX.</summary>
         internal static InvoiceSettingsDto CheckInvoiceSettings(InvoiceSettingsDto request)
         {

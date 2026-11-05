@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using UltimatePos.Application.Notifications;
 using UltimatePos.Application.Accounting;
 using UltimatePos.Application.Business;
+using UltimatePos.Application.Business.Dtos;
 using UltimatePos.Application.Catalog;
 using UltimatePos.Application.Common;
 using UltimatePos.Application.Common.Dtos;
@@ -76,11 +77,50 @@ namespace UltimatePos.Application.Sales
                     l.ProductId, l.ProductName, l.Sku, l.UnitOfMeasureId, l.Quantity, l.UnitPrice, l.LineTotal,
                     l.AvailableInBaseUnits, l.RequiredInBaseUnits, l.StockSufficient,
                     l.DiscountAmount, l.TaxRate, l.TaxAmount, l.RequiresPrescription, l.IsBatchTracked,
-                    l.BundleId, l.BundleName, l.BundleQuantity)),
+                    l.BundleId, l.BundleName, l.BundleQuantity, l.IsAgeRestricted)),
                 plan.Subtotal, plan.DiscountTotal, plan.TaxTotal, plan.RequiresPrescription,
                 plan.CustomerBalance, plan.CreditLimit, plan.CreditLimitExceeded(request.PaymentMethod),
                 Bundles(plan.Lines.Select(l => (l.BundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))),
-                plan.CustomerDiscountPercent, plan.CustomerDiscountTotal, plan.CustomerDiscountSource, plan.CustomerMonth);
+                plan.CustomerDiscountPercent, plan.CustomerDiscountTotal, plan.CustomerDiscountSource, plan.CustomerMonth,
+                plan.RequiresAgeCheck, plan.RequiresAgeCheck ? plan.AgeRules.MinimumAge : null,
+                !plan.RequiresAgeCheck || SellingHours.IsOpen(plan.AgeRules, LocalNow), SellingHours.Describe(plan.AgeRules));
+        }
+
+        /// <summary>The business's clock (East Africa Time), for selling hours.</summary>
+        private static DateTime LocalNow => DateTime.UtcNow.AddMinutes(ReportPeriod.DefaultUtcOffsetMinutes);
+
+        /// <summary>
+        /// Alcohol and tobacco leave the shop only within the selling hours of the business's liquor licence (none set = any time). Checked
+        /// when a counter sale is recorded and when a delivery goes out with a rider; a delivery recorded when the rider is back is not
+        /// checked again, since the goods left in time.
+        /// </summary>
+        internal static void EnsureWithinSellingHours(AgeRestrictedSalesSettingsDto rules, IEnumerable<string> ageRestrictedProducts)
+        {
+            var names = ageRestrictedProducts.Distinct().ToList();
+            if (names.Count == 0 || SellingHours.IsOpen(rules, LocalNow))
+                return;
+            throw new OutsideSellingHoursException(
+                $"{string.Join(", ", names.Select(n => $"'{n}'"))} may be sold only {SellingHours.Describe(rules)}, as the liquor licence " +
+                $"allows; it is {LocalNow:HH:mm} now. Take the item off the sale.");
+        }
+
+        /// <summary>
+        /// How the customer's age was checked, required when the sale has an age-restricted product (alcohol, tobacco). Ignored, and not
+        /// recorded, when it has none.
+        /// </summary>
+        private static AgeCheckMethod? CheckAge(SalePlan plan, AgeCheckMethod? ageCheck)
+        {
+            if (!plan.RequiresAgeCheck)
+                return null;
+            if (ageCheck is null)
+                throw new AgeCheckRequiredException(
+                    "This sale includes age-restricted products: " +
+                    string.Join(", ", plan.Lines.Where(l => l.IsAgeRestricted).Select(l => $"'{l.ProductName}'").Distinct()) +
+                    $". Check that the customer is {plan.AgeRules.MinimumAge} or over and record how: national ID, passport, driving licence, " +
+                    "another ID, or a regular whose ID you have seen before.");
+            if (!Enum.IsDefined(ageCheck.Value))
+                throw new ValidationException("ageCheck", "The age check is NationalId, Passport, DrivingLicence, OtherId or KnownCustomer.");
+            return ageCheck;
         }
 
         public Task<SaleDto> RecordSaleAsync(CreateSaleRequestDto request) => RecordAsync(request, deliveryOrderId: null);
@@ -100,6 +140,12 @@ namespace UltimatePos.Application.Sales
                 : null;
             var plan = await BuildSalePlanAsync(request, deliveryOrderId);
             var userId = _currentUser.UserId;
+
+            // Alcohol and tobacco: within the licence's hours (a delivery was checked when it went out), and only once the cashier has
+            // checked the customer's age.
+            if (!deliveryOrderId.HasValue)
+                EnsureWithinSellingHours(plan.AgeRules, plan.Lines.Where(l => l.IsAgeRestricted).Select(l => l.ProductName));
+            var ageCheck = CheckAge(plan, request.AgeCheck);
 
             // The customer's standing discount was given by a manager; only a discount the cashier adds needs the permission.
             if (plan.DiscountTotal - plan.CustomerDiscountTotal > 0 && !_currentUser.HasPermission(ApplyDiscountPermission))
@@ -155,6 +201,7 @@ namespace UltimatePos.Application.Sales
                 TaxTotal = plan.TaxTotal,
                 TotalAmount = plan.Total,
                 Notes = request.Notes,
+                AgeCheck = ageCheck,
                 CreatedBy = userId,
                 Prescription = prescription,
                 Lines = plan.Lines.Select(l => new SaleLine
@@ -417,6 +464,24 @@ namespace UltimatePos.Application.Sales
                     l.BatchAllocations.Select(a => a.StockBatch.BatchNumber).Distinct().ToList()))));
         }
 
+        // ---- Age-check register ----
+
+        /// <summary>
+        /// Every sale of alcohol or tobacco in the period, newest first, with how the customer's age was checked and by whom: what the
+        /// owner shows an inspector, and how they see a cashier who records "known customer" all evening.
+        /// </summary>
+        public async Task<IEnumerable<AgeCheckRegisterEntryDto>> GetAgeCheckRegisterAsync(DateOnly from, DateOnly to, int utcOffsetMinutes)
+        {
+            var period = ReportPeriod.Create(from, to, utcOffsetMinutes);
+            var sales = (await _repository.GetAgeCheckedSalesAsync(period.FromUtc, period.ToUtcExclusive)).ToList();
+            var names = await _repository.GetUserNamesAsync(sales.Select(s => s.CreatedBy).OfType<Guid>());
+
+            return sales.Select(s => new AgeCheckRegisterEntryDto(s.SaleId, s.SaleNumber, s.CreatedAt, s.Status, s.AgeCheck!.Value,
+                s.CreatedBy is { } by && names.TryGetValue(by, out var name) ? name : null, s.DeliveryMode, s.Customer?.CustomerName,
+                s.Lines.Where(l => l.Product.IsAgeRestricted).Select(l => new AgeCheckRegisterLineDto(l.ProductId, l.Product.Name, l.Quantity,
+                    l.UnitOfMeasure?.Symbol, l.LineTotal)).ToList()));
+        }
+
         // ---- Payment-method branches ----
 
         private async Task<SaleDto> RecordCashSaleAsync(Sale sale, CreateSaleRequestDto request, bool allowNegativeStock, Guid? deliveryOrderId)
@@ -555,20 +620,21 @@ namespace UltimatePos.Application.Sales
         private sealed record SaleLinePlan(Guid ProductId, string ProductName, string Sku, Guid UnitOfMeasureId,
             decimal Quantity, decimal UnitPrice, decimal Gross, decimal DiscountAmount, decimal LineTotal, decimal TaxRate, decimal TaxAmount,
             decimal RequiredInBaseUnits, decimal AvailableInBaseUnits, bool IsBatchTracked, bool RequiresPrescription,
-            Guid? BundleId, string? BundleName, decimal? BundleQuantity)
+            Guid? BundleId, string? BundleName, decimal? BundleQuantity, bool IsAgeRestricted)
         {
             public bool StockSufficient => AvailableInBaseUnits >= RequiredInBaseUnits;
         }
 
         private sealed record SalePlan(PriceType PriceType, IReadOnlyList<SaleLinePlan> Lines, decimal? CustomerBalance, decimal? CreditLimit,
-            bool AllowNegativeStock, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountTotal = 0,
-            CustomerDiscountSource? CustomerDiscountSource = null, CustomerMonthlySpendDto? CustomerMonth = null)
+            bool AllowNegativeStock, AgeRestrictedSalesSettingsDto AgeRules, decimal? CustomerDiscountPercent = null,
+            decimal CustomerDiscountTotal = 0, CustomerDiscountSource? CustomerDiscountSource = null, CustomerMonthlySpendDto? CustomerMonth = null)
         {
             public decimal Subtotal => Lines.Sum(l => l.Gross);
             public decimal DiscountTotal => Lines.Sum(l => l.DiscountAmount);
             public decimal TaxTotal => Lines.Sum(l => l.TaxAmount);
             public decimal Total => Lines.Sum(l => l.LineTotal);
             public bool RequiresPrescription => Lines.Any(l => l.RequiresPrescription);
+            public bool RequiresAgeCheck => Lines.Any(l => l.IsAgeRestricted);
 
             public bool CreditLimitExceeded(PaymentMethod method) =>
                 method == PaymentMethod.Credit && CreditLimit is { } limit && (CustomerBalance ?? 0m) + Total > limit;
@@ -744,12 +810,12 @@ namespace UltimatePos.Application.Sales
 
                 planLines.Add(new SaleLinePlan(product.ProductId, product.Name, product.Sku, unitOfMeasureId,
                     quantity, price, gross, discount, lineTotal, taxRate, taxAmount, requiredBase, available - alreadyDrawn,
-                    product.IsBatchTracked, product.RequiresPrescription, bundleId, bundleName, bundleQuantity));
+                    product.IsBatchTracked, product.RequiresPrescription, bundleId, bundleName, bundleQuantity, product.IsAgeRestricted));
             }
 
             var standingTotal = priced.Sum(p => p.StandingDiscount);
             var plan = new SalePlan(priceType, planLines, customerBalance, creditLimit, business.AllowNegativeStock,
-                standingTotal > 0 ? customerPercent : null, standingTotal, standingTotal > 0 ? source : null, customerMonth);
+                AgeRestrictedSalesSettingsDto.From(business), standingTotal > 0 ? customerPercent : null, standingTotal, standingTotal > 0 ? source : null, customerMonth);
 
             // The cap limits what a cashier gives; the customer's automatic discount was set by the owner and is not counted against it.
             if (business.MaxDiscountPercent is { } cap && plan.Subtotal > 0
@@ -866,7 +932,7 @@ namespace UltimatePos.Application.Sales
                 s.Prescription is null ? null : ToDto(s.Prescription), s.BranchId,
                 s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name, s.PaymentDueDate,
                 Bundles(s.Lines.Select(l => (l.ProductBundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))),
-                s.MpesaReference, s.DeliveryMode, s.CustomerDiscountPercent, s.CustomerDiscountAmount, s.CustomerDiscountSource);
+                s.MpesaReference, s.DeliveryMode, s.CustomerDiscountPercent, s.CustomerDiscountAmount, s.CustomerDiscountSource, s.AgeCheck);
 
         /// <summary>The bundles on a sale, each once, from the lines their parts became. Null when the sale has none.</summary>
         private static List<SaleBundleDto>? Bundles(IEnumerable<(Guid? BundleId, string? Name, decimal? Quantity, decimal LineTotal, decimal Discount)> lines)
