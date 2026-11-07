@@ -68,6 +68,7 @@
 
             ("Sales.Create", "Sales"), ("Sales.View", "Sales"), ("Sales.Void", "Sales"),
             ("Sales.Return", "Sales"), ("Sales.ApplyDiscount", "Sales"), ("Sales.OverrideCreditLimit", "Sales"),
+            ("Sales.Backdate", "Sales"),              // enter a sale made up to 3 days ago, e.g. from the paper book after a power failure
             ("Prescriptions.Dispense", "Prescriptions"), ("Prescriptions.View", "Prescriptions"),
             ("DeliveryOrders.View", "DeliveryOrders"), ("DeliveryOrders.Create", "DeliveryOrders"),
             ("DeliveryOrders.Dispatch", "DeliveryOrders"), ("DeliveryOrders.Deliver", "DeliveryOrders"),

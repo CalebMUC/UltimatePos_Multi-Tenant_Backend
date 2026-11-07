@@ -124,6 +124,9 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             return levels.ToDictionary(l => l.ProductId, l => l.IsBatchTracked ? inLots.GetValueOrDefault(l.ProductId) : l.QuantityOnHand);
         }
 
+        public Task<Dictionary<Guid, decimal>> GetSellableQuantitiesAtAsync(IEnumerable<Guid> productIds, DateTime atUtc, DateOnly day) =>
+            StockHistory.AvailableAtAsync(_context, _branches.RequireActiveBranchId(), productIds.Distinct().ToList(), atUtc, day);
+
         public async Task<Dictionary<(Guid ProductId, Guid BranchId), decimal>> GetReservedQuantitiesAsync(IEnumerable<Guid> productIds)
         {
             var ids = productIds.Distinct().ToList();

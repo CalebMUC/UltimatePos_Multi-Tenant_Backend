@@ -267,6 +267,7 @@ namespace UltimatePos.Infrastructure.Persistence
                     ReferenceId = template.ReferenceId,
                     BatchId = template.BatchId,
                     Notes = template.Notes,
+                    CreatedAt = template.CreatedAt, // a backdated sale's stock leaves at the sale's time
                     CreatedBy = template.CreatedBy
                 };
                 await ApplyToBatchAsync(movement, lot.StockBatchId);

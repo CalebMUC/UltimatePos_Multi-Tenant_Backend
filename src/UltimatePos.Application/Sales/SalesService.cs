@@ -27,6 +27,10 @@ namespace UltimatePos.Application.Sales
         public const string ApplyDiscountPermission = "Sales.ApplyDiscount";
         public const string OverrideCreditLimitPermission = "Sales.OverrideCreditLimit";
         public const string DispensePermission = "Prescriptions.Dispense";
+        public const string BackdatePermission = "Sales.Backdate";
+
+        /// <summary>How far back a sale can be dated, in calendar days: enough to catch up after a power failure, not to rewrite last month.</summary>
+        public const int MaxBackdateDays = 3;
 
         private const int QuantityDecimals = 4;
         private const int MoneyDecimals = 2;
@@ -69,7 +73,8 @@ namespace UltimatePos.Application.Sales
 
         public async Task<SalePreviewDto> PreviewSaleAsync(CreateSaleRequestDto request)
         {
-            var plan = await BuildSalePlanAsync(request);
+            var time = ResolveSaleTime(request, deliveryOrderId: null);
+            var plan = await BuildSalePlanAsync(request, time);
             return new SalePreviewDto(
                 request.CustomerId, plan.PriceType, plan.Total,
                 plan.Lines.All(l => l.StockSufficient),
@@ -83,25 +88,77 @@ namespace UltimatePos.Application.Sales
                 Bundles(plan.Lines.Select(l => (l.BundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))),
                 plan.CustomerDiscountPercent, plan.CustomerDiscountTotal, plan.CustomerDiscountSource, plan.CustomerMonth,
                 plan.RequiresAgeCheck, plan.RequiresAgeCheck ? plan.AgeRules.MinimumAge : null,
-                !plan.RequiresAgeCheck || SellingHours.IsOpen(plan.AgeRules, LocalNow), SellingHours.Describe(plan.AgeRules));
+                !plan.RequiresAgeCheck || SellingHours.IsOpen(plan.AgeRules, time.Local), SellingHours.Describe(plan.AgeRules),
+                time.BackdatedUtc);
         }
 
         /// <summary>The business's clock (East Africa Time), for selling hours.</summary>
         private static DateTime LocalNow => DateTime.UtcNow.AddMinutes(ReportPeriod.DefaultUtcOffsetMinutes);
 
         /// <summary>
+        /// When a sale happens. Now, for almost every sale; for a backdated one (entered after a power failure) the time it really happened:
+        /// BackdatedUtc, with its local calendar day and clock, which stock, expiry, selling hours and the monthly reward go by.
+        /// </summary>
+        private sealed record SaleTime(DateTime? BackdatedUtc, DateOnly Day, DateTime Local, string? Reason)
+        {
+            public bool IsBackdated => BackdatedUtc.HasValue;
+        }
+
+        /// <summary>
+        /// Checks a backdated sale's date (request.SoldAt): in the past, within <see cref="MaxBackdateDays"/> calendar days, entered by
+        /// someone allowed to (Sales.Backdate) with a reason, and paid at the time (not by an STK push now). A SoldAt within a minute of now
+        /// is an ordinary sale (a till's clock a little behind).
+        /// </summary>
+        private SaleTime ResolveSaleTime(CreateSaleRequestDto request, Guid? deliveryOrderId)
+        {
+            var nowUtc = DateTime.UtcNow;
+            var today = Today;
+            if (request.SoldAt is not { } soldAt || soldAt.UtcDateTime >= nowUtc.AddMinutes(-1) && soldAt.UtcDateTime <= nowUtc.AddMinutes(1))
+                return new SaleTime(null, today, LocalNow, null);
+
+            var atUtc = soldAt.UtcDateTime;
+            if (atUtc > nowUtc)
+                throw new ValidationException("soldAt", "A sale cannot be dated in the future.");
+            if (!_currentUser.HasPermission(BackdatePermission))
+                throw new ForbiddenException("You do not have permission to enter a sale with an earlier date (Sales.Backdate).");
+            if (deliveryOrderId.HasValue)
+                throw new ValidationException("soldAt", "A delivery is recorded when the rider comes back with the payment; it cannot be backdated.");
+
+            var local = atUtc.AddMinutes(ReportPeriod.DefaultUtcOffsetMinutes);
+            var day = DateOnly.FromDateTime(local);
+            var earliest = today.AddDays(-MaxBackdateDays);
+            if (day < earliest)
+                throw new ValidationException("soldAt",
+                    $"A sale can be backdated up to {MaxBackdateDays} days, to {earliest:ddd d MMM yyyy} at the earliest.");
+            if (request.PaymentMethod == PaymentMethod.MpesaStkPush)
+                throw new ValidationException("paymentMethod",
+                    "A backdated sale was paid at the time: record it as cash, an M-Pesa code, a till payment or credit, not an STK push.");
+
+            var reason = request.BackdateReason?.Trim();
+            if (string.IsNullOrEmpty(reason))
+                throw new ValidationException("backdateReason", "Say why the sale is entered late, e.g. \"Power failure, entered from the paper book\".");
+            if (reason.Length > 200)
+                throw new ValidationException("backdateReason", "The reason cannot exceed 200 characters.");
+            return new SaleTime(atUtc, day, local, reason);
+        }
+
+        /// <summary>
         /// Alcohol and tobacco leave the shop only within the selling hours of the business's liquor licence (none set = any time). Checked
         /// when a counter sale is recorded and when a delivery goes out with a rider; a delivery recorded when the rider is back is not
-        /// checked again, since the goods left in time.
+        /// checked again, since the goods left in time. A backdated sale is checked at the time it was made (<paramref name="localAt"/>).
         /// </summary>
-        internal static void EnsureWithinSellingHours(AgeRestrictedSalesSettingsDto rules, IEnumerable<string> ageRestrictedProducts)
+        internal static void EnsureWithinSellingHours(AgeRestrictedSalesSettingsDto rules, IEnumerable<string> ageRestrictedProducts,
+            DateTime? localAt = null)
         {
+            var at = localAt ?? LocalNow;
             var names = ageRestrictedProducts.Distinct().ToList();
-            if (!rules.Enabled || names.Count == 0 || SellingHours.IsOpen(rules, LocalNow))
+            if (!rules.Enabled || names.Count == 0 || SellingHours.IsOpen(rules, at))
                 return;
             throw new OutsideSellingHoursException(
                 $"{string.Join(", ", names.Select(n => $"'{n}'"))} may be sold only {SellingHours.Describe(rules)}, as the liquor licence " +
-                $"allows; it is {LocalNow:HH:mm} now. Take the item off the sale.");
+                (localAt.HasValue
+                    ? $"allows; this sale was at {at:HH:mm}. Take the item off the sale."
+                    : $"allows; it is {at:HH:mm} now. Take the item off the sale."));
         }
 
         /// <summary>
@@ -135,17 +192,20 @@ namespace UltimatePos.Application.Sales
         {
             if (deliveryOrderId.HasValue && request.PaymentMethod == PaymentMethod.MpesaStkPush)
                 throw new ValidationException("paymentMethod", "A delivery is completed once paid: use cash, an M-Pesa code, a till payment or credit.");
+            var time = ResolveSaleTime(request, deliveryOrderId);
             var mpesaReference = request.PaymentMethod == PaymentMethod.MpesaReference
                 ? await RequireUnusedMpesaReferenceAsync(request.MpesaReference)
                 : null;
-            var plan = await BuildSalePlanAsync(request, deliveryOrderId);
+            var plan = await BuildSalePlanAsync(request, time, deliveryOrderId);
             var userId = _currentUser.UserId;
 
-            // Alcohol and tobacco: within the licence's hours (a delivery was checked when it went out), and only once the cashier has
-            // checked the customer's age.
+            // Alcohol and tobacco: within the licence's hours (a delivery was checked when it went out; a backdated sale is checked at the
+            // time it was made), and only once the cashier has checked the customer's age.
             if (!deliveryOrderId.HasValue)
-                EnsureWithinSellingHours(plan.AgeRules, plan.Lines.Where(l => l.IsAgeRestricted).Select(l => l.ProductName));
+                EnsureWithinSellingHours(plan.AgeRules, plan.Lines.Where(l => l.IsAgeRestricted).Select(l => l.ProductName),
+                    time.IsBackdated ? time.Local : null);
             var ageCheck = CheckAge(plan, request.AgeCheck);
+            var atTheTime = time.IsBackdated ? $" at {time.Local:ddd d MMM HH:mm}" : string.Empty;
 
             // The customer's standing discount was given by a manager; only a discount the cashier adds needs the permission.
             if (plan.DiscountTotal - plan.CustomerDiscountTotal > 0 && !_currentUser.HasPermission(ApplyDiscountPermission))
@@ -156,8 +216,8 @@ namespace UltimatePos.Application.Sales
             var shortBatched = plan.Lines.Where(l => l.IsBatchTracked && !l.StockSufficient).ToList();
             if (shortBatched.Count > 0)
                 throw new InsufficientStockException(
-                    "Not enough unexpired stock for: " +
-                    string.Join(", ", shortBatched.Select(l => $"'{l.ProductName}' ({l.AvailableInBaseUnits:0.####} available)")) + ".");
+                    $"Not enough unexpired stock{atTheTime} for: " +
+                    string.Join(", ", shortBatched.Select(l => $"'{l.ProductName}' ({Math.Max(0m, l.AvailableInBaseUnits):0.####} available)")) + ".");
 
             // Other stock may go negative only where the business allows it. Checked here for a clear message and before an STK push
             // is sent; the issue itself is guarded in SQL too, so two sales at the same moment cannot oversell between them.
@@ -169,8 +229,17 @@ namespace UltimatePos.Application.Sales
                     .Select(g => $"'{g.First().ProductName}' ({Math.Max(0m, g.First().AvailableInBaseUnits):0.####} available, {g.Sum(l => l.RequiredInBaseUnits):0.####} needed)")
                     .ToList();
                 if (shortProducts.Count > 0)
-                    throw new InsufficientStockException($"Not enough stock for: {string.Join(", ", shortProducts)}.");
+                    throw new InsufficientStockException($"Not enough stock{atTheTime} for: {string.Join(", ", shortProducts)}." +
+                        (time.IsBackdated ? " A backdated sale can use only the stock there was then, and not stock that has been sold since." : string.Empty));
             }
+
+            // A backdated cash sale belongs in the drawer that was open at its time. Once that drawer has been counted and closed its
+            // figures are fixed, so a sale cannot be slipped into it afterwards.
+            if (time.IsBackdated && request.PaymentMethod == PaymentMethod.Cash
+                && await _repository.GetClosedCashSessionAtAsync(_branches.RequireActiveBranchId(), time.BackdatedUtc!.Value) is { } closedSession)
+                throw new InvalidAssignmentException(
+                    $"Cash session {closedSession}, which was open{atTheTime}, has already been counted and closed, so a cash sale cannot be " +
+                    "added to it. Enter backdated cash sales before closing the drawer they belong to.");
 
             var overrodeCreditLimit = false;
             if (plan.CreditLimitExceeded(request.PaymentMethod))
@@ -183,11 +252,14 @@ namespace UltimatePos.Application.Sales
                 overrodeCreditLimit = true;
             }
 
-            var prescription = BuildPrescription(plan, request.Prescription, userId);
+            var prescription = BuildPrescription(plan, request.Prescription, userId, time.Day);
 
             var sale = new Sale
             {
                 SaleId = Guid.NewGuid(),
+                CreatedAt = time.BackdatedUtc ?? DateTime.UtcNow,
+                RecordedAt = time.IsBackdated ? DateTime.UtcNow : null,
+                BackdateReason = time.Reason,
                 CustomerId = request.CustomerId,
                 PaymentMethod = request.PaymentMethod,
                 DeliveryMode = deliveryOrderId.HasValue ? DeliveryMode.Rider : DeliveryMode.Counter,
@@ -230,14 +302,21 @@ namespace UltimatePos.Application.Sales
                 _events.Record(new SystemEventDraft(SystemEventTypes.SaleCreditLimitOverridden,
                     $"A credit sale of {plan.Total:0.00} took the customer to {plan.CustomerBalance + plan.Total:0.00}, past their limit of {plan.CreditLimit:0.00}.",
                     EventSeverity.Warning, "Sale", sale.SaleId, new { request.CustomerId, plan.Total, plan.CustomerBalance, plan.CreditLimit }));
+            if (time.IsBackdated)
+                _events.Record(new SystemEventDraft(SystemEventTypes.SaleBackdated,
+                    $"A {sale.PaymentMethod} sale of {plan.Total:0.00} made{atTheTime} was entered on {LocalNow:ddd d MMM HH:mm}: {time.Reason}",
+                    EventSeverity.Warning, "Sale", sale.SaleId,
+                    new { SoldAt = sale.CreatedAt, sale.RecordedAt, Reason = time.Reason, plan.Total, sale.PaymentMethod, request.CustomerId }));
 
+            // A backdated sale's stock comes out of lots that had not expired by the day it was made.
+            var day = time.Day;
             return request.PaymentMethod switch
             {
-                PaymentMethod.Cash => await RecordCashSaleAsync(sale, request, plan.AllowNegativeStock, deliveryOrderId),
-                PaymentMethod.Credit => await RecordCreditSaleAsync(sale, userId, plan.AllowNegativeStock, deliveryOrderId),
-                PaymentMethod.MpesaTill => await RecordTillSaleAsync(sale, request, plan.AllowNegativeStock, deliveryOrderId),
+                PaymentMethod.Cash => await RecordCashSaleAsync(sale, request, day, plan.AllowNegativeStock, deliveryOrderId),
+                PaymentMethod.Credit => await RecordCreditSaleAsync(sale, userId, day, plan.AllowNegativeStock, deliveryOrderId),
+                PaymentMethod.MpesaTill => await RecordTillSaleAsync(sale, request, day, plan.AllowNegativeStock, deliveryOrderId),
                 PaymentMethod.MpesaStkPush => await InitiateStkPushSaleAsync(sale, request, userId),
-                PaymentMethod.MpesaReference => await RecordMpesaReferenceSaleAsync(sale, plan.AllowNegativeStock, deliveryOrderId),
+                PaymentMethod.MpesaReference => await RecordMpesaReferenceSaleAsync(sale, day, plan.AllowNegativeStock, deliveryOrderId),
                 _ => throw new InvalidAssignmentException("Unsupported payment method.")
             };
         }
@@ -484,7 +563,7 @@ namespace UltimatePos.Application.Sales
 
         // ---- Payment-method branches ----
 
-        private async Task<SaleDto> RecordCashSaleAsync(Sale sale, CreateSaleRequestDto request, bool allowNegativeStock, Guid? deliveryOrderId)
+        private async Task<SaleDto> RecordCashSaleAsync(Sale sale, CreateSaleRequestDto request, DateOnly day, bool allowNegativeStock, Guid? deliveryOrderId)
         {
             if (request.AmountTendered is null || request.AmountTendered < sale.TotalAmount)
                 throw new ValidationException("amountTendered", $"Amount tendered must be at least the total ({sale.TotalAmount:0.00}).");
@@ -494,11 +573,11 @@ namespace UltimatePos.Application.Sales
             sale.ChangeDue = Math.Round(request.AmountTendered.Value - sale.TotalAmount, 2, MidpointRounding.AwayFromZero);
             sale.SaleNumber = $"INV-{await _repository.GetNextDocumentNumberAsync("INV"):D6}";
 
-            await _repository.RecordCompletedSaleAsync(sale, null, Today, allowNegativeStock, deliveryOrderId: deliveryOrderId);
+            await _repository.RecordCompletedSaleAsync(sale, null, day, allowNegativeStock, deliveryOrderId: deliveryOrderId);
             return await GetSaleByIdAsync(sale.SaleId);
         }
 
-        private async Task<SaleDto> RecordCreditSaleAsync(Sale sale, Guid? userId, bool allowNegativeStock, Guid? deliveryOrderId)
+        private async Task<SaleDto> RecordCreditSaleAsync(Sale sale, Guid? userId, DateOnly day, bool allowNegativeStock, Guid? deliveryOrderId)
         {
             sale.Status = SaleStatus.Completed;
             sale.SaleNumber = $"INV-{await _repository.GetNextDocumentNumberAsync("INV"):D6}";
@@ -511,14 +590,15 @@ namespace UltimatePos.Application.Sales
                 ReferenceType = "Sale",
                 ReferenceId = sale.SaleId,
                 Notes = $"Invoice {sale.SaleNumber}",
+                CreatedAt = sale.CreatedAt, // a backdated invoice is on the customer's statement on the day of the sale
                 CreatedBy = userId
             };
 
-            await _repository.RecordCompletedSaleAsync(sale, ledgerEntry, Today, allowNegativeStock, deliveryOrderId: deliveryOrderId);
+            await _repository.RecordCompletedSaleAsync(sale, ledgerEntry, day, allowNegativeStock, deliveryOrderId: deliveryOrderId);
             return await GetSaleByIdAsync(sale.SaleId);
         }
 
-        private async Task<SaleDto> RecordTillSaleAsync(Sale sale, CreateSaleRequestDto request, bool allowNegativeStock, Guid? deliveryOrderId)
+        private async Task<SaleDto> RecordTillSaleAsync(Sale sale, CreateSaleRequestDto request, DateOnly day, bool allowNegativeStock, Guid? deliveryOrderId)
         {
             if (request.MpesaTransactionId is null)
                 throw new ValidationException("mpesaTransactionId", "A till payment must reference the matching M-Pesa transaction.");
@@ -536,7 +616,7 @@ namespace UltimatePos.Application.Sales
             sale.SaleNumber = $"INV-{await _repository.GetNextDocumentNumberAsync("INV"):D6}";
 
             // The transaction is claimed in the sale's own database transaction, so it can never end up matched to two sales.
-            await _repository.RecordCompletedSaleAsync(sale, null, Today, allowNegativeStock, transaction.MpesaTransactionId, deliveryOrderId);
+            await _repository.RecordCompletedSaleAsync(sale, null, day, allowNegativeStock, transaction.MpesaTransactionId, deliveryOrderId);
 
             return await GetSaleByIdAsync(sale.SaleId);
         }
@@ -545,7 +625,7 @@ namespace UltimatePos.Application.Sales
         /// Paid to the business's M-Pesa outside the POS: the cashier typed the code from the customer's SMS. Completed at once, like cash,
         /// without asking Safaricom. The code is kept on the sale (and in the audit log) so it can be checked against the statement.
         /// </summary>
-        private async Task<SaleDto> RecordMpesaReferenceSaleAsync(Sale sale, bool allowNegativeStock, Guid? deliveryOrderId)
+        private async Task<SaleDto> RecordMpesaReferenceSaleAsync(Sale sale, DateOnly day, bool allowNegativeStock, Guid? deliveryOrderId)
         {
             sale.Status = SaleStatus.Completed;
             sale.SaleNumber = $"INV-{await _repository.GetNextDocumentNumberAsync("INV"):D6}";
@@ -555,7 +635,7 @@ namespace UltimatePos.Application.Sales
                 EntityType: "Sale", EntityId: sale.SaleId,
                 Data: new { sale.SaleNumber, sale.TotalAmount, sale.MpesaReference, sale.CustomerId, DeliveryOrderId = deliveryOrderId }));
             // A second sale with the same code at the same moment is stopped by the unique index and reported like the check below.
-            await _repository.RecordCompletedSaleAsync(sale, null, Today, allowNegativeStock, deliveryOrderId: deliveryOrderId);
+            await _repository.RecordCompletedSaleAsync(sale, null, day, allowNegativeStock, deliveryOrderId: deliveryOrderId);
             return await GetSaleByIdAsync(sale.SaleId);
         }
 
@@ -640,8 +720,10 @@ namespace UltimatePos.Application.Sales
                 method == PaymentMethod.Credit && CreditLimit is { } limit && (CustomerBalance ?? 0m) + Total > limit;
         }
 
+        /// <param name="time">When the sale happens: a backdated sale is checked against the stock there was then (and every balance since),
+        /// not against today's shelf or today's reservations, and counts towards the monthly reward of the month it was made in.</param>
         /// <param name="deliveryOrderId">The delivery order this sale fulfils: checked against stock on hand, not against reservations.</param>
-        private async Task<SalePlan> BuildSalePlanAsync(CreateSaleRequestDto request, Guid? deliveryOrderId = null)
+        private async Task<SalePlan> BuildSalePlanAsync(CreateSaleRequestDto request, SaleTime time, Guid? deliveryOrderId = null)
         {
             var lines = (request.Lines ?? Enumerable.Empty<CreateSaleLineRequestDto>()).ToList();
             var bundleRequests = (request.Bundles ?? Enumerable.Empty<CreateSaleBundleRequestDto>()).ToList();
@@ -680,7 +762,7 @@ namespace UltimatePos.Application.Sales
                 priceType = customer.PriceType;
                 creditLimit = customer.CreditLimit;
                 standingPercent = customer.DiscountPercent is > 0 ? customer.DiscountPercent : null;
-                customerMonth = await CustomerMonthAsync(business, customer.CustomerId);
+                customerMonth = await CustomerMonthAsync(business, customer.CustomerId, time.Day);
                 customerBalance = (await _accountingRepository.GetCustomerBalanceAsync(customer.CustomerId))?.OutstandingBalance ?? 0m;
             }
 
@@ -698,10 +780,13 @@ namespace UltimatePos.Application.Sales
             var productIds = lines.Select(l => l.ProductId)
                 .Concat(bundles.Values.SelectMany(b => b.Components).Select(c => c.ProductId)).Distinct().ToList();
             var products = (await _catalogRepository.GetProductsByIdsAsync(productIds)).ToDictionary(p => p.ProductId);
-            var sellable = await _inventoryRepository.GetSellableQuantitiesAsync(productIds, Today);
+            var sellable = time.BackdatedUtc is { } soldAt
+                ? await _inventoryRepository.GetSellableQuantitiesAtAsync(productIds, soldAt, time.Day)
+                : await _inventoryRepository.GetSellableQuantitiesAsync(productIds, Today);
             // Stock held for open delivery orders at this branch is not for sale over the counter. Recording a delivery is different: the
             // goods have already gone to the customer, so it is held only to what is on hand (other orders' reservations never block it).
-            if (deliveryOrderId is null)
+            // Nor is a backdated sale held back: the orders were placed after it.
+            if (deliveryOrderId is null && !time.IsBackdated)
             {
                 var branchId = _branches.RequireActiveBranchId();
                 foreach (var ((productId, reservedAt), quantity) in await _inventoryRepository.GetReservedQuantitiesAsync(productIds))
@@ -827,8 +912,8 @@ namespace UltimatePos.Application.Sales
             return plan;
         }
 
-        private Task<CustomerMonthlySpendDto?> CustomerMonthAsync(BusinessProfile business, Guid customerId) =>
-            MonthlySpendReward.ForCustomerAsync(_repository, business, customerId, Today);
+        private Task<CustomerMonthlySpendDto?> CustomerMonthAsync(BusinessProfile business, Guid customerId, DateOnly day) =>
+            MonthlySpendReward.ForCustomerAsync(_repository, business, customerId, day);
 
         private sealed record PricedLine(Product Product, Guid UnitOfMeasureId, decimal Quantity, decimal UnitPrice, decimal Gross,
             decimal LineDiscount, decimal RequiredBase, Guid? BundleId, string? BundleName, decimal? BundleQuantity, decimal StandingDiscount = 0);
@@ -862,7 +947,8 @@ namespace UltimatePos.Application.Sales
             return result;
         }
 
-        private SalePrescription? BuildPrescription(SalePlan plan, SalePrescriptionRequestDto? request, Guid? userId)
+        /// <param name="day">The day of the sale: a prescription cannot be dated after it.</param>
+        private SalePrescription? BuildPrescription(SalePlan plan, SalePrescriptionRequestDto? request, Guid? userId, DateOnly day)
         {
             if (request is null)
             {
@@ -884,8 +970,10 @@ namespace UltimatePos.Application.Sales
                 errors["prescription.patientName"] = new[] { "The patient's name is required." };
             if (request.PrescriptionDate == default)
                 errors["prescription.prescriptionDate"] = new[] { "The prescription date is required." };
-            else if (request.PrescriptionDate > Today)
-                errors["prescription.prescriptionDate"] = new[] { "The prescription date cannot be in the future." };
+            else if (request.PrescriptionDate > day)
+                errors["prescription.prescriptionDate"] = new[] { day < Today
+                    ? "The prescription date cannot be after the day of the sale."
+                    : "The prescription date cannot be in the future." };
             if (request.PatientAgeYears is < 0 or > 130)
                 errors["prescription.patientAgeYears"] = new[] { "Patient age must be between 0 and 130." };
             if (errors.Count > 0)
@@ -934,7 +1022,8 @@ namespace UltimatePos.Application.Sales
                 s.Prescription is null ? null : ToDto(s.Prescription), s.BranchId,
                 s.Branch is null ? null : Branch.FormatKraBranchId(s.Branch.BranchNumber), s.Branch?.Name, s.PaymentDueDate,
                 Bundles(s.Lines.Select(l => (l.ProductBundleId, l.BundleName, l.BundleQuantity, l.LineTotal, l.DiscountAmount))),
-                s.MpesaReference, s.DeliveryMode, s.CustomerDiscountPercent, s.CustomerDiscountAmount, s.CustomerDiscountSource, s.AgeCheck);
+                s.MpesaReference, s.DeliveryMode, s.CustomerDiscountPercent, s.CustomerDiscountAmount, s.CustomerDiscountSource, s.AgeCheck,
+                s.RecordedAt, s.BackdateReason);
 
         /// <summary>The bundles on a sale, each once, from the lines their parts became. Null when the sale has none.</summary>
         private static List<SaleBundleDto>? Bundles(IEnumerable<(Guid? BundleId, string? Name, decimal? Quantity, decimal LineTotal, decimal Discount)> lines)

@@ -87,6 +87,12 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
 
         private const string MpesaReferenceIndex = "IX_Sales_BusinessId_MpesaReference";
 
+        public async Task<string?> GetClosedCashSessionAtAsync(Guid branchId, DateTime atUtc) =>
+            await _context.CashSessions.AsNoTracking()
+                .Where(s => s.BranchId == branchId && s.Status == CashSessionStatus.Closed && s.OpenedAt <= atUtc && s.ClosedAt > atUtc)
+                .Select(s => s.SessionNumber)
+                .FirstOrDefaultAsync();
+
         public async Task<string?> GetSaleNumberByMpesaReferenceAsync(string mpesaReference) =>
             await _context.Sales.AsNoTracking()
                 .Where(s => s.MpesaReference == mpesaReference && s.Status != SaleStatus.Voided && s.Status != SaleStatus.Failed)
@@ -161,6 +167,13 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                     .Select(p => p.ProductId).ToListAsync())
                 .ToHashSet();
 
+            // A backdated sale is held to the stock there was at its time and to every balance since (StockHistory), not to what is on the
+            // shelf now: checked here under the stock rows' locks, so two late entries at once cannot share one shelf. Its stock movements
+            // are dated at the sale's time, so the stock card shows them on the day they happened.
+            var backdated = sale.RecordedAt is not null;
+            if (backdated)
+                await EnsureStockAtSaleTimeAsync(sale, productIds, batchTracked, today, allowNegativeStock);
+
             foreach (var line in sale.Lines.OrderBy(l => l.ProductId))
             {
                 var template = new StockMovement
@@ -174,6 +187,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                     BatchId = sale.SaleId,
                     CreatedBy = sale.CreatedBy
                 };
+                if (backdated)
+                    template.CreatedAt = sale.CreatedAt;
 
                 if (!batchTracked.Contains(line.ProductId))
                 {
@@ -219,6 +234,26 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             }
         }
 
+        private async Task EnsureStockAtSaleTimeAsync(Sale sale, IReadOnlyCollection<Guid> productIds, HashSet<Guid> batchTracked, DateOnly day,
+            bool allowNegativeStock)
+        {
+            // Batch-tracked products are locked by their lots as they are issued (lots, then product row): only the others are locked here.
+            await _stockLedger.LockAsync(productIds.Where(id => !batchTracked.Contains(id)), sale.BranchId);
+            var available = await StockHistory.AvailableAtAsync(_context, sale.BranchId, productIds, sale.CreatedAt, day);
+
+            // Medicines are never sold beyond their lots; other stock only where the business does not allow negative stock.
+            var shortIds = sale.Lines.GroupBy(l => l.ProductId)
+                .Where(g => (batchTracked.Contains(g.Key) || !allowNegativeStock) && available.GetValueOrDefault(g.Key) < g.Sum(l => l.QuantityInBaseUnits))
+                .Select(g => g.Key).ToList();
+            if (shortIds.Count == 0)
+                return;
+            var names = await _context.Products.AsNoTracking().Where(p => shortIds.Contains(p.ProductId))
+                .ToDictionaryAsync(p => p.ProductId, p => p.Name);
+            throw new InsufficientStockException("Not enough stock at the sale's time for: " + string.Join(", ", shortIds.Select(id =>
+                $"'{names.GetValueOrDefault(id, id.ToString())}' ({Math.Max(0m, available.GetValueOrDefault(id)):0.####} available)")) +
+                ". Someone may have just entered another sale of it; check the stock card and try again.");
+        }
+
         private static StockMovement Clone(StockMovement m, decimal quantityChange) => new()
         {
             ProductId = m.ProductId,
@@ -230,6 +265,7 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
             ReferenceId = m.ReferenceId,
             BatchId = m.BatchId,
             Notes = m.Notes,
+            CreatedAt = m.CreatedAt,
             CreatedBy = m.CreatedBy
         };
 
@@ -272,6 +308,8 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 query = query.Where(s => s.PaymentMethod == filter.PaymentMethod.Value);
             if (filter.DeliveryMode.HasValue)
                 query = query.Where(s => s.DeliveryMode == filter.DeliveryMode.Value);
+            if (filter.Backdated.HasValue)
+                query = filter.Backdated.Value ? query.Where(s => s.RecordedAt != null) : query.Where(s => s.RecordedAt == null);
             if (fromUtc.HasValue)
                 query = query.Where(s => s.CreatedAt >= fromUtc.Value);
             if (toUtcExclusive.HasValue)

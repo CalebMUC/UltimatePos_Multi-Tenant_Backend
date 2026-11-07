@@ -184,8 +184,10 @@ namespace UltimatePos.Infrastructure.Etims
             _context.Sales.AsNoTracking().AsSplitQuery()
                 .Include(s => s.Lines).ThenInclude(l => l.Product)
                 .Include(s => s.Customer)
+                // A backdated sale is found by when it was entered: its own date may be in a window already swept.
                 .Where(s => s.BranchId == branchId && s.Status == SaleStatus.Completed && s.CreatedAt >= notBefore
-                            && ((s.CreatedAt >= from && s.CreatedAt < to) || (s.LastUpdatedAt >= from && s.LastUpdatedAt < to)))
+                            && ((s.CreatedAt >= from && s.CreatedAt < to) || (s.LastUpdatedAt >= from && s.LastUpdatedAt < to)
+                                || (s.RecordedAt >= from && s.RecordedAt < to)))
                 .ToListAsync();
 
         public Task<List<Sale>> GetVoidedSalesAsync(Guid branchId, DateTime from, DateTime to, DateTime notBefore) =>
@@ -205,8 +207,10 @@ namespace UltimatePos.Infrastructure.Etims
 
         public Task<List<StockMovement>> GetStockMovementsAsync(Guid branchId, DateTime from, DateTime to, DateTime notBefore) =>
             _context.StockMovements.AsNoTracking().Include(m => m.Product)
-                .Where(m => m.BranchId == branchId && m.CreatedAt >= notBefore && m.CreatedAt >= from && m.CreatedAt < to
-                            && m.MovementType != StockMovementType.Revaluation)
+                // A backdated sale's stock is dated at the sale's time: found, like the sale, by when the sale was entered.
+                .Where(m => m.BranchId == branchId && m.CreatedAt >= notBefore && m.MovementType != StockMovementType.Revaluation
+                            && ((m.CreatedAt >= from && m.CreatedAt < to)
+                                || (m.ReferenceType == "Sale" && _context.Sales.Any(s => s.SaleId == m.ReferenceId && s.RecordedAt >= from && s.RecordedAt < to))))
                 .OrderBy(m => m.CreatedAt)
                 .ToListAsync();
 

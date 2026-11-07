@@ -2325,6 +2325,10 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<decimal?>("AmountTendered")
                         .HasColumnType("numeric");
 
+                    b.Property<string>("BackdateReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<Guid>("BranchId")
                         .HasColumnType("uuid");
 
@@ -2378,6 +2382,9 @@ namespace UltimatePos.Infrastructure.Migrations
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateTime?>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal>("ReturnedAmount")
                         .HasColumnType("numeric");

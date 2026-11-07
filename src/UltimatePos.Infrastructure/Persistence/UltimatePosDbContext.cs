@@ -285,6 +285,7 @@ namespace UltimatePos.Infrastructure.Persistence
             // Where each business document happened.
             modelBuilder.Entity<Sale>().HasOne(s => s.Branch).WithMany().HasForeignKey(s => s.BranchId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<Sale>().HasIndex(s => new { s.BranchId, s.CreatedAt });
+            modelBuilder.Entity<Sale>().Property(s => s.BackdateReason).HasMaxLength(200);
             // A typed M-Pesa code is on one live sale per business. A voided or failed sale frees it, so it can be rung up again.
             modelBuilder.Entity<Sale>().Property(s => s.MpesaReference).HasMaxLength(20);
             modelBuilder.Entity<Sale>().HasIndex(s => new { s.BusinessId, s.MpesaReference }).IsUnique()

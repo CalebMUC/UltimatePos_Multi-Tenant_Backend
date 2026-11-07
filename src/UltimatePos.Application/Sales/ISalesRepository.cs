@@ -33,6 +33,10 @@ namespace UltimatePos.Application.Sales
         // Does nothing if the sale is no longer Pending (checked under a lock).
         Task FailPendingSaleAsync(Guid saleId, string reason);
 
+        /// <summary>The number of the branch's cash session that was open at <paramref name="atUtc"/> and has been counted and closed
+        /// since; null when none (no session then, or it is still open).</summary>
+        Task<string?> GetClosedCashSessionAtAsync(Guid branchId, DateTime atUtc);
+
         /// <summary>The number of the business's sale, not voided or failed, that carries this typed M-Pesa code; null if none.</summary>
         Task<string?> GetSaleNumberByMpesaReferenceAsync(string mpesaReference);
 
