@@ -30,6 +30,12 @@ namespace UltimatePos.Application.Inventory
         /// </summary>
         Task<Dictionary<Guid, decimal>> GetSellableQuantitiesAsync(IEnumerable<Guid> productIds, DateOnly today);
         /// <summary>
+        /// What a backdated sale at <paramref name="atUtc"/> (on local day <paramref name="day"/>) can take at the active branch: the stock
+        /// on hand then, and no more than the lowest the balance has been since, so no later balance goes below zero. Every product given
+        /// is present (0 when it had none).
+        /// </summary>
+        Task<Dictionary<Guid, decimal>> GetSellableQuantitiesAtAsync(IEnumerable<Guid> productIds, DateTime atUtc, DateOnly day);
+        /// <summary>
         /// Base-unit quantity held back for open delivery orders (pending or out for delivery), per (product, branch), over the branches
         /// the caller can see. Products with nothing reserved are absent.
         /// </summary>

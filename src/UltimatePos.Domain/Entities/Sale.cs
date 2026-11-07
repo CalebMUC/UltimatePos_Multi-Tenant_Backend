@@ -44,7 +44,13 @@ namespace UltimatePos.Domain.Entities
         /// <summary>How the customer's age was checked, when the sale has an age-restricted product (alcohol, tobacco); the cashier who
         /// recorded the sale (CreatedBy) made the check. Null when it has none.</summary>
         public AgeCheckMethod? AgeCheck { get; set; }
+        /// <summary>When the sale happened. For a backdated sale this is the time it was really made, not when it was entered.</summary>
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        /// <summary>Backdated sales only: when the sale was entered into the system (after a power failure, say). Null for a sale
+        /// entered as it happened.</summary>
+        public DateTime? RecordedAt { get; set; }
+        /// <summary>Backdated sales only: why it was entered late ("Power failure, entered from the paper book").</summary>
+        public string? BackdateReason { get; set; }
         public Guid? CreatedBy { get; set; }
         public DateTime? LastUpdatedAt { get; set; }
         public Guid? LastUpdatedBy { get; set; }

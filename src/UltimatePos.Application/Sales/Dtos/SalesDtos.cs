@@ -28,6 +28,10 @@ namespace UltimatePos.Application.Sales.Dtos
 
     /// <param name="DiscountAmount">A discount on the whole sale, spread across the lines in proportion to their value.</param>
     /// <param name="OverrideCreditLimit">Let a credit sale take the customer past their limit. Needs Sales.OverrideCreditLimit.</param>
+    /// <param name="SoldAt">Backdating only: when the sale really happened, with its UTC offset (2026-11-05T14:30:00+03:00). Up to 3
+    /// days back, never in the future. Leave it out for a sale happening now. Needs Sales.Backdate and a BackdateReason. Stock is
+    /// checked as it stood then, not against what is on the shelf now.</param>
+    /// <param name="BackdateReason">Why the sale is entered late ("Power failure, from the paper book"). Required with SoldAt.</param>
     public record CreateSaleRequestDto(
         Guid? CustomerId, PaymentMethod PaymentMethod, string? Notes, IEnumerable<CreateSaleLineRequestDto> Lines,
         decimal? AmountTendered,      // Cash only
@@ -39,7 +43,9 @@ namespace UltimatePos.Application.Sales.Dtos
         DateOnly? PaymentDueDate = null, // Credit only — the day the customer promised to pay by
         IEnumerable<CreateSaleBundleRequestDto>? Bundles = null, // a sale needs at least one line or one bundle
         string? MpesaReference = null, // MpesaReference only — the code from the customer's SMS, e.g. SJK4H7LM2P
-        AgeCheckMethod? AgeCheck = null); // required when a line is age-restricted (alcohol, tobacco): how the customer's age was checked
+        AgeCheckMethod? AgeCheck = null, // required when a line is age-restricted (alcohol, tobacco): how the customer's age was checked
+        DateTimeOffset? SoldAt = null,
+        string? BackdateReason = null);
 
     public record SalePreviewLineDto(Guid ProductId, string ProductName, string Sku, Guid UnitOfMeasureId,
         decimal Quantity, decimal UnitPrice, decimal LineTotal, decimal AvailableInBaseUnits, decimal RequiredInBaseUnits, bool StockSufficient,
@@ -60,7 +66,8 @@ namespace UltimatePos.Application.Sales.Dtos
         decimal? CustomerBalance = null, decimal? CreditLimit = null, bool CreditLimitExceeded = false,
         IEnumerable<SaleBundleDto>? Bundles = null, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountTotal = 0,
         CustomerDiscountSource? CustomerDiscountSource = null, CustomerMonthlySpendDto? CustomerMonth = null,
-        bool RequiresAgeCheck = false, int? MinimumAge = null, bool WithinSellingHours = true, string? SellingHours = null);
+        bool RequiresAgeCheck = false, int? MinimumAge = null, bool WithinSellingHours = true, string? SellingHours = null,
+        DateTime? SoldAt = null); // backdated preview: the sale's time (UTC); AvailableInBaseUnits is then what the shelf held at that time
 
     /// <summary>
     /// A registered customer's month so far against the monthly-spend reward (null when the business has none). Spent is completed purchases
@@ -86,13 +93,15 @@ namespace UltimatePos.Application.Sales.Dtos
         DateOnly? PaymentDueDate = null, IEnumerable<SaleBundleDto>? Bundles = null, string? MpesaReference = null,
         DeliveryMode DeliveryMode = DeliveryMode.Counter, decimal? CustomerDiscountPercent = null, decimal CustomerDiscountAmount = 0,
         CustomerDiscountSource? CustomerDiscountSource = null,
-        AgeCheckMethod? AgeCheck = null); // how the customer's age was checked, when the sale has alcohol or tobacco; the receipt prints it
+        AgeCheckMethod? AgeCheck = null, // how the customer's age was checked, when the sale has alcohol or tobacco; the receipt prints it
+        DateTime? RecordedAt = null,     // backdated sales: when it was entered (CreatedAt is when it happened); null otherwise
+        string? BackdateReason = null);
 
     /// <summary>Filters for the sales list. from/to are local calendar days (inclusive), resolved with utcOffsetMinutes.
-    /// Search matches the sale number, the customer's name or a typed M-Pesa code.</summary>
+    /// Search matches the sale number, the customer's name or a typed M-Pesa code. Backdated: true = only sales entered late, false = none of them.</summary>
     public record SaleQuery(Guid? CustomerId = null, SaleStatus? Status = null, DateOnly? From = null, DateOnly? To = null,
         Guid? CreatedBy = null, PaymentMethod? PaymentMethod = null, string? Search = null, int UtcOffsetMinutes = 180,
-        DeliveryMode? DeliveryMode = null);
+        DeliveryMode? DeliveryMode = null, bool? Backdated = null);
 
     // ---- Returns ----
 

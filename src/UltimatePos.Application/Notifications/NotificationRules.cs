@@ -64,6 +64,7 @@ namespace UltimatePos.Application.Notifications
             new(SystemEventTypes.SaleVoided, "Sale voided", new[] { "Sales.Void" }, ExcludeActor: true, Link: "/sales/{entityId}"),
             new(SystemEventTypes.SaleCreditLimitOverridden, "Credit limit overridden", new[] { "Sales.OverrideCreditLimit" },
                 ExcludeActor: true, Link: "/sales/{entityId}"),
+            new(SystemEventTypes.SaleBackdated, "Backdated sale", new[] { "Sales.Backdate" }, ExcludeActor: true, Link: "/sales/{entityId}"),
             new(SystemEventTypes.MpesaStkPaymentFailed, "M-Pesa payment failed", Array.Empty<string>(),
                 SubjectChannels: NotificationChannels.InApp, Link: "/sales/{entityId}"),
             new(SystemEventTypes.MpesaTillPaymentUnmatched, "Unmatched M-Pesa payment", new[] { "Mpesa.View" }, Link: "/mpesa"),
