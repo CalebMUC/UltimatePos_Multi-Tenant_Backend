@@ -25,10 +25,10 @@ public class DeliveryOrdersController : ControllerBase
     public async Task<IActionResult> GetOrders([FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] DeliveryOrderStatus? status = null, [FromQuery] Guid? customerId = null, [FromQuery] string? riderName = null,
         [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, [FromQuery] int utcOffsetMinutes = ReportPeriod.DefaultUtcOffsetMinutes,
-        [FromQuery] Guid? deliveryTripId = null)
+        [FromQuery] Guid? deliveryTripId = null, [FromQuery] string? search = null)
     {
         var paged = await _orders.GetOrdersAsync(page, pageSize,
-            new DeliveryOrderQuery(status, customerId, riderName, from, to, utcOffsetMinutes, deliveryTripId));
+            new DeliveryOrderQuery(status, customerId, riderName, from, to, utcOffsetMinutes, deliveryTripId, search));
         var meta = new PagingMeta(paged.Page, paged.PageSize, paged.TotalCount, paged.TotalPages);
         return Ok(ApiResponse<IEnumerable<DeliveryOrderDto>>.Ok(paged.Items, meta));
     }

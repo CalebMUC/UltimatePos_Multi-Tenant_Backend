@@ -63,6 +63,19 @@ namespace UltimatePos.Infrastructure.Persistence.Repositories
                 query = query.Where(o => o.DeliveryTripId == filter.DeliveryTripId.Value);
             if (!string.IsNullOrWhiteSpace(filter.RiderName))
                 query = query.Where(o => o.RiderName != null && EF.Functions.ILike(o.RiderName, filter.RiderName.Trim()));
+            if (!string.IsNullOrWhiteSpace(filter.Search))
+            {
+                var term = filter.Search.Trim().ToLower();
+                query = query.Where(o =>
+                    o.OrderNumber.ToLower().Contains(term)
+                    || o.Customer.CustomerName.ToLower().Contains(term)
+                    || (o.Customer.PhoneNumber != null && o.Customer.PhoneNumber.Contains(term))
+                    || (o.ContactPhone != null && o.ContactPhone.Contains(term))
+                    || o.DeliveryAddress.ToLower().Contains(term)
+                    || (o.RiderName != null && o.RiderName.ToLower().Contains(term))
+                    || (o.Trip != null && o.Trip.TripNumber.ToLower().Contains(term))
+                    || (o.Sale != null && o.Sale.SaleNumber.ToLower().Contains(term)));
+            }
             if (fromUtc.HasValue)
                 query = query.Where(o => o.CreatedAt >= fromUtc.Value);
             if (toUtcExclusive.HasValue)
