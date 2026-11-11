@@ -64,9 +64,11 @@ namespace UltimatePos.Application.Deliveries
         PaymentMethod? ExpectedPaymentMethod = null, Guid? DeliveryTripId = null, string? TripNumber = null,
         DateTime? ReturnedAt = null, string? ReturnReason = null);
 
-    /// <summary>Filters for the list. from/to are local days the order was TAKEN, inclusive.</summary>
+    /// <summary>Filters for the list. from/to are local days the order was TAKEN, inclusive.
+    /// Search matches part of the order, sale or trip number, the customer's name or phone, the address or the rider's name.</summary>
     public record DeliveryOrderQuery(DeliveryOrderStatus? Status = null, Guid? CustomerId = null, string? RiderName = null,
-        DateOnly? From = null, DateOnly? To = null, int UtcOffsetMinutes = ReportPeriod.DefaultUtcOffsetMinutes, Guid? DeliveryTripId = null);
+        DateOnly? From = null, DateOnly? To = null, int UtcOffsetMinutes = ReportPeriod.DefaultUtcOffsetMinutes, Guid? DeliveryTripId = null,
+        string? Search = null);
 
     /// <summary>
     /// What each rider delivered in the period (by delivery day) and how it was paid — CashCollected is the cash they should hand in.

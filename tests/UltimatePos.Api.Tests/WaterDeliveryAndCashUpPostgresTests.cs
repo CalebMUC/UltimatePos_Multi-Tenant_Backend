@@ -247,6 +247,33 @@ public class WaterDeliveryAndCashUpPostgresTests : IClassFixture<MultiBusinessDa
     }
 
     [PostgresFact]
+    public async Task Orders_are_found_by_part_of_the_customer_rider_order_number_or_phone()
+    {
+        await SignInToStationAsync();
+        var water = await WaterAsync();
+        var customer = await CustomerAsync();
+        var other = await CustomerAsync();
+        var rider = Rider();
+        var order = await CheckoutByRiderAsync(customer.CustomerId, rider, PaymentMethod.Cash, Item(water.ProductId, water.TwentyLitre, 1));
+        var elsewhere = await OrderAsync(other.CustomerId, Item(water.ProductId, water.TwentyLitre, 1));
+
+        async Task<IReadOnlyList<Guid>> Find(string search) =>
+            (await Run(sp => sp.GetRequiredService<DeliveryOrderService>().GetOrdersAsync(1, 100, new DeliveryOrderQuery(Search: search))))
+                .Items.Select(o => o.DeliveryOrderId).ToList();
+
+        foreach (var term in new[] { customer.CustomerName.ToUpperInvariant(), rider[^6..], order.OrderNumber.ToLowerInvariant(), customer.PhoneNumber![^6..] })
+        {
+            var found = await Find(term);
+            Assert.Contains(order.DeliveryOrderId, found);
+            Assert.DoesNotContain(elsewhere.DeliveryOrderId, found);
+        }
+        // Combined with a status, as the Not completed list does.
+        var out_ = await Run(sp => sp.GetRequiredService<DeliveryOrderService>().GetOrdersAsync(1, 100,
+            new DeliveryOrderQuery(Status: DeliveryOrderStatus.OutForDelivery, Search: rider)));
+        Assert.Equal(order.DeliveryOrderId, Assert.Single(out_.Items).DeliveryOrderId);
+    }
+
+    [PostgresFact]
     public async Task Orders_sent_out_together_are_one_trip_and_fuel_is_weighed_against_the_trips()
     {
         await SignInToStationAsync();
