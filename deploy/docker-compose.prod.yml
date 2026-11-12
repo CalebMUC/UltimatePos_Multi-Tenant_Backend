@@ -115,6 +115,8 @@ services:
       WEBSITE_ADDRESS: ${WEBSITE_ADDRESS:?set WEBSITE_ADDRESS in .env, e.g. yourcompany.co.ke}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Extra site blocks (e.g. Chama). Create the folder as the deploy user before the first `up`, or Docker makes it root-owned.
+      - ${CADDY_SITES_DIR:-../../caddy-sites}:/etc/caddy/sites.d:ro
       - caddy_data:/data        # HTTPS certificates: keep this volume
       - caddy_config:/config
     depends_on:
